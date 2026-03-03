@@ -1,4 +1,4 @@
-﻿# CS2_ADMIN
+# CS2_ADMIN
 
 ## Ozellikler
 
@@ -11,50 +11,50 @@
 
 ## Console Commands
 
-Use commands without `!` in server console.
+Use `sw_` commands in server console (without `!`).
 
-- `admin addgroup <name> <flags> [immunity]`
-- `admin editgroup <name> <flags> [immunity]`
-- `admin removegroup <name>`
-- `admin listgroups`
-- `admin addadmin <steamid> <name> <#group or group1,group2> [immunity] [duration_days]`
-- `admin editadmin <steamid> <name|groups|immunity|duration> <value>`
-- `admin removeadmin <steamid>`
-- `admin listadmins`
-- `admin adminreload`
-- `ban <target> <minutes|-1> [reason]`
-- `ipban <target|ip> <minutes|-1> [reason]`
-- `addban <steamid> <minutes|-1> [reason]`
-- `unban <steamid|ip> [reason]`
-- `warn <target> <minutes|-1> [reason]`
-- `unwarn <target> [reason]`
-- `mute <target> <minutes|-1> [reason]`
-- `unmute <target> [reason]`
-- `gag <target> <minutes|-1> [reason]`
-- `ungag <target> [reason]`
-- `silence <target> <minutes|-1> [reason]`
-- `unsilence <target> [reason]`
-- `kick <target> [reason]`
-- `slap <target> [damage]`
-- `slay <target>`
-- `respawn <target>`
-- `team <target> <t|ct|spec>`
-- `noclip <target>`
-- `goto <target>`
-- `bring <target>`
-- `freeze <target> [seconds]`
-- `unfreeze <target>`
-- `who <target>`
-- `map <mapname>`
-- `wsmap <workshop_id|name>`
-- `rr [seconds]` / `restart [seconds]`
-- `hson` / `hsoff`
-- `bunnyon` / `bunnyoff`
-- `respawnon` / `respawnoff`
-- `rcon <command>`
-- `cvar <cvar> [value]`
-- `admintime`
-- `admintimesend`
+- `sw_addgroup <name> <flags> [immunity]`
+- `sw_editgroup <name> <flags> [immunity]`
+- `sw_removegroup <name>`
+- `sw_listgroups`
+- `sw_addadmin <steamid> <name> <#group or group1,group2> [duration_days]`
+- `sw_editadmin <steamid> <name|groups|immunity|duration> <value>`
+- `sw_removeadmin <steamid>`
+- `sw_listadmins`
+- `sw_adminreload`
+- `sw_ban <target> <minutes|-1> [reason]`
+- `sw_ipban <target|ip> <minutes|-1> [reason]`
+- `sw_addban <steamid> <minutes|-1> [reason]`
+- `sw_unban <steamid|ip> [reason]`
+- `sw_warn <target> <reason>`
+- `sw_unwarn <target> [reason]`
+- `sw_mute <target> <minutes|-1> [reason]`
+- `sw_unmute <target> [reason]`
+- `sw_gag <target> <minutes|-1> [reason]`
+- `sw_ungag <target> [reason]`
+- `sw_silence <target> <minutes|-1> [reason]`
+- `sw_unsilence <target> [reason]`
+- `sw_kick <target> [reason]`
+- `sw_slap <target> [damage]`
+- `sw_slay <target>`
+- `sw_respawn <target>`
+- `sw_team <target> <t|ct|spec>`
+- `sw_noclip <target>`
+- `sw_goto <target>`
+- `sw_bring <target>`
+- `sw_freeze <target> [seconds]`
+- `sw_unfreeze <target>`
+- `sw_who <target>`
+- `sw_map <mapname>`
+- `sw_wsmap <workshop_id|name>`
+- `sw_rr [seconds]` / `sw_restart [seconds]`
+- `sw_hson` / `sw_hsoff`
+- `sw_bhopon` / `sw_bhopoff`
+- `sw_respawnon` / `sw_respawnoff`
+- `sw_rcon <command>`
+- `sw_cvar <cvar> [value]`
+- `sw_admintime`
+- `sw_admintimesend`
 
 ## Ingame Commands
 
@@ -62,7 +62,7 @@ Use commands without `!` in server console.
 - `!editgroup <name> <flags> [immunity]`
 - `!removegroup <name>`
 - `!listgroups`
-- `!addadmin <steamid> <name> <#group or group1,group2> [immunity] [duration_days]`
+- `!addadmin <steamid> <name> <#group or group1,group2> [duration_days]`
 - `!editadmin <steamid> <name|groups|immunity|duration> <value>`
 - `!removeadmin <steamid>`
 - `!listadmins`
@@ -71,7 +71,7 @@ Use commands without `!` in server console.
 - `!ipban <target|ip> <minutes|-1> [reason]`
 - `!addban <steamid> <minutes|-1> [reason]`
 - `!unban <steamid|ip> [reason]`
-- `!warn <target> <minutes|-1> [reason]`
+- `!warn <target> <reason>`
 - `!unwarn <target> [reason]`
 - `!mute <target> <minutes|-1> [reason]`
 - `!unmute <target> [reason]`
@@ -107,11 +107,13 @@ Default core permissions:
 
 - `admin.root` -> full access.
 - `admin.generic` -> general admin commands.
-- `admin.ban` -> ban commands.
+- `admin.ban` -> ban/ipban/addban/unban/lastban.
 - `admin.kick` -> kick.
 - `admin.mute` -> mute/gag/silence.
-- `admin.cvar` -> cvar, noclip, and several server toggles.
-- `admin.rcon` -> rcon.
+- `admin.cheats` -> slap/slay/respawn/team/noclip/goto/bring/freeze/unfreeze.
+- `admin.rcon` -> rcon ve sunucu toggle komutlari (`hson/hsoff`, `bhopon/bhopoff`, `respawnon/respawnoff`).
+- `admin.cvar` -> `cvar`.
+- `Report` permission varsayilan olarak bos (`""`) oldugu icin `!report` herkese aciktir (degistirilmezse).
 
 ## 5) What Each Permission Does
 
@@ -122,7 +124,8 @@ Default core permissions:
 
 - `admin.generic`:
 - Most moderation and communication commands.
-- `warn`, `slap`, `slay`, `respawn`, `team`, `goto`, `bring`, `freeze`, `who`, `asay/say/psay/csay/hsay`, `admintime`.
+- `admin` menu erisimi.
+- `warn`, `unwarn`, `who`, `asay/say/psay/csay/hsay`, `admintime`, `map`, `wsmap`, `rr/restart`, `calladmin`, `listplayers`.
 
 - `admin.ban`:
 - `ban`, `ipban`, `addban`, `unban`, `lastban`.
@@ -133,11 +136,14 @@ Default core permissions:
 - `admin.mute`:
 - `mute/unmute`, `gag/ungag`, `silence/unsilence`.
 
-- `admin.cvar`:
-- `noclip`, `hson/hsoff`, `bunnyon/bunnyoff`, `respawnon/respawnoff`, `cvar`.
+- `admin.cheats`:
+- `slap`, `slay`, `respawn`, `team`, `noclip`, `goto`, `bring`, `freeze`, `unfreeze`.
 
 - `admin.rcon`:
-- `rcon`.
+- `rcon`, `hson/hsoff`, `bhopon/bhopoff`, `respawnon/respawnoff`.
+
+- `admin.cvar`:
+- `cvar`.
 
 ## 6) Recommended Setup Flow (Group First, Then Admin)
 
@@ -146,13 +152,13 @@ Default core permissions:
 Create group first:
 
 ```text
-admin addgroup Owner admin.root 100
+sw_addgroup Owner admin.root 100
 ```
 
 Example moderator group:
 
 ```text
-admin addgroup Moderator admin.generic,admin.kick,admin.mute 50
+sw_addgroup Moderator admin.generic,admin.kick,admin.mute 50
 ```
 
 ### 6.2 Add admin
@@ -160,25 +166,25 @@ admin addgroup Moderator admin.generic,admin.kick,admin.mute 50
 After group creation, assign admin:
 
 ```text
-admin addadmin 76561198255550637 SSonic @Owner
+sw_addadmin 76561198255550637 SSonic @Owner
 ```
 
 or multi-group:
 
 ```text
-admin addadmin 7656119XXXXXXXXXX PlayerX Moderator,Helper 30 30
+sw_addadmin 7656119XXXXXXXXXX PlayerX Moderator,Helper 30
 ```
 
 Notes:
-- If two numbers are provided: `[immunity] [duration_days]`
-- If one number is provided: `duration_days`
+- Optional last value is `[duration_days]`.
+- Example: `sw_addadmin 7656119... PlayerX Moderator 30`
 
 ### 6.3 Verify
 
 ```text
-admin listgroups
-admin listadmins
-admin adminreload
+sw_listgroups
+sw_listadmins
+sw_adminreload
 ```
 
 Online target player gets permissions and tag immediately.
