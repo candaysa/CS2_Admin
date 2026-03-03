@@ -108,8 +108,6 @@ Default core permissions:
 - `admin.root` -> full access.
 - `admin.generic` -> general admin commands.
 - `admin.ban` -> ban commands.
-- `admin.ban.ip` -> ipban.
-- `admin.unban` -> unban.
 - `admin.kick` -> kick.
 - `admin.mute` -> mute/gag/silence.
 - `admin.cvar` -> cvar, noclip, and several server toggles.
@@ -127,13 +125,7 @@ Default core permissions:
 - `warn`, `slap`, `slay`, `respawn`, `team`, `goto`, `bring`, `freeze`, `who`, `asay/say/psay/csay/hsay`, `admintime`.
 
 - `admin.ban`:
-- `ban`, `addban`, `lastban`.
-
-- `admin.ban.ip`:
-- `ipban`.
-
-- `admin.unban`:
-- `unban`.
+- `ban`, `ipban`, `addban`, `unban`, `lastban`.
 
 - `admin.kick`:
 - `kick`.
