@@ -19,10 +19,13 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
         Respawn,
         Team,
         Noclip,
+        Goto,
+        Bring,
         Freeze,
         Unfreeze,
         Resize,
         Drug,
+        Beacon,
         Burn,
         Disarm,
         Speed,
@@ -42,7 +45,7 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     {
         var builder = _core.MenusAPI.CreateBuilder();
 
-        string title = T("menu_fun_commands", "Fun Commands");
+        string title = T("menu_fun_commands");
         builder.Design.SetMenuTitle(title);
 
         if (HasPermission(player, _config.Permissions.Slap))
@@ -60,6 +63,12 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
         if (HasPermission(player, _config.Permissions.NoClip))
             builder.AddOption(new SubmenuMenuOption(PluginLocalizer.Get(_core)["menu_noclip"], () => BuildPlayerSelectMenu(player, FunAction.Noclip)));
 
+        if (HasPermission(player, _config.Permissions.Goto))
+            builder.AddOption(new SubmenuMenuOption(T("menu_goto"), () => BuildPlayerSelectMenu(player, FunAction.Goto)));
+
+        if (HasPermission(player, _config.Permissions.Bring))
+            builder.AddOption(new SubmenuMenuOption(T("menu_bring"), () => BuildPlayerSelectMenu(player, FunAction.Bring)));
+
         if (HasPermission(player, _config.Permissions.Freeze))
             builder.AddOption(new SubmenuMenuOption(PluginLocalizer.Get(_core)["menu_freeze"], () => BuildPlayerSelectMenu(player, FunAction.Freeze)));
 
@@ -71,6 +80,9 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
 
         if (HasPermission(player, _config.Permissions.Drug))
             builder.AddOption(new SubmenuMenuOption(PluginLocalizer.Get(_core)["menu_drug"], () => BuildPlayerSelectMenu(player, FunAction.Drug)));
+
+        if (HasPermission(player, _config.Permissions.Beacon))
+            builder.AddOption(new SubmenuMenuOption(PluginLocalizer.Get(_core)["menu_beacon"], () => BuildPlayerSelectMenu(player, FunAction.Beacon)));
 
         if (HasPermission(player, _config.Permissions.Burn))
             builder.AddOption(new SubmenuMenuOption(PluginLocalizer.Get(_core)["menu_burn"], () => BuildPlayerSelectMenu(player, FunAction.Burn)));
@@ -105,16 +117,18 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     private IMenuAPI BuildPlayerSelectMenu(IPlayer admin, FunAction action)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        builder.Design.SetMenuTitle(T("menu_select_player", "Select Player"));
+        builder.Design.SetMenuTitle(T("menu_select_player"));
 
         var players = _core.PlayerManager
             .GetAllPlayers()
             .Where(p => p.IsValid)
             .ToList();
 
+        players = ApplyPlayerFilter(players, action);
+
         if (players.Count == 0)
         {
-            var empty = new ButtonMenuOption(T("menu_no_players", "No players found")) { CloseAfterClick = true };
+            var empty = new ButtonMenuOption(T("menu_no_players")) { CloseAfterClick = true };
             empty.Click += (_, _) => ValueTask.CompletedTask;
             builder.AddOption(empty);
             return builder.Build();
@@ -122,10 +136,9 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
 
         foreach (var target in players)
         {
-            var keepMenuOpen = action == FunAction.Noclip;
             var btn = new ButtonMenuOption(target.Controller.PlayerName ?? PluginLocalizer.Get(_core)["player_fallback_name", target.PlayerID])
             {
-                CloseAfterClick = !keepMenuOpen
+                CloseAfterClick = false
             };
             btn.Click += (_, args) =>
             {
@@ -164,6 +177,18 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
                     {
                         OpenGiveItemMenu(adminPlayer, target);
                     }
+                    else if (action == FunAction.Drug)
+                    {
+                        OpenDrugDurationMenu(adminPlayer, target);
+                    }
+                    else if (action == FunAction.Beacon)
+                    {
+                        OpenBeaconDurationMenu(adminPlayer, target);
+                    }
+                    else if (action == FunAction.Freeze || action == FunAction.Burn)
+                    {
+                        OpenTimedActionDurationMenu(adminPlayer, target, action);
+                    }
                     else
                     {
                         ExecuteFunAction(adminPlayer, target, action);
@@ -180,24 +205,24 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     private void OpenTeamSelectMenu(IPlayer admin, IPlayer target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        builder.Design.SetMenuTitle(T("menu_select_team", "Select Team"));
+        builder.Design.SetMenuTitle(T("menu_select_team"));
 
-        AddTeamButton(builder, admin, target, T("team_t", "Terrorist"), "t");
-        AddTeamButton(builder, admin, target, T("team_ct", "Counter-Terrorist"), "ct");
-        AddTeamButton(builder, admin, target, T("team_spec", "Spectator"), "spec");
+        AddTeamButton(builder, admin, target, T("team_t"), "t");
+        AddTeamButton(builder, admin, target, T("team_ct"), "ct");
+        AddTeamButton(builder, admin, target, T("team_spec"), "spec");
 
         _core.MenusAPI.OpenMenuForPlayer(admin, builder.Build());
     }
 
     private void AddTeamButton(IMenuBuilderAPI builder, IPlayer admin, IPlayer target, string label, string teamArg)
     {
-        var option = new ButtonMenuOption(label) { CloseAfterClick = true };
+        var option = new ButtonMenuOption(label) { CloseAfterClick = false };
         option.Click += (_, args) =>
         {
             var caller = args.Player;
             var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.ChangeTeam, "team");
             var targetId = target.PlayerID;
-            _core.Scheduler.NextTick(() => caller.ExecuteCommand($"{cmd} {targetId} {teamArg}"));
+            ExecuteAndReopenPlayerSelect(caller, FunAction.Team, $"{cmd} {targetId} {teamArg}");
             return ValueTask.CompletedTask;
         };
         builder.AddOption(option);
@@ -206,19 +231,19 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     private void OpenSlapDamageMenu(IPlayer admin, IPlayer target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        builder.Design.SetMenuTitle(T("menu_select_duration", "Select Duration"));
+        builder.Design.SetMenuTitle(T("menu_select_duration"));
 
         var damages = new[] { 0, 5, 10, 50, 90, 100 };
         foreach (var damage in damages)
         {
             var value = damage;
-            var option = new ButtonMenuOption(value.ToString()) { CloseAfterClick = true };
+            var option = new ButtonMenuOption(value.ToString()) { CloseAfterClick = false };
             option.Click += (_, args) =>
             {
                 var caller = args.Player;
                 var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Slap, "slap");
                 var targetId = target.PlayerID;
-                _core.Scheduler.NextTick(() => caller.ExecuteCommand($"{cmd} {targetId} {value}"));
+                ExecuteAndReopenSameMenu(caller, $"{cmd} {targetId} {value}", p => OpenSlapDamageMenu(p, target));
                 return ValueTask.CompletedTask;
             };
             builder.AddOption(option);
@@ -230,12 +255,12 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     private void OpenValueMenu(IPlayer admin, IPlayer target, FunAction action, IReadOnlyList<float> values)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        builder.Design.SetMenuTitle(T("menu_select_value", "Select Value"));
+        builder.Design.SetMenuTitle(T("menu_select_value"));
 
         foreach (var value in values)
         {
             var current = value;
-            var option = new ButtonMenuOption(current.ToString("0.##")) { CloseAfterClick = true };
+            var option = new ButtonMenuOption(current.ToString("0.##")) { CloseAfterClick = false };
             option.Click += (_, args) =>
             {
                 var caller = args.Player;
@@ -257,11 +282,118 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
 
                 if (action is FunAction.Hp or FunAction.Money)
                 {
-                    _core.Scheduler.NextTick(() => caller.ExecuteCommand($"{command} {targetId} {(int)current}"));
+                    ExecuteAndReopenSameMenu(caller, $"{command} {targetId} {(int)current}", p => OpenValueMenu(p, target, action, values));
                 }
                 else
                 {
-                    _core.Scheduler.NextTick(() => caller.ExecuteCommand($"{command} {targetId} {current.ToString("0.##")}"));
+                    ExecuteAndReopenSameMenu(caller, $"{command} {targetId} {current.ToString("0.##")}", p => OpenValueMenu(p, target, action, values));
+                }
+
+                return ValueTask.CompletedTask;
+            };
+            builder.AddOption(option);
+        }
+
+        _core.MenusAPI.OpenMenuForPlayer(admin, builder.Build());
+    }
+
+    private void OpenDrugDurationMenu(IPlayer admin, IPlayer target)
+    {
+        var builder = _core.MenusAPI.CreateBuilder();
+        builder.Design.SetMenuTitle(T("menu_select_duration"));
+
+        var durations = new[] { 5, 10, 20, 40, 60 };
+        foreach (var duration in durations)
+        {
+            var current = duration;
+            var option = new ButtonMenuOption($"{current}s") { CloseAfterClick = false };
+            option.Click += (_, args) =>
+            {
+                var caller = args.Player;
+                var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Drug, "drug");
+                ExecuteAndReopenSameMenu(caller, $"{cmd} {target.PlayerID} {current}", p => OpenDrugDurationMenu(p, target));
+                return ValueTask.CompletedTask;
+            };
+            builder.AddOption(option);
+        }
+
+        _core.MenusAPI.OpenMenuForPlayer(admin, builder.Build());
+    }
+
+    private void OpenBeaconDurationMenu(IPlayer admin, IPlayer target)
+    {
+        var builder = _core.MenusAPI.CreateBuilder();
+        builder.Design.SetMenuTitle(T("menu_select_duration"));
+
+        var stop = new ButtonMenuOption(T("menu_off")) { CloseAfterClick = false };
+        stop.Click += (_, args) =>
+        {
+            var caller = args.Player;
+            var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Beacon, "beacon");
+            ExecuteAndReopenSameMenu(caller, $"{cmd} {target.PlayerID} off", p => OpenBeaconDurationMenu(p, target));
+            return ValueTask.CompletedTask;
+        };
+        builder.AddOption(stop);
+
+        var durations = new[] { 5, 10, 20, 40, 60, 120 };
+        foreach (var duration in durations)
+        {
+            var current = duration;
+            var option = new ButtonMenuOption($"{current}s") { CloseAfterClick = false };
+            option.Click += (_, args) =>
+            {
+                var caller = args.Player;
+                var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Beacon, "beacon");
+                ExecuteAndReopenSameMenu(caller, $"{cmd} {target.PlayerID} {current}", p => OpenBeaconDurationMenu(p, target));
+                return ValueTask.CompletedTask;
+            };
+            builder.AddOption(option);
+        }
+
+        _core.MenusAPI.OpenMenuForPlayer(admin, builder.Build());
+    }
+
+    private void OpenTimedActionDurationMenu(IPlayer admin, IPlayer target, FunAction action)
+    {
+        var builder = _core.MenusAPI.CreateBuilder();
+        builder.Design.SetMenuTitle(T("menu_select_duration"));
+
+        // Infinite option first.
+        var infinite = new ButtonMenuOption(PluginLocalizer.Get(_core)["duration_permanent"]) { CloseAfterClick = false };
+        infinite.Click += (_, args) =>
+        {
+            var caller = args.Player;
+            if (action == FunAction.Freeze)
+            {
+                var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Freeze, "freeze");
+                ExecuteAndReopenSameMenu(caller, $"{cmd} {target.PlayerID}", p => OpenTimedActionDurationMenu(p, target, action));
+            }
+            else
+            {
+                var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Burn, "burn");
+                ExecuteAndReopenSameMenu(caller, $"{cmd} {target.PlayerID} -1 5", p => OpenTimedActionDurationMenu(p, target, action));
+            }
+
+            return ValueTask.CompletedTask;
+        };
+        builder.AddOption(infinite);
+
+        for (var seconds = 5; seconds <= 60; seconds += 5)
+        {
+            var current = seconds;
+            var option = new ButtonMenuOption($"{current}s") { CloseAfterClick = false };
+            option.Click += (_, args) =>
+            {
+                var caller = args.Player;
+                if (action == FunAction.Freeze)
+                {
+                    var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Freeze, "freeze");
+                    ExecuteAndReopenSameMenu(caller, $"{cmd} {target.PlayerID} {current}", p => OpenTimedActionDurationMenu(p, target, action));
+                }
+                else
+                {
+                    var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Burn, "burn");
+                    ExecuteAndReopenSameMenu(caller, $"{cmd} {target.PlayerID} {current} 5", p => OpenTimedActionDurationMenu(p, target, action));
                 }
 
                 return ValueTask.CompletedTask;
@@ -275,7 +407,7 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     private void OpenGiveItemMenu(IPlayer admin, IPlayer target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        builder.Design.SetMenuTitle(T("menu_select_item", "Select Item"));
+        builder.Design.SetMenuTitle(T("menu_select_item"));
 
         var items = new[]
         {
@@ -290,12 +422,12 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
         foreach (var item in items)
         {
             var current = item;
-            var option = new ButtonMenuOption(current) { CloseAfterClick = true };
+            var option = new ButtonMenuOption(current) { CloseAfterClick = false };
             option.Click += (_, args) =>
             {
                 var caller = args.Player;
                 var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Give, "give");
-                _core.Scheduler.NextTick(() => caller.ExecuteCommand($"{cmd} {target.PlayerID} {current}"));
+                ExecuteAndReopenPlayerSelect(caller, FunAction.Give, $"{cmd} {target.PlayerID} {current}");
                 return ValueTask.CompletedTask;
             };
             builder.AddOption(option);
@@ -304,15 +436,16 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
         _core.MenusAPI.OpenMenuForPlayer(admin, builder.Build());
     }
 
-    private string T(string key, string fallback)
+    private string T(string key, params object[] args)
     {
         try
         {
-            return PluginLocalizer.Get(_core)[key];
+            var localizer = PluginLocalizer.Get(_core);
+            return args.Length == 0 ? localizer[key] : localizer[key, args];
         }
         catch
         {
-            return fallback;
+            return key;
         }
     }
 
@@ -325,58 +458,123 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
             case FunAction.Slap:
             {
                 var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Slap, "slap");
-                _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {targetId}"));
+                ExecuteAndReopenPlayerSelect(admin, action, $"{cmd} {targetId}");
                 break;
             }
             case FunAction.Slay:
             {
                 var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Slay, "slay");
-                _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {targetId}"));
+                ExecuteAndReopenPlayerSelect(admin, action, $"{cmd} {targetId}");
                 break;
             }
             case FunAction.Respawn:
             {
                 var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Respawn, "respawn");
-                _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {targetId}"));
+                ExecuteAndReopenPlayerSelect(admin, action, $"{cmd} {targetId}");
                 break;
             }
             case FunAction.Noclip:
             {
                 var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.NoClip, "noclip");
-                _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {targetId}"));
+                ExecuteAndReopenPlayerSelect(admin, action, $"{cmd} {targetId}");
+                break;
+            }
+            case FunAction.Goto:
+            {
+                var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Goto, "goto");
+                ExecuteAndReopenPlayerSelect(admin, action, $"{cmd} {targetId}");
+                break;
+            }
+            case FunAction.Bring:
+            {
+                var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Bring, "bring");
+                ExecuteAndReopenPlayerSelect(admin, action, $"{cmd} {targetId}");
                 break;
             }
             case FunAction.Freeze:
             {
                 var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Freeze, "freeze");
-                _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {targetId}"));
+                ExecuteAndReopenPlayerSelect(admin, action, $"{cmd} {targetId}");
                 break;
             }
             case FunAction.Unfreeze:
             {
                 var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Unfreeze, "unfreeze");
-                _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {targetId}"));
+                ExecuteAndReopenPlayerSelect(admin, action, $"{cmd} {targetId}");
                 break;
             }
             case FunAction.Drug:
             {
                 var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Drug, "drug");
-                _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {targetId} 10"));
+                ExecuteAndReopenPlayerSelect(admin, action, $"{cmd} {targetId} 5");
+                break;
+            }
+            case FunAction.Beacon:
+            {
+                var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Beacon, "beacon");
+                ExecuteAndReopenPlayerSelect(admin, action, $"{cmd} {targetId} 20");
                 break;
             }
             case FunAction.Burn:
             {
                 var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Burn, "burn");
-                _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {targetId} 8 5"));
+                ExecuteAndReopenPlayerSelect(admin, action, $"{cmd} {targetId} 8 5");
                 break;
             }
             case FunAction.Disarm:
             {
                 var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Disarm, "disarm");
-                _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {targetId}"));
+                ExecuteAndReopenPlayerSelect(admin, action, $"{cmd} {targetId}");
                 break;
             }
         }
+    }
+
+    private void ExecuteAndReopenPlayerSelect(IPlayer caller, FunAction action, string command)
+    {
+        _core.Scheduler.NextTick(() => caller.ExecuteCommand(command));
+        _core.Scheduler.DelayBySeconds(0.08f, () =>
+        {
+            if (!caller.IsValid)
+            {
+                return;
+            }
+
+            _core.MenusAPI.OpenMenuForPlayer(caller, BuildPlayerSelectMenu(caller, action));
+        });
+    }
+
+    private void ExecuteAndReopenSameMenu(IPlayer caller, string command, Action<IPlayer> reopenMenu)
+    {
+        _core.Scheduler.NextTick(() => caller.ExecuteCommand(command));
+
+        void Reopen()
+        {
+            if (!caller.IsValid)
+            {
+                return;
+            }
+
+            reopenMenu(caller);
+        }
+
+        _core.Scheduler.DelayBySeconds(0.06f, Reopen);
+        _core.Scheduler.DelayBySeconds(0.20f, Reopen);
+    }
+
+    private static bool IsAlive(IPlayer player)
+    {
+        return player.PlayerPawn?.IsValid == true && player.PlayerPawn.Health > 0;
+    }
+
+    private List<IPlayer> ApplyPlayerFilter(List<IPlayer> players, FunAction action)
+    {
+        return action switch
+        {
+            FunAction.Respawn => players.Where(p => !IsAlive(p)).ToList(),
+            FunAction.Beacon => players,
+            _ => players.Where(IsAlive).ToList()
+        };
     }
 }
 
