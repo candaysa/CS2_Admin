@@ -1,4 +1,4 @@
-using CS2_Admin.Models;
+﻿using CS2_Admin.Models;
 using CS2_Admin.Utils;
 using Dommel;
 using Microsoft.Extensions.Logging;
@@ -32,7 +32,7 @@ public class WarnManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             MigrationRunner.RunMigrations(connection);
             _core.Logger.LogInformationIfEnabled("[CS2_Admin] Warn database initialized successfully");
         }
@@ -62,7 +62,7 @@ public class WarnManager
                     Status = WarnStatus.Active
                 };
 
-                using var connection = _core.Database.GetConnection("admins");
+                using var connection = _core.Database.GetConnection("mysql_detailed");
                 var id = connection.Insert(warn);
                 warn.Id = Convert.ToInt64(id);
                 _warnCache[steamId] = warn;
@@ -84,7 +84,7 @@ public class WarnManager
             try
             {
                 var admin = _currentAdmin.Value ?? new AdminContext();
-                using var connection = _core.Database.GetConnection("admins");
+                using var connection = _core.Database.GetConnection("mysql_detailed");
 
                 var warn = connection
                     .Select<Warn>(w =>
@@ -133,7 +133,7 @@ public class WarnManager
                 return cachedWarn;
             }
 
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var warn = connection
                 .Select<Warn>(w =>
                     w.SteamId == steamId &&
@@ -167,7 +167,7 @@ public class WarnManager
         {
             try
             {
-                using var connection = _core.Database.GetConnection("admins");
+                using var connection = _core.Database.GetConnection("mysql_detailed");
                 var warns = connection.Select<Warn>(w => w.SteamId == steamId);
                 return warns.Count();
             }
@@ -185,7 +185,7 @@ public class WarnManager
         {
             try
             {
-                using var connection = _core.Database.GetConnection("admins");
+                using var connection = _core.Database.GetConnection("mysql_detailed");
                 var warns = connection.Select<Warn>(w =>
                     w.SteamId == steamId &&
                     w.Status == WarnStatus.Active &&
@@ -206,7 +206,7 @@ public class WarnManager
         {
             try
             {
-                using var connection = _core.Database.GetConnection("admins");
+                using var connection = _core.Database.GetConnection("mysql_detailed");
                 var now = DateTime.UtcNow;
                 var warns = connection.Select<Warn>(w => w.SteamId == steamId).ToList();
 
@@ -237,7 +237,7 @@ public class WarnManager
         {
             try
             {
-                using var connection = _core.Database.GetConnection("admins");
+                using var connection = _core.Database.GetConnection("mysql_detailed");
                 var expiredWarns = connection.Select<Warn>(w =>
                     w.Status == WarnStatus.Active &&
                     w.ExpiresAt != null &&
@@ -272,5 +272,7 @@ public enum WarnHistoryFilter
     Expired,
     Removed
 }
+
+
 
 

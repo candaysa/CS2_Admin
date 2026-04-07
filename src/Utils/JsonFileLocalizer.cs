@@ -8,11 +8,16 @@ public sealed class JsonFileLocalizer : ILocalizer
 {
     private readonly Dictionary<string, string> _primary;
     private readonly Dictionary<string, string> _fallback;
+    public LocalizerDiagnostics Diagnostics { get; }
 
-    private JsonFileLocalizer(Dictionary<string, string> primary, Dictionary<string, string> fallback)
+    private JsonFileLocalizer(
+        Dictionary<string, string> primary,
+        Dictionary<string, string> fallback,
+        LocalizerDiagnostics diagnostics)
     {
         _primary = primary;
         _fallback = fallback;
+        Diagnostics = diagnostics;
     }
 
     public string this[string key] => Resolve(key);
@@ -54,7 +59,25 @@ public sealed class JsonFileLocalizer : ILocalizer
                 return null;
             }
 
-            return new JsonFileLocalizer(primary, fallback);
+            var missingPrimaryKeys = fallback.Keys
+                .Where(key => !primary.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+                .OrderBy(key => key, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var sameAsFallbackCount = fallback.Keys.Count(key =>
+                primary.TryGetValue(key, out var primaryValue)
+                && !string.IsNullOrWhiteSpace(primaryValue)
+                && fallback.TryGetValue(key, out var fallbackValue)
+                && string.Equals(primaryValue.Trim(), fallbackValue.Trim(), StringComparison.Ordinal));
+
+            var diagnostics = new LocalizerDiagnostics(
+                normalized,
+                primary.Count,
+                fallback.Count,
+                missingPrimaryKeys,
+                sameAsFallbackCount);
+
+            return new JsonFileLocalizer(primary, fallback, diagnostics);
         }
         catch
         {
@@ -81,7 +104,10 @@ public sealed class JsonFileLocalizer : ILocalizer
     {
         var raw = File.ReadAllText(path);
         var cleaned = RemoveSingleLineComments(raw);
-        var document = JsonDocument.Parse(cleaned);
+        var document = JsonDocument.Parse(cleaned, new JsonDocumentOptions
+        {
+            AllowTrailingCommas = true
+        });
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var item in document.RootElement.EnumerateObject())
@@ -97,17 +123,100 @@ public sealed class JsonFileLocalizer : ILocalizer
 
     private static string RemoveSingleLineComments(string input)
     {
-        var lines = input.Split('\n');
-        for (var i = 0; i < lines.Length; i++)
+        var output = new System.Text.StringBuilder(input.Length);
+        var inString = false;
+        var escapeNext = false;
+
+        for (var i = 0; i < input.Length; i++)
         {
-            var line = lines[i];
-            var commentIndex = line.IndexOf("//", StringComparison.Ordinal);
-            if (commentIndex >= 0)
+            var c = input[i];
+
+            if (inString)
             {
-                lines[i] = line[..commentIndex];
+                output.Append(c);
+
+                if (escapeNext)
+                {
+                    escapeNext = false;
+                    continue;
+                }
+
+                if (c == '\\')
+                {
+                    escapeNext = true;
+                    continue;
+                }
+
+                if (c == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
             }
+
+            if (c == '"')
+            {
+                inString = true;
+                output.Append(c);
+                continue;
+            }
+
+            if (c == '/' && i + 1 < input.Length && input[i + 1] == '/')
+            {
+                while (i < input.Length && input[i] != '\n')
+                {
+                    i++;
+                }
+
+                if (i < input.Length)
+                {
+                    output.Append(input[i]);
+                }
+
+                continue;
+            }
+
+            output.Append(c);
         }
 
-        return string.Join('\n', lines);
+        return output.ToString();
+    }
+}
+
+public sealed class LocalizerDiagnostics
+{
+    public string Language { get; }
+    public int PrimaryKeyCount { get; }
+    public int FallbackKeyCount { get; }
+    public int SameAsFallbackCount { get; }
+    public double SameAsFallbackRate => FallbackKeyCount == 0 ? 0 : (double)SameAsFallbackCount / FallbackKeyCount;
+    public int MissingPrimaryCount => MissingPrimaryKeys.Count;
+    public double MissingPrimaryRate => FallbackKeyCount == 0 ? 0 : (double)MissingPrimaryCount / FallbackKeyCount;
+    public IReadOnlyList<string> MissingPrimaryKeys { get; }
+
+    public LocalizerDiagnostics(
+        string language,
+        int primaryKeyCount,
+        int fallbackKeyCount,
+        IReadOnlyList<string> missingPrimaryKeys,
+        int sameAsFallbackCount)
+    {
+        Language = language;
+        PrimaryKeyCount = primaryKeyCount;
+        FallbackKeyCount = fallbackKeyCount;
+        MissingPrimaryKeys = missingPrimaryKeys;
+        SameAsFallbackCount = sameAsFallbackCount;
+    }
+
+    public string GetMissingSample(int maxCount = 8)
+    {
+        if (MissingPrimaryKeys.Count == 0 || maxCount <= 0)
+        {
+            return "-";
+        }
+
+        var sample = MissingPrimaryKeys.Take(maxCount);
+        return string.Join(", ", sample);
     }
 }

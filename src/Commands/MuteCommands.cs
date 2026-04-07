@@ -17,6 +17,8 @@ public class MuteCommands
     private readonly AdminLogManager _adminLogManager;
     private readonly DiscordWebhook _discord;
     private readonly CommandsConfig _commands;
+    private readonly PermissionsConfig _permissions;
+    private readonly TagsConfig _tags;
     private readonly string _mutePermission;
     private readonly string _gagPermission;
     private readonly string _silencePermission;
@@ -31,6 +33,8 @@ public class MuteCommands
         AdminLogManager adminLogManager,
         DiscordWebhook discord, 
         CommandsConfig commands,
+        PermissionsConfig permissions,
+        TagsConfig tags,
         string mutePermission,
         string gagPermission,
         string silencePermission,
@@ -44,6 +48,8 @@ public class MuteCommands
         _adminLogManager = adminLogManager;
         _discord = discord;
         _commands = commands;
+        _permissions = permissions;
+        _tags = tags;
         _mutePermission = mutePermission;
         _gagPermission = gagPermission;
         _silencePermission = silencePermission;
@@ -79,7 +85,7 @@ public class MuteCommands
             return;
         }
 
-        if (!int.TryParse(args[1], out int duration) || duration < -1)
+        if (!SanctionDurationParser.TryParseToMinutes(args[1], out int duration))
         {
             context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["invalid_duration"]}");
             return;
@@ -123,7 +129,8 @@ public class MuteCommands
                 {
                     foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
                     {
-                        player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["muted_notification", adminName, target.Name, durationText, reason]}");
+                        var visibleAdmin = ResolveVisibleAdminName(player, adminName);
+                        player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["muted_notification", visibleAdmin, target.Name, durationText, reason]}");
                     }
                     
                     var targetPlayer = _core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamId);
@@ -210,7 +217,8 @@ public class MuteCommands
                 {
                     foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
                     {
-                        player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["unmuted_notification", adminName, target.Name, reason]}");
+                        var visibleAdmin = ResolveVisibleAdminName(player, adminName);
+                        player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["unmuted_notification", visibleAdmin, target.Name, reason]}");
                     }
                     
                     var targetPlayer = _core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamId);
@@ -258,7 +266,7 @@ public class MuteCommands
             return;
         }
 
-        if (!int.TryParse(args[1], out int duration) || duration < -1)
+        if (!SanctionDurationParser.TryParseToMinutes(args[1], out int duration))
         {
             context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["invalid_duration"]}");
             return;
@@ -302,7 +310,8 @@ public class MuteCommands
                 {
                     foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
                     {
-                        player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["gagged_notification", adminName, target.Name, durationText, reason]}");
+                        var visibleAdmin = ResolveVisibleAdminName(player, adminName);
+                        player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["gagged_notification", visibleAdmin, target.Name, durationText, reason]}");
                     }
                     
                     var targetPlayer = _core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamId);
@@ -388,7 +397,8 @@ public class MuteCommands
                 {
                     foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
                     {
-                        player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["ungagged_notification", adminName, target.Name, reason]}");
+                        var visibleAdmin = ResolveVisibleAdminName(player, adminName);
+                        player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["ungagged_notification", visibleAdmin, target.Name, reason]}");
                     }
                     
                     var targetPlayer = _core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamId);
@@ -435,7 +445,7 @@ public class MuteCommands
             return;
         }
 
-        if (!int.TryParse(args[1], out int duration) || duration < -1)
+        if (!SanctionDurationParser.TryParseToMinutes(args[1], out int duration))
         {
             context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["invalid_duration"]}");
             return;
@@ -486,7 +496,8 @@ public class MuteCommands
                 {
                     foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
                     {
-                        player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["silenced_notification", adminName, target.Name, durationText, reason]}");
+                        var visibleAdmin = ResolveVisibleAdminName(player, adminName);
+                        player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["silenced_notification", visibleAdmin, target.Name, durationText, reason]}");
                     }
                     
                     var targetPlayer = _core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamId);
@@ -580,7 +591,8 @@ public class MuteCommands
                 {
                     foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
                     {
-                        player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["unsilenced_notification", adminName, target.Name, reason]}");
+                        var visibleAdmin = ResolveVisibleAdminName(player, adminName);
+                        player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["unsilenced_notification", visibleAdmin, target.Name, reason]}");
                     }
                     
                     var targetPlayer = _core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamId);
@@ -648,6 +660,21 @@ public class MuteCommands
         var steamId = context.Sender!.SteamID;
         return _core.Permission.PlayerHasPermission(steamId, permission)
                || _core.Permission.PlayerHasPermission(steamId, _adminRootPermission);
+    }
+
+    private string ResolveVisibleAdminName(IPlayer viewer, string adminName)
+    {
+        if (_tags.ShowAdminName)
+        {
+            return adminName;
+        }
+
+        var isAdminViewer =
+            _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.AdminRoot) ||
+            (!string.IsNullOrWhiteSpace(_permissions.AdminMenu) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.AdminMenu)) ||
+            (!string.IsNullOrWhiteSpace(_permissions.ListPlayers) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.ListPlayers));
+
+        return isAdminViewer ? adminName : "Admin";
     }
 
     private readonly record struct PunishTargetSnapshot(ulong SteamId, string Name, string? IpAddress);

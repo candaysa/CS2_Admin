@@ -1,6 +1,7 @@
 {
   "CS2Admin": {
-    "Version": 1,
+    "Version": 2,
+    "Debug": false,
     "Language": "en",
     "LanguageOptions": [
       "en",
@@ -13,36 +14,21 @@
       "bg",
       "hu"
     ],
-    "Discord": {
-      "Webhook": "",
-      "CallAdminWebhook": "",
-      "ReportWebhook": "",
-      "AdminTimeWebhook": ""
-    },
     "Messages": {
+      "Prefix": "CS2_Admin",
       "EnableCenterHtmlMessages": true,
-      "CenterHtmlDurationMs": 5000
-    },
-    "Debug": {
-      "Enabled": false
+      "CenterHtmlDurationMs": 5000,
+      "BanKickDelaySeconds": 5
     },
     "MultiServer": {
       "Enabled": true,
       "GlobalBansByDefault": true
     },
-    "Tags": {
-      "Enabled": true,
-      "PlayerTag": "PLAYER"
-    },
+    "BanType": 1,
     "AdminPlaytime": {
       "TrackIntervalMinutes": 1,
       "MenuTopLimit": 20,
       "DiscordTopLimit": 20
-    },
-    "WorkshopMaps": {
-      "Maps": {
-        "Inferno Online": 3549919360
-      }
     },
     "Sanctions": {
       "Reasons": [

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
 using SwiftlyS2.Shared.Commands;
+using SwiftlyS2.Shared.Players;
 
 namespace CS2_Admin.Commands;
 
@@ -19,6 +20,9 @@ public class AdminCommands
     private readonly TagsConfig _tags;
     private readonly CommandsConfig _commands;
     private readonly AdminMenuManager _menuManager;
+    private readonly ChatTagConfigManager _chatTagConfigManager;
+    private readonly Dictionary<ulong, DateTime> _lastMenuOpenByPlayer = new();
+    private readonly object _menuOpenLock = new();
 
     public AdminCommands(
         ISwiftlyCore core,
@@ -28,7 +32,8 @@ public class AdminCommands
         PermissionsConfig permissions,
         TagsConfig tags,
         CommandsConfig commands,
-        AdminMenuManager menuManager)
+        AdminMenuManager menuManager,
+        ChatTagConfigManager chatTagConfigManager)
     {
         _core = core;
         _adminManager = adminManager;
@@ -38,6 +43,7 @@ public class AdminCommands
         _tags = tags;
         _commands = commands;
         _menuManager = menuManager;
+        _chatTagConfigManager = chatTagConfigManager;
     }
 
     public void OnAdminRootCommand(ICommandContext context)
@@ -62,7 +68,7 @@ public class AdminCommands
                 return;
             }
 
-            _menuManager.OpenAdminMenu(context.Sender);
+            OpenAdminMenuDebounced(context.Sender);
             return;
         }
 
@@ -105,13 +111,42 @@ public class AdminCommands
             default:
                 if (context.Sender != null && HasPermission(context, _permissions.AdminMenu))
                 {
-                    _menuManager.OpenAdminMenu(context.Sender);
+                    OpenAdminMenuDebounced(context.Sender);
                 }
                 else
                 {
                     context.Reply(GetAdminRootUsage(context));
                 }
                 break;
+        }
+    }
+
+    private void OpenAdminMenuDebounced(IPlayer sender)
+    {
+        if (sender == null || !sender.IsValid)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        var shouldOpen = true;
+
+        lock (_menuOpenLock)
+        {
+            if (_lastMenuOpenByPlayer.TryGetValue(sender.SteamID, out var lastOpen)
+                && (now - lastOpen).TotalMilliseconds < 500)
+            {
+                shouldOpen = false;
+            }
+            else
+            {
+                _lastMenuOpenByPlayer[sender.SteamID] = now;
+            }
+        }
+
+        if (shouldOpen)
+        {
+            _menuManager.OpenAdminMenu(sender);
         }
     }
 
@@ -382,6 +417,7 @@ public class AdminCommands
                 : $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["addgroup_failed"]}"));
             if (success)
             {
+                await _chatTagConfigManager.SyncWithGroupsAsync(_groupManager);
                 await TryAutoReloadAsync();
                 await _adminLogManager.AddLogAsync("addgroup", adminName, adminSteamId, null, null, $"name={name};flags={flags};immunity={immunity}");
             }
@@ -421,6 +457,7 @@ public class AdminCommands
                 : $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["editgroup_failed"]}"));
             if (success)
             {
+                await _chatTagConfigManager.SyncWithGroupsAsync(_groupManager);
                 await TryAutoReloadAsync();
                 await _adminLogManager.AddLogAsync("editgroup", adminName, adminSteamId, null, null, $"name={name};flags={flags};immunity={immunity}");
             }
@@ -458,6 +495,7 @@ public class AdminCommands
                 : $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["removegroup_failed"]}"));
             if (success)
             {
+                await _chatTagConfigManager.SyncWithGroupsAsync(_groupManager);
                 await TryAutoReloadAsync();
                 await _adminLogManager.AddLogAsync("removegroup", adminName, adminSteamId, null, null, $"name={name}");
             }
@@ -507,6 +545,7 @@ public class AdminCommands
         {
             try
             {
+                await _chatTagConfigManager.SyncWithGroupsAsync(_groupManager);
                 ReloadPermissionsConfig();
                 var onlineCount = await ReloadAdminsAndTagsAsync();
 
@@ -631,6 +670,7 @@ public class AdminCommands
     {
         try
         {
+            await _chatTagConfigManager.SyncWithGroupsAsync(_groupManager);
             ReloadPermissionsConfig();
             await ReloadAdminsAndTagsAsync();
         }

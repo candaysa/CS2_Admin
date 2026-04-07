@@ -21,65 +21,33 @@ public class ServerManagementHandler : IAdminMenuHandler
     public IMenuAPI CreateMenu(IPlayer player)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        string title;
-        try
-        {
-            title = PluginLocalizer.Get(_core)["menu_server_management"];
-        }
-        catch
-        {
-            title = "Server Management";
-        }
+        var title = T("menu_server_management");
         builder.Design.SetMenuTitle(title);
 
         // Restart game
         if (HasPermission(player, _config.Permissions.RestartGame))
         {
-            string restartText;
-            try
-            {
-                restartText = PluginLocalizer.Get(_core)["menu_restart_game"];
-            }
-            catch
-            {
-                restartText = "Restart Game";
-            }
+            var restartText = T("menu_restart_game");
             builder.AddOption(new SubmenuMenuOption(restartText, () => CreateRestartGameMenu(player)));
         }
 
         // Change map
         if (HasPermission(player, _config.Permissions.ChangeMap))
         {
-            string mapText;
-            try
-            {
-                mapText = PluginLocalizer.Get(_core)["menu_change_map"];
-            }
-            catch
-            {
-                mapText = "Change Map";
-            }
+            var mapText = T("menu_change_map");
             builder.AddOption(new SubmenuMenuOption(mapText, () => CreateChangeMapMenu(player)));
         }
 
         // Change workshop map
         if (HasPermission(player, _config.Permissions.ChangeWSMap))
         {
-            string wsMapText;
-            try
-            {
-                wsMapText = PluginLocalizer.Get(_core)["menu_change_ws_map"];
-            }
-            catch
-            {
-                wsMapText = "Change Workshop Map";
-            }
+            var wsMapText = T("menu_change_ws_map");
             builder.AddOption(new SubmenuMenuOption(wsMapText, () => CreateChangeWSMapMenu(player)));
         }
 
         if (HasPermission(player, _config.Permissions.HeadshotMode))
         {
-            var hsOnText = PluginLocalizer.Get(_core)["menu_headshot_on"];
+            var hsOnText = T("menu_headshot_on");
             var hsOn = new ButtonMenuOption(hsOnText) { CloseAfterClick = true };
             hsOn.Click += (_, args) =>
             {
@@ -90,7 +58,7 @@ public class ServerManagementHandler : IAdminMenuHandler
             };
             builder.AddOption(hsOn);
 
-            var hsOffText = PluginLocalizer.Get(_core)["menu_headshot_off"];
+            var hsOffText = T("menu_headshot_off");
             var hsOff = new ButtonMenuOption(hsOffText) { CloseAfterClick = true };
             hsOff.Click += (_, args) =>
             {
@@ -104,7 +72,7 @@ public class ServerManagementHandler : IAdminMenuHandler
 
         if (HasPermission(player, _config.Permissions.BunnyHop))
         {
-            var bunnyOnText = PluginLocalizer.Get(_core)["menu_bunny_on"];
+            var bunnyOnText = T("menu_bunny_on");
             var bunnyOn = new ButtonMenuOption(bunnyOnText) { CloseAfterClick = true };
             bunnyOn.Click += (_, args) =>
             {
@@ -115,7 +83,7 @@ public class ServerManagementHandler : IAdminMenuHandler
             };
             builder.AddOption(bunnyOn);
 
-            var bunnyOffText = PluginLocalizer.Get(_core)["menu_bunny_off"];
+            var bunnyOffText = T("menu_bunny_off");
             var bunnyOff = new ButtonMenuOption(bunnyOffText) { CloseAfterClick = true };
             bunnyOff.Click += (_, args) =>
             {
@@ -129,7 +97,7 @@ public class ServerManagementHandler : IAdminMenuHandler
 
         if (HasPermission(player, _config.Permissions.RespawnMode))
         {
-            var respawnOnText = PluginLocalizer.Get(_core)["menu_respawn_on"];
+            var respawnOnText = T("menu_respawn_on");
             var respawnOn = new ButtonMenuOption(respawnOnText) { CloseAfterClick = true };
             respawnOn.Click += (_, args) =>
             {
@@ -140,7 +108,7 @@ public class ServerManagementHandler : IAdminMenuHandler
             };
             builder.AddOption(respawnOn);
 
-            var respawnOffText = PluginLocalizer.Get(_core)["menu_respawn_off"];
+            var respawnOffText = T("menu_respawn_off");
             var respawnOff = new ButtonMenuOption(respawnOffText) { CloseAfterClick = true };
             respawnOff.Click += (_, args) =>
             {
@@ -158,39 +126,15 @@ public class ServerManagementHandler : IAdminMenuHandler
     private IMenuAPI CreateRestartGameMenu(IPlayer player)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        string title;
-        try
-        {
-            title = PluginLocalizer.Get(_core)["menu_restart_game"];
-        }
-        catch
-        {
-            title = "Restart Game";
-        }
+        var title = T("menu_restart_game");
         builder.Design.SetMenuTitle(title);
 
         // Select seconds (1-10)
-        string delayText;
-        try
-        {
-            delayText = PluginLocalizer.Get(_core)["menu_restart_delay"];
-        }
-        catch
-        {
-            delayText = "Delay (Seconds)";
-        }
+        var delayText = T("menu_restart_delay");
         var slider = new SliderMenuOption(delayText, 1, 10, 2, 1);
         builder.AddOption(slider);
 
-        string nowText;
-        try
-        {
-            nowText = PluginLocalizer.Get(_core)["menu_restart_now"];
-        }
-        catch
-        {
-            nowText = "Restart Now";
-        }
+        var nowText = T("menu_restart_now");
         var btn = new ButtonMenuOption(nowText) { CloseAfterClick = true };
         btn.Click += (_, args) =>
         {
@@ -208,15 +152,7 @@ public class ServerManagementHandler : IAdminMenuHandler
     private IMenuAPI CreateChangeMapMenu(IPlayer player)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        string title;
-        try
-        {
-            title = PluginLocalizer.Get(_core)["menu_change_map"];
-        }
-        catch
-        {
-            title = "Change Map";
-        }
+        var title = T("menu_change_map");
         builder.Design.SetMenuTitle(title);
 
         if (_config.GameMaps.Maps != null)
@@ -241,15 +177,7 @@ public class ServerManagementHandler : IAdminMenuHandler
     private IMenuAPI CreateChangeWSMapMenu(IPlayer player)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        string title;
-        try
-        {
-            title = PluginLocalizer.Get(_core)["menu_change_ws_map"];
-        }
-        catch
-        {
-            title = "Change Workshop Map";
-        }
+        var title = T("menu_change_ws_map");
         builder.Design.SetMenuTitle(title);
 
         if (_config.WorkshopMaps.Maps != null)
@@ -278,6 +206,19 @@ public class ServerManagementHandler : IAdminMenuHandler
     {
         return _core.Permission.PlayerHasPermission(player.SteamID, permission)
                || _core.Permission.PlayerHasPermission(player.SteamID, _config.Permissions.AdminRoot);
+    }
+
+    private string T(string key, params object[] args)
+    {
+        try
+        {
+            var localizer = PluginLocalizer.Get(_core);
+            return args.Length == 0 ? localizer[key] : localizer[key, args];
+        }
+        catch
+        {
+            return key;
+        }
     }
 }
 

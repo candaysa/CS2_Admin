@@ -7,7 +7,6 @@ using CS2_Admin.Database;
 using CS2_Admin.Menu.Handlers;
 using CS2_Admin.Utils;
 using CS2_Admin.Models;
-using System.Linq;
 
 namespace CS2_Admin.Menu;
 
@@ -50,17 +49,9 @@ public class AdminMenuManager
     {
         // Create a menu builder
         var builder = _core.MenusAPI.CreateBuilder();
-        
+
         // Set Title using the Design API
-        string title;
-        try
-        {
-            title = PluginLocalizer.Get(_core)["menu_admin_title"];
-        }
-        catch
-        {
-            title = "Admin Menu";
-        }
+        var title = T("menu_admin_title");
 
         // Match Swiftly Admins navigation styling using configurable color
         builder.Design
@@ -75,7 +66,7 @@ public class AdminMenuManager
         AddHandlerOption(player, builder, "fun_commands", "menu_fun_commands");
         if (HasPermission(player, _config.Permissions.AdminTime))
         {
-            var playtimeButton = new ButtonMenuOption(PluginLocalizer.Get(_core)["menu_admin_playtime"]) { CloseAfterClick = false };
+            var playtimeButton = new ButtonMenuOption(T("menu_admin_playtime")) { CloseAfterClick = false };
             playtimeButton.Click += (_, args) =>
             {
                 OpenAdminPlaytimeMenu(args.Player);
@@ -98,19 +89,7 @@ public class AdminMenuManager
         if (!_handlers.TryGetValue(key, out var handler))
             return;
 
-        string text;
-        try
-        {
-            text = PluginLocalizer.Get(_core)[translationKey];
-        }
-        catch
-        {
-            // Fallback to a readable version of the key
-            text = translationKey.Replace("menu_", "").Replace("_", " ");
-            // Capitalize first letter of each word
-            text = string.Join(" ", text.Split(' ').Select(word => char.ToUpper(word[0]) + word.Substring(1)));
-        }
-
+        var text = T(translationKey);
         builder.AddOption(new SubmenuMenuOption(text, () => handler.CreateMenu(player)));
     }
 
@@ -137,11 +116,11 @@ public class AdminMenuManager
         }
 
         var builder = _core.MenusAPI.CreateBuilder();
-        builder.Design.SetMenuTitle(PluginLocalizer.Get(_core)["menu_admin_playtime"]);
+        builder.Design.SetMenuTitle(T("menu_admin_playtime"));
 
         if (entries.Count == 0)
         {
-            var emptyButton = new ButtonMenuOption(PluginLocalizer.Get(_core)["admintime_no_data"]) { CloseAfterClick = true };
+            var emptyButton = new ButtonMenuOption(T("admintime_no_data")) { CloseAfterClick = true };
             emptyButton.Click += (_, _) => ValueTask.CompletedTask;
             builder.AddOption(emptyButton);
         }
@@ -150,7 +129,7 @@ public class AdminMenuManager
             for (var i = 0; i < entries.Count; i++)
             {
                 var row = entries[i];
-                var text = PluginLocalizer.Get(_core)["admintime_menu_entry", i + 1, row.PlayerName, row.PlaytimeMinutes];
+                var text = T("admintime_menu_entry", i + 1, row.PlayerName, row.PlaytimeMinutes);
                 var button = new ButtonMenuOption(text) { CloseAfterClick = false };
                 button.Click += (_, _) => ValueTask.CompletedTask;
                 builder.AddOption(button);
@@ -158,6 +137,19 @@ public class AdminMenuManager
         }
 
         _core.MenusAPI.OpenMenuForPlayer(player, builder.Build());
+    }
+
+    private string T(string key, params object[] args)
+    {
+        try
+        {
+            var localizer = PluginLocalizer.Get(_core);
+            return args.Length == 0 ? localizer[key] : localizer[key, args];
+        }
+        catch
+        {
+            return key;
+        }
     }
 }
 

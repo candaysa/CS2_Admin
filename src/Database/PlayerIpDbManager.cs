@@ -1,4 +1,4 @@
-using CS2_Admin.Models;
+﻿using CS2_Admin.Models;
 using CS2_Admin.Utils;
 using Dapper;
 using Dommel;
@@ -20,7 +20,7 @@ public class PlayerIpDbManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             MigrationRunner.RunMigrations(connection);
             _core.Logger.LogInformationIfEnabled("[CS2_Admin] Player IP database initialized successfully");
         }
@@ -40,7 +40,7 @@ public class PlayerIpDbManager
 
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var now = DateTime.UtcNow;
             var safeName = string.IsNullOrWhiteSpace(playerName) ? steamId.ToString() : playerName.Trim();
 
@@ -98,7 +98,7 @@ public class PlayerIpDbManager
 
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var existing = connection.FirstOrDefault<PlayerIpRecord>(x => x.SteamId == steamId);
             return existing?.IpAddress;
         }
@@ -118,7 +118,7 @@ public class PlayerIpDbManager
 
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var rows = connection.Query<string>(
                 """
                 SELECT DISTINCT `ip_address`
@@ -173,3 +173,5 @@ public class PlayerIpDbManager
         return normalized;
     }
 }
+
+

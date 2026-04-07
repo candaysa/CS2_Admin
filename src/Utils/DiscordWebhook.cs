@@ -20,7 +20,7 @@ public class DiscordWebhook
     private readonly string _adminTimeWebhookUrl;
     private readonly HttpClient _httpClient;
 
-    public DiscordWebhook(ISwiftlyCore core, DiscordConfig config)
+    public DiscordWebhook(ISwiftlyCore core, DiscordFileConfig config)
     {
         _core = core;
         _defaultWebhookUrl = config.Webhook ?? string.Empty;

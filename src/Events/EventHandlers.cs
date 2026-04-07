@@ -11,11 +11,23 @@ using SwiftlyS2.Shared.GameEvents;
 using SwiftlyS2.Shared.Misc;
 using SwiftlyS2.Shared.Players;
 using SwiftlyS2.Shared.ProtobufDefinitions;
+using System.Text.RegularExpressions;
 
 namespace CS2_Admin.Events;
 
 public class EventHandlers
 {
+    private static readonly HashSet<string> ChatCollisionCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "say",
+        "kick",
+        "noclip",
+        "give",
+        "map",
+        "restart",
+        "rcon"
+    };
+
     private readonly ISwiftlyCore _core;
     private readonly BanManager _banManager;
     private readonly MuteManager _muteManager;
@@ -29,6 +41,7 @@ public class EventHandlers
     private readonly TagsConfig _tags;
     private readonly CommandsConfig _commands;
     private readonly MultiServerConfig _multiServerConfig;
+    private readonly ChatTagConfigManager _chatTagConfigManager;
     
     private readonly Dictionary<int, DateTime> _muteWarnTimestamps = new();
     private readonly Dictionary<int, DateTime> _gagWarnTimestamps = new();
@@ -57,7 +70,8 @@ public class EventHandlers
         PermissionsConfig permissions,
         TagsConfig tags,
         CommandsConfig commands,
-        MultiServerConfig multiServerConfig)
+        MultiServerConfig multiServerConfig,
+        ChatTagConfigManager chatTagConfigManager)
     {
         _core = core;
         _banManager = banManager;
@@ -72,6 +86,7 @@ public class EventHandlers
         _tags = tags;
         _commands = commands;
         _multiServerConfig = multiServerConfig;
+        _chatTagConfigManager = chatTagConfigManager;
     }
     
     public void RegisterHooks()
@@ -319,13 +334,10 @@ public class EventHandlers
 
     private async Task<bool> TryKickIfBannedAsync(int playerId, ulong steamId, string? ipAddress, string source)
     {
-        _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug] ban check source={Source} playerId={PlayerId} steamid={SteamId} ip={Ip}", source, playerId, steamId, ipAddress ?? "-");
-
         var ban = await _banManager.GetActiveBanAsync(steamId, ipAddress, _multiServerConfig.Enabled)
                   ?? await _banManager.GetActiveBanForEnforcementAsync(steamId, ipAddress);
         if (ban == null || !ban.IsActive)
         {
-            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug] ban check clear source={Source} steamid={SteamId}", source, steamId);
             return false;
         }
 
@@ -879,6 +891,11 @@ public class EventHandlers
         // Gagged players can still execute commands; only normal chat is restricted.
         if (!string.IsNullOrWhiteSpace(text) && (text.StartsWith("!") || text.StartsWith("/")))
         {
+            if (TryForwardCollisionCommandFromChat(player, text))
+            {
+                return HookResult.Stop;
+            }
+
             return HookResult.Continue;
         }
         
@@ -935,7 +952,133 @@ public class EventHandlers
             await _gagManager.GetActiveGagAsync(steamId);
         });
 
+        if (_chatTagConfigManager.Config.ChatEnabled && !string.IsNullOrWhiteSpace(text))
+        {
+            BroadcastFormattedChat(player, text, teamOnly);
+            return HookResult.Stop;
+        }
+
         return HookResult.Continue;
+    }
+
+    private bool TryForwardCollisionCommandFromChat(IPlayer player, string chatText)
+    {
+        var line = chatText.Trim();
+        if (string.IsNullOrWhiteSpace(line) || line.Length < 2)
+        {
+            return false;
+        }
+
+        var commandText = line[1..].Trim();
+        if (string.IsNullOrWhiteSpace(commandText))
+        {
+            return false;
+        }
+
+        var firstSpace = commandText.IndexOf(' ');
+        var cmd = firstSpace >= 0 ? commandText[..firstSpace].Trim() : commandText;
+        if (string.IsNullOrWhiteSpace(cmd) || !ChatCollisionCommands.Contains(cmd))
+        {
+            return false;
+        }
+
+        var args = firstSpace >= 0 && firstSpace < commandText.Length - 1
+            ? commandText[(firstSpace + 1)..].Trim()
+            : string.Empty;
+
+        var swCmd = CommandAliasUtils.ToSwAlias(cmd);
+        var execution = string.IsNullOrWhiteSpace(args) ? swCmd : $"{swCmd} {args}";
+        player.ExecuteCommand(execution);
+
+        _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug] chat command forwarded {Cmd} -> {SwCmd} for steamid={SteamId}", cmd, swCmd, player.SteamID);
+        return true;
+    }
+
+    private void BroadcastFormattedChat(IPlayer sender, string rawText, bool teamOnly)
+    {
+        var text = rawText.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var groupTag = ResolveChatGroupTag(sender);
+        var style = _chatTagConfigManager.GetStyleForGroup(groupTag);
+        var senderName = sender.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"];
+        var scopePrefix = teamOnly ? $"{style.ChatColor}[TEAM] " : string.Empty;
+        var formatted = $"{scopePrefix}{style.ChatColor}[ {style.TagColor}{groupTag} {style.ChatColor}] {style.NameColor}{senderName}{style.ChatColor}: {text}";
+        var senderTeam = sender.Controller.TeamNum;
+
+        foreach (var target in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid && !p.IsFakeClient))
+        {
+            if (teamOnly && target.Controller.TeamNum != senderTeam)
+            {
+                continue;
+            }
+
+            target.SendChat(formatted);
+        }
+    }
+
+    private string ResolveChatGroupTag(IPlayer player)
+    {
+        var steamId = player.SteamID;
+        if (_lastKnownAdminTags.TryGetValue(steamId, out var knownTag) && !string.IsNullOrWhiteSpace(knownTag))
+        {
+            return knownTag.Trim();
+        }
+
+        try
+        {
+            var primaryGroup = _adminManager.GetPrimaryGroupNameAsync(steamId).GetAwaiter().GetResult();
+            if (!string.IsNullOrWhiteSpace(primaryGroup))
+            {
+                var resolved = primaryGroup.Trim();
+                _lastKnownAdminTags[steamId] = resolved;
+                return resolved;
+            }
+        }
+        catch
+        {
+            // Non-fatal: continue with secondary resolvers.
+        }
+
+        var fromScoreboard = ExtractTagFromScoreboard(player.Controller.Clan);
+        if (!string.IsNullOrWhiteSpace(fromScoreboard))
+        {
+            return fromScoreboard;
+        }
+
+        if (_core.Permission.PlayerHasPermission(steamId, _permissions.AdminRoot))
+        {
+            return "ADMIN";
+        }
+
+        return _tags.PlayerTag;
+    }
+
+    private static string ExtractTagFromScoreboard(string? rawClan)
+    {
+        if (string.IsNullOrWhiteSpace(rawClan))
+        {
+            return string.Empty;
+        }
+
+        var normalized = rawClan.Replace("\u200B", string.Empty).Trim();
+        var segments = normalized
+            .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (segments.Length >= 2 && Regex.IsMatch(segments[0], @"^#?\d+$"))
+        {
+            return segments[1].Trim();
+        }
+
+        if (segments.Length >= 1)
+        {
+            return segments[^1].Trim();
+        }
+
+        return string.Empty;
     }
 
     private async Task<HashSet<string>> BuildManagedPermissionsAsync()
@@ -987,6 +1130,28 @@ public class EventHandlers
             // Players may have authorized before DB became ready.
             // Re-apply admin state and emit summaries once DB is available.
             await RefreshAdminStateForAllOnlinePlayersAsync();
+
+            var connectedSnapshots = await RunOnMainThreadAsync(() =>
+                _core.PlayerManager
+                    .GetAllPlayers()
+                    .Where(p => p.IsValid && !p.IsFakeClient)
+                    .Select(p => new
+                    {
+                        p.PlayerID,
+                        p.SteamID,
+                        Name = p.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"],
+                        Ip = p.IPAddress
+                    })
+                    .ToList());
+
+            foreach (var snapshot in connectedSnapshots)
+            {
+                _connectedPlayerSnapshots[snapshot.PlayerID] = new RecentPlayerInfo(
+                    snapshot.SteamID,
+                    snapshot.Name,
+                    snapshot.Ip,
+                    DateTime.UtcNow);
+            }
 
             var snapshots = await RunOnMainThreadAsync(() =>
                 _core.PlayerManager

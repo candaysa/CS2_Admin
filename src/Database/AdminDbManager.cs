@@ -1,4 +1,4 @@
-using CS2_Admin.Models;
+﻿using CS2_Admin.Models;
 using CS2_Admin.Utils;
 using Dommel;
 using Microsoft.Extensions.Logging;
@@ -25,7 +25,7 @@ public class AdminDbManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             MigrationRunner.RunMigrations(connection);
             _core.Logger.LogInformationIfEnabled("[CS2_Admin] Admin database initialized successfully");
         }
@@ -61,7 +61,7 @@ public class AdminDbManager
             var normalizedGroups = groupsValidation.NormalizedGroups;
             var resolvedImmunity = immunity > 0 ? immunity : groupsValidation.MaxGroupImmunity;
 
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var existingAdmin = FindAdminRecordBySteamId(connection, steamId);
 
             if (existingAdmin != null)
@@ -156,7 +156,7 @@ public class AdminDbManager
 
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             connection.Update(existingAdmin);
             _adminCache[steamId] = existingAdmin;
             return true;
@@ -172,7 +172,7 @@ public class AdminDbManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var admin = FindAdminRecordBySteamId(connection, steamId);
             if (admin == null)
             {
@@ -205,7 +205,7 @@ public class AdminDbManager
                 return cachedAdmin;
             }
 
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var now = DateTime.UtcNow;
             var admin = connection.FirstOrDefault<Admin>(a =>
                 a.SteamId == steamId &&
@@ -243,7 +243,7 @@ public class AdminDbManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var admins = connection.Select<Admin>(a =>
                 a.ExpiresAt == null || a.ExpiresAt > DateTime.UtcNow)
                 .OrderByDescending(a => a.Immunity)
@@ -335,7 +335,7 @@ public class AdminDbManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var expiredAdmins = connection.Select<Admin>(a =>
                 a.ExpiresAt != null &&
                 a.ExpiresAt <= DateTime.UtcNow);
@@ -434,3 +434,5 @@ public class AdminDbManager
         return connection.GetAll<Admin>().FirstOrDefault(a => a.SteamId == steamId);
     }
 }
+
+

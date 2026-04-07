@@ -1,0 +1,8 @@
+{
+  "CS2AdminDiscord": {
+    "Webhook": "",
+    "CallAdminWebhook": "",
+    "ReportWebhook": "",
+    "AdminTimeWebhook": ""
+  }
+}

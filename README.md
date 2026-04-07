@@ -2,7 +2,14 @@
 
 CS2 admin management plugin source repository.
 
-Current plugin version: `1.0.4`
+Current plugin version: `1.0.6`
+
+## Start Here (Guide)
+
+If you are setting up the plugin for the first time, open the guide first:
+
+- [English Guide](./GUIDE_EN.md)
+- [Turkish Guide](./GUIDE_TR.md)
 
 ## Repository Contents
 
@@ -45,5 +52,5 @@ If version is missing, mismatched, or file is corrupted, plugin deletes and rege
 
 Detailed command lists, permissions, setup flow, and examples are in:
 
-- `GUIDE_EN.md`
-- `GUIDE_TR.md`
+- [English Guide](./GUIDE_EN.md)
+- [Turkish Guide](./GUIDE_TR.md)

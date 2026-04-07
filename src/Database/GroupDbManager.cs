@@ -1,4 +1,4 @@
-using CS2_Admin.Models;
+﻿using CS2_Admin.Models;
 using CS2_Admin.Utils;
 using Dommel;
 using Microsoft.Extensions.Logging;
@@ -22,7 +22,7 @@ public class GroupDbManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             MigrationRunner.RunMigrations(connection);
             _core.Logger.LogInformationIfEnabled("[CS2_Admin] Group database initialized successfully");
         }
@@ -47,7 +47,7 @@ public class GroupDbManager
 
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var group = connection.FirstOrDefault<AdminGroup>(g => g.Name == normalizedName)
                         ?? connection.GetAll<AdminGroup>()
                             .FirstOrDefault(g => g.Name.Equals(normalizedName, StringComparison.OrdinalIgnoreCase));
@@ -69,7 +69,7 @@ public class GroupDbManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var groups = connection.GetAll<AdminGroup>().OrderByDescending(x => x.Immunity).ThenBy(x => x.Name).ToList();
             foreach (var group in groups)
             {
@@ -95,7 +95,7 @@ public class GroupDbManager
 
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var existing = connection.FirstOrDefault<AdminGroup>(g => g.Name == normalizedName)
                            ?? connection.GetAll<AdminGroup>()
                                .FirstOrDefault(g => g.Name.Equals(normalizedName, StringComparison.OrdinalIgnoreCase));
@@ -142,7 +142,7 @@ public class GroupDbManager
 
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var existing = connection.FirstOrDefault<AdminGroup>(g => g.Name == normalizedName)
                            ?? connection.GetAll<AdminGroup>()
                                .FirstOrDefault(g => g.Name.Equals(normalizedName, StringComparison.OrdinalIgnoreCase));
@@ -234,3 +234,5 @@ public class GroupDbManager
             : rawName.Trim().TrimStart('#', '@');
     }
 }
+
+

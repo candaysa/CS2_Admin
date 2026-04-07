@@ -33,7 +33,7 @@ public class BanManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             MigrationRunner.RunMigrations(connection);
             _core.Logger.LogInformationIfEnabled("[CS2_Admin] Ban database initialized successfully");
         }
@@ -100,7 +100,7 @@ public class BanManager
                 Status = BanStatus.Active
             };
 
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             connection.Execute(
                 """
                 INSERT INTO `admin_bans`
@@ -146,7 +146,7 @@ public class BanManager
         try
         {
             var admin = _currentAdmin.Value ?? new AdminContext();
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var affected = connection.Execute(
                 $"""
                 UPDATE `admin_bans`
@@ -189,7 +189,7 @@ public class BanManager
         try
         {
             var admin = _currentAdmin.Value ?? new AdminContext();
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var normalizedIp = NormalizeIpAddress(ipAddress);
             if (string.IsNullOrWhiteSpace(normalizedIp))
             {
@@ -237,7 +237,7 @@ public class BanManager
                 return cached;
             }
 
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var now = DateTime.UtcNow;
             var serverId = ServerIdentity.GetServerId(_core);
             var serverIp = ServerIdentity.GetIp(_core);
@@ -322,7 +322,7 @@ public class BanManager
         try
         {
             var normalizedIp = NormalizeIpAddress(ipAddress);
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var now = DateTime.UtcNow;
 
             var row = connection.QueryFirstOrDefault<BanRow>(
@@ -517,7 +517,7 @@ public class BanManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             return connection.Select<Ban>(b => b.SteamId == steamId).Count();
         }
         catch (Exception ex)
@@ -527,11 +527,96 @@ public class BanManager
         }
     }
 
+    public async Task<IReadOnlyList<ActiveBanTarget>> FindActiveSteamBanTargetsByNameAsync(string targetName, int maxResults = 10)
+    {
+        if (string.IsNullOrWhiteSpace(targetName))
+        {
+            return [];
+        }
+
+        if (maxResults <= 0)
+        {
+            maxResults = 10;
+        }
+
+        try
+        {
+            using var connection = _core.Database.GetConnection("mysql_detailed");
+            var normalized = targetName.Trim();
+
+            // Exact match first; if there are no exact hits, fallback to partial matching.
+            var exactRows = connection.Query<ActiveBanTargetRow>(
+                $"""
+                SELECT
+                    `steamid` AS `SteamId`,
+                    `target_name` AS `TargetName`,
+                    `ip_address` AS `IpAddress`
+                FROM `admin_bans`
+                WHERE {PunishmentQueryCompat.ActiveStatusWhere}
+                  AND {PunishmentQueryCompat.ActiveSteamTargetWhere}
+                  AND `steamid` <> 0
+                  AND LOWER(COALESCE(`target_name`, '')) = LOWER(@Name)
+                ORDER BY `created_at` DESC
+                LIMIT @Limit
+                """,
+                new
+                {
+                    Name = normalized,
+                    Limit = maxResults
+                })
+                .ToList();
+
+            var rows = exactRows.Count > 0
+                ? exactRows
+                : connection.Query<ActiveBanTargetRow>(
+                    $"""
+                    SELECT
+                        `steamid` AS `SteamId`,
+                        `target_name` AS `TargetName`,
+                        `ip_address` AS `IpAddress`
+                    FROM `admin_bans`
+                    WHERE {PunishmentQueryCompat.ActiveStatusWhere}
+                      AND {PunishmentQueryCompat.ActiveSteamTargetWhere}
+                      AND `steamid` <> 0
+                      AND LOWER(COALESCE(`target_name`, '')) LIKE LOWER(@Pattern)
+                    ORDER BY `created_at` DESC
+                    LIMIT @Limit
+                    """,
+                    new
+                    {
+                        Pattern = $"%{normalized}%",
+                        Limit = maxResults
+                    })
+                    .ToList();
+
+            var dedup = new Dictionary<ulong, ActiveBanTarget>();
+            foreach (var row in rows)
+            {
+                if (row.SteamId == 0 || dedup.ContainsKey(row.SteamId))
+                {
+                    continue;
+                }
+
+                dedup[row.SteamId] = new ActiveBanTarget(
+                    row.SteamId,
+                    string.IsNullOrWhiteSpace(row.TargetName) ? row.SteamId.ToString() : row.TargetName.Trim(),
+                    row.IpAddress);
+            }
+
+            return dedup.Values.ToList();
+        }
+        catch (Exception ex)
+        {
+            _core.Logger.LogWarningIfEnabled("[CS2_Admin] Failed to find active bans by name '{Name}': {Message}", targetName, ex.Message);
+            return [];
+        }
+    }
+
     public async Task CleanupExpiredBansAsync()
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var cleaned = connection.Execute(
                 $"""
                 UPDATE `admin_bans`
@@ -659,6 +744,17 @@ public class BanManager
         public string? UnbanReason { get; set; }
         public DateTime? UnbanDate { get; set; }
     }
+
+    private sealed class ActiveBanTargetRow
+    {
+        public ulong SteamId { get; set; }
+        public string? TargetName { get; set; }
+        public string? IpAddress { get; set; }
+    }
 }
+
+public sealed record ActiveBanTarget(ulong SteamId, string TargetName, string? IpAddress);
+
+
 
 

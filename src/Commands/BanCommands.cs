@@ -2,6 +2,7 @@ using CS2_Admin.Config;
 using CS2_Admin.Database;
 using CS2_Admin.Utils;
 using Microsoft.Extensions.Logging;
+using System.Net;
 using SwiftlyS2.Core.Menus.OptionsBase;
 using SwiftlyS2.Shared;
 using SwiftlyS2.Shared.Commands;
@@ -24,9 +25,11 @@ public class BanCommands
     private readonly DiscordWebhook _discord;
     private readonly PermissionsConfig _permissions;
     private readonly CommandsConfig _commands;
+    private readonly TagsConfig _tags;
     private readonly MessagesConfig _messagesConfig;
     private readonly SanctionMenuConfig _sanctions;
     private readonly MultiServerConfig _multiServerConfig;
+    private readonly int _banType;
 
     public BanCommands(
         ISwiftlyCore core,
@@ -41,9 +44,11 @@ public class BanCommands
         DiscordWebhook discord,
         PermissionsConfig permissions,
         CommandsConfig commands,
+        TagsConfig tags,
         MessagesConfig messagesConfig,
         SanctionMenuConfig sanctions,
-        MultiServerConfig multiServerConfig)
+        MultiServerConfig multiServerConfig,
+        int banType)
     {
         _core = core;
         _banManager = banManager;
@@ -57,9 +62,11 @@ public class BanCommands
         _discord = discord;
         _permissions = permissions;
         _commands = commands;
+        _tags = tags;
         _messagesConfig = messagesConfig;
         _sanctions = sanctions;
         _multiServerConfig = multiServerConfig;
+        _banType = banType is >= 1 and <= 3 ? banType : 1;
     }
 
     public void OnBanCommand(ICommandContext context) => HandleOnlineBan(context, false);
@@ -78,13 +85,13 @@ public class BanCommands
         if (args.Length < 2)
         {
             context.Reply(ipMode
-                ? "Usage: ipban <player|ip> <minutes> [reason]"
+                ? "Usage: ipban <player|ip> <duration> [reason]"
                 : $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["ban_usage"]}");
             return;
         }
 
         var targetArg = args[0];
-        if (!int.TryParse(args[1], out var duration) || duration < -1)
+        if (!SanctionDurationParser.TryParseToMinutes(args[1], out var duration))
         {
             context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["invalid_duration"]}");
             return;
@@ -94,6 +101,9 @@ public class BanCommands
         var adminName = context.Sender?.Controller.PlayerName ?? PluginLocalizer.Get(_core)["console_name"];
         var adminSteamId = context.Sender?.SteamID ?? 0;
         var isGlobal = ResolveGlobalMode();
+        var applyMode = ResolveBanApplyMode(ipMode);
+        var shouldBanSteam = (applyMode & BanApplyMode.Steam) != 0;
+        var shouldBanIp = (applyMode & BanApplyMode.Ip) != 0;
         var resolvedTarget = PlayerUtils.FindPlayerByTarget(_core, targetArg);
         var targetSnapshot = resolvedTarget == null
             ? null
@@ -106,7 +116,7 @@ public class BanCommands
         {
             if (targetSnapshot != null)
             {
-                if (ipMode && string.IsNullOrWhiteSpace(targetSnapshot.IpAddress))
+                if (shouldBanIp && string.IsNullOrWhiteSpace(targetSnapshot.IpAddress))
                 {
                     _core.Scheduler.NextTick(() => context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["lastban_no_ip"]}"));
                     return;
@@ -117,27 +127,32 @@ public class BanCommands
                     return;
                 }
 
-                var existing = await _banManager.GetActiveBanAsync(targetSnapshot.SteamId, targetSnapshot.IpAddress, _multiServerConfig.Enabled);
-                if (existing != null)
+                _banManager.SetAdminContext(adminName, adminSteamId);
+
+                var steamApplied = false;
+                var ipApplied = false;
+
+                if (shouldBanSteam)
+                {
+                    var existingSteam = await _banManager.GetActiveBanAsync(targetSnapshot.SteamId, null, _multiServerConfig.Enabled);
+                    if (existingSteam == null)
+                    {
+                        steamApplied = await _banManager.AddBanAsync(targetSnapshot.SteamId, targetSnapshot.Name, duration, reason, isGlobal);
+                    }
+                }
+
+                if (shouldBanIp)
+                {
+                    var existingIp = await _banManager.GetActiveBanAsync(0, targetSnapshot.IpAddress, _multiServerConfig.Enabled);
+                    if (existingIp == null)
+                    {
+                        ipApplied = await _banManager.AddIpBanAsync(targetSnapshot.IpAddress!, targetSnapshot.Name, duration, reason, isGlobal, targetSnapshot.SteamId);
+                    }
+                }
+
+                if (!steamApplied && !ipApplied)
                 {
                     _core.Scheduler.NextTick(() => context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["player_already_banned", targetSnapshot.Name]}"));
-                    return;
-                }
-
-                _banManager.SetAdminContext(adminName, adminSteamId);
-                bool addResult;
-                if (ipMode)
-                {
-                    addResult = await _banManager.AddIpBanAsync(targetSnapshot.IpAddress!, targetSnapshot.Name, duration, reason, isGlobal, targetSnapshot.SteamId);
-                }
-                else
-                {
-                    addResult = await _banManager.AddBanAsync(targetSnapshot.SteamId, targetSnapshot.Name, duration, reason, isGlobal);
-                }
-
-                if (!addResult)
-                {
-                    _core.Scheduler.NextTick(() => context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["ban_failed"]}"));
                     return;
                 }
 
@@ -146,7 +161,8 @@ public class BanCommands
                 {
                     foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
                     {
-                        player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["banned_notification", adminName, targetSnapshot.Name, durationText, reason]}");
+                        var visibleAdmin = ResolveVisibleAdminName(player, adminName);
+                        player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["banned_notification", visibleAdmin, targetSnapshot.Name, durationText, reason]}");
                     }
 
                     var onlineTarget = _core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSnapshot.SteamId);
@@ -159,7 +175,11 @@ public class BanCommands
                             PluginLocalizer.Get(_core)["banned_personal_html", durationDisplay, reason],
                             $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["banned_personal_chat", durationText, reason]}");
 
-                        _core.Scheduler.DelayBySeconds(3f, () =>
+                        var kickDelaySeconds = _messagesConfig.BanKickDelaySeconds > 0
+                            ? _messagesConfig.BanKickDelaySeconds
+                            : Math.Max(1f, _messagesConfig.CenterHtmlDurationMs / 1000f);
+
+                        _core.Scheduler.DelayBySeconds(kickDelaySeconds, () =>
                         {
                             var playerToKick = _core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSnapshot.SteamId);
                             playerToKick?.Kick($"Banned: {reason}", ENetworkDisconnectionReason.NETWORK_DISCONNECT_BANADDED);
@@ -168,13 +188,61 @@ public class BanCommands
                 });
 
                 await _discord.SendBanNotificationAsync(adminName, targetSnapshot.Name, duration, reason);
-                await _adminLogManager.AddLogAsync(ipMode ? "ipban" : "ban", adminName, adminSteamId, targetSnapshot.SteamId, targetSnapshot.IpAddress, $"duration={duration};global={isGlobal};reason={reason}", targetSnapshot.Name);
+                var actionName = shouldBanSteam && shouldBanIp
+                    ? "ban_both"
+                    : shouldBanIp ? "ipban" : "ban";
+                await _adminLogManager.AddLogAsync(
+                    actionName,
+                    adminName,
+                    adminSteamId,
+                    targetSnapshot.SteamId,
+                    targetSnapshot.IpAddress,
+                    $"duration={duration};global={isGlobal};reason={reason};ban_type={_banType};steam_applied={steamApplied};ip_applied={ipApplied}",
+                    targetSnapshot.Name);
                 return;
             }
 
             if (!ipMode && PlayerUtils.TryParseSteamId(targetArg, out var offlineSteamId))
             {
+                if (!shouldBanSteam && shouldBanIp)
+                {
+                    _core.Scheduler.NextTick(() =>
+                    {
+                        context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {T("ban_type_requires_ip_target", "BanType is IP-only. Use target IP with !ban/!ipban.")}");
+                    });
+                    return;
+                }
+
                 await AddOfflineSteamBanAsync(context, offlineSteamId, duration, reason, adminName, adminSteamId, isGlobal);
+
+                if (shouldBanIp)
+                {
+                    var knownIps = await _playerIpDbManager.GetAllKnownIpsAsync(offlineSteamId);
+                    var appliedCount = 0;
+                    foreach (var knownIp in knownIps.Distinct(StringComparer.OrdinalIgnoreCase))
+                    {
+                        var added = await AddOfflineIpBanAsync(context, knownIp, duration, reason, adminName, adminSteamId, isGlobal, notifyResult: false);
+                        if (added)
+                        {
+                            appliedCount++;
+                        }
+                    }
+
+                    if (appliedCount > 0)
+                    {
+                        _core.Scheduler.NextTick(() =>
+                        {
+                            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {T("ban_type_known_ips_applied", "Applied IP bans for {0} known IP(s).", appliedCount)}");
+                        });
+                    }
+                }
+
+                return;
+            }
+
+            if (shouldBanIp && TryNormalizeIpTarget(targetArg, out var normalizedIp))
+            {
+                await AddOfflineIpBanAsync(context, normalizedIp, duration, reason, adminName, adminSteamId, isGlobal);
                 return;
             }
 
@@ -210,7 +278,7 @@ public class BanCommands
             return;
         }
 
-        if (!int.TryParse(args[1], out var duration) || duration < -1)
+        if (!SanctionDurationParser.TryParseToMinutes(args[1], out var duration))
         {
             context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["invalid_duration"]}");
             return;
@@ -251,42 +319,76 @@ public class BanCommands
             ulong? targetSteamId = null;
             string? targetIp = null;
             var affectedRows = 0;
+            var targetArg = args[0].Trim();
 
-            if (PlayerUtils.TryParseSteamId(args[0], out var steamId))
+            if (PlayerUtils.TryParseSteamId(targetArg, out var steamId))
             {
-                var steamAffected = await _banManager.UnbanSteamByIdWithCountAsync(steamId, reason);
-                affectedRows += steamAffected;
+                var result = await UnbanSteamAndKnownIpsAsync(steamId, reason, adminName, adminSteamId);
+                affectedRows += result.AffectedRows;
                 targetSteamId = steamId;
-
-                var knownIps = await _playerIpDbManager.GetAllKnownIpsAsync(steamId);
-                foreach (var knownIp in knownIps)
-                {
-                    _banManager.SetAdminContext(adminName, adminSteamId);
-                    var ipAffected = await _banManager.UnbanIpWithCountAsync(knownIp, reason);
-                    affectedRows += ipAffected;
-                }
-
-                if (knownIps.Count > 0)
-                {
-                    targetIp = string.Join(",", knownIps);
-                }
+                targetIp = result.KnownIps;
 
                 success = affectedRows > 0;
-                _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug] unban requested steamid={SteamId} knownIps={IpCount} affected={AffectedRows}", steamId, knownIps.Count, affectedRows);
+                _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug] unban requested steamid={SteamId} affected={AffectedRows}", steamId, affectedRows);
+            }
+            else if (TryNormalizeIpTarget(targetArg, out var normalizedIp))
+            {
+                affectedRows = await _banManager.UnbanIpWithCountAsync(normalizedIp, reason);
+                success = affectedRows > 0;
+                targetIp = normalizedIp;
+                _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug] unban requested ip={Ip} affected={AffectedRows}", normalizedIp, affectedRows);
             }
             else
             {
-                affectedRows = await _banManager.UnbanIpWithCountAsync(args[0], reason);
+                var matches = await _banManager.FindActiveSteamBanTargetsByNameAsync(targetArg, 5);
+                if (matches.Count == 0)
+                {
+                    _core.Scheduler.NextTick(() =>
+                    {
+                        context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {T("unban_name_not_found", "No active banned player matched '{0}'.", targetArg)}");
+                    });
+                    return;
+                }
+
+                if (matches.Count > 1)
+                {
+                    var hint = string.Join(", ", matches.Select(m => $"{m.TargetName} ({m.SteamId})"));
+                    _core.Scheduler.NextTick(() =>
+                    {
+                        context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {T("unban_name_ambiguous", "Multiple banned players matched '{0}'. Use SteamID. Matches: {1}", targetArg, hint)}");
+                    });
+                    return;
+                }
+
+                var selected = matches[0];
+                var result = await UnbanSteamAndKnownIpsAsync(selected.SteamId, reason, adminName, adminSteamId);
+                affectedRows += result.AffectedRows;
+                targetSteamId = selected.SteamId;
+                targetIp = result.KnownIps;
                 success = affectedRows > 0;
-                targetIp = args[0];
-                _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug] unban requested ip={Ip} affected={AffectedRows}", args[0], affectedRows);
+
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Debug] unban requested by-name target={Target} resolvedSteamId={SteamId} affected={AffectedRows}",
+                    targetArg,
+                    selected.SteamId,
+                    affectedRows);
             }
 
             _core.Scheduler.NextTick(() =>
             {
-                context.Reply(success
-                    ? $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 unban success"
-                    : $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 unban failed");
+                if (!success)
+                {
+                    context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {T("unban_failed", "Unban failed. No active ban matched.")}");
+                    return;
+                }
+
+                if (targetSteamId.HasValue)
+                {
+                    context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["unbanned_success", targetSteamId.Value, reason]}");
+                    return;
+                }
+
+                context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {T("unbanned_ip_success", "Unbanned IP {0}. Reason: {1}", targetIp ?? "-", reason)}");
             });
 
             if (success)
@@ -295,6 +397,36 @@ public class BanCommands
                 await _adminLogManager.AddLogAsync("unban", adminName, adminSteamId, targetSteamId, targetIp, $"reason={reason}");
             }
         });
+    }
+
+    private async Task<(int AffectedRows, string? KnownIps)> UnbanSteamAndKnownIpsAsync(ulong steamId, string reason, string adminName, ulong adminSteamId)
+    {
+        var affectedRows = await _banManager.UnbanSteamByIdWithCountAsync(steamId, reason);
+        var knownIps = await _playerIpDbManager.GetAllKnownIpsAsync(steamId);
+        foreach (var knownIp in knownIps)
+        {
+            _banManager.SetAdminContext(adminName, adminSteamId);
+            affectedRows += await _banManager.UnbanIpWithCountAsync(knownIp, reason);
+        }
+
+        return (affectedRows, knownIps.Count > 0 ? string.Join(",", knownIps) : null);
+    }
+
+    private static bool TryNormalizeIpTarget(string input, out string normalizedIp)
+    {
+        normalizedIp = string.Empty;
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return false;
+        }
+
+        if (!IPAddress.TryParse(input.Trim(), out var parsed))
+        {
+            return false;
+        }
+
+        normalizedIp = parsed.ToString();
+        return true;
     }
 
     public void OnLastBanCommand(ICommandContext context)
@@ -310,11 +442,11 @@ public class BanCommands
         {
             if (recent.Count == 0)
             {
-                context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["lastban_no_recent_players"]}");
+                context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {T("lastban_no_recent_players", "No recent disconnected players found.")}");
                 return;
             }
 
-            context.Reply(PluginLocalizer.Get(_core)["lastban_console_header"]);
+            context.Reply(T("lastban_console_header", "Recent disconnected players:"));
             foreach (var item in recent)
             {
                 context.Reply($"- {item.Name} | {item.SteamId} | {item.IpAddress} | {item.LastSeenAt:yyyy-MM-dd HH:mm:ss}");
@@ -323,11 +455,11 @@ public class BanCommands
         }
 
         var menuBuilder = _core.MenusAPI.CreateBuilder();
-        menuBuilder.Design.SetMenuTitle(PluginLocalizer.Get(_core)["menu_last_players"]);
+        menuBuilder.Design.SetMenuTitle(T("menu_last_players", "Recent Disconnected Players"));
 
         if (recent.Count == 0)
         {
-            var empty = new ButtonMenuOption(PluginLocalizer.Get(_core)["lastban_no_recent_players"]) { CloseAfterClick = true };
+            var empty = new ButtonMenuOption(T("lastban_no_recent_players", "No recent disconnected players found.")) { CloseAfterClick = true };
             empty.Click += (_, _) => ValueTask.CompletedTask;
             menuBuilder.AddOption(empty);
         }
@@ -348,7 +480,7 @@ public class BanCommands
     private SwiftlyS2.Shared.Menus.IMenuAPI BuildLastActionMenu(IPlayer admin, RecentPlayerInfo target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        builder.Design.SetMenuTitle(PluginLocalizer.Get(_core)["menu_last_actions", target.Name]);
+        builder.Design.SetMenuTitle(T("menu_last_actions", $"Actions for {target.Name}", target.Name));
         var hasAction = false;
 
         if (HasPlayerPermission(admin, _permissions.Ban))
@@ -394,7 +526,7 @@ public class BanCommands
     private SwiftlyS2.Shared.Menus.IMenuAPI BuildLastDurationMenu(IPlayer admin, RecentPlayerInfo target, LastSanctionAction action)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        builder.Design.SetMenuTitle(PluginLocalizer.Get(_core)["menu_select_duration"]);
+        builder.Design.SetMenuTitle(T("menu_select_duration", "Select Duration"));
 
         foreach (var item in _sanctions.Durations)
         {
@@ -413,7 +545,7 @@ public class BanCommands
     private void OpenLastReasonMenu(IPlayer admin, RecentPlayerInfo target, LastSanctionAction action, int duration)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        builder.Design.SetMenuTitle(PluginLocalizer.Get(_core)["menu_select_reason"]);
+        builder.Design.SetMenuTitle(T("menu_select_reason", "Select Reason"));
 
         foreach (var reason in GetReasonsForLastAction(action))
         {
@@ -463,22 +595,53 @@ public class BanCommands
         await _adminLogManager.AddLogAsync("addban", adminName, adminSteamId, targetSteamId, null, $"duration={duration};global={isGlobal};reason={reason}");
     }
 
-    private async Task AddOfflineIpBanAsync(
+    private async Task<bool> AddOfflineIpBanAsync(
         ICommandContext context,
         string ipAddress,
         int duration,
         string reason,
         string adminName,
         ulong adminSteamId,
-        bool isGlobal)
+        bool isGlobal,
+        bool notifyResult = true)
     {
+        if (!TryNormalizeIpTarget(ipAddress, out var normalizedIp))
+        {
+            if (notifyResult)
+            {
+                _core.Scheduler.NextTick(() => context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {T("invalid_ip", "Invalid IP address.")}"));
+            }
+            return false;
+        }
+
+        var existing = await _banManager.GetActiveBanAsync(0, normalizedIp, _multiServerConfig.Enabled);
+        if (existing != null)
+        {
+            if (notifyResult)
+            {
+                _core.Scheduler.NextTick(() => context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["lastban_ip_already_banned", normalizedIp]}"));
+            }
+            return false;
+        }
+
         _banManager.SetAdminContext(adminName, adminSteamId);
-        var ok = await _banManager.AddIpBanAsync(ipAddress, ipAddress, duration, reason, isGlobal);
-        _core.Scheduler.NextTick(() => context.Reply(ok ? "ipban success" : "ipban failed"));
+        var ok = await _banManager.AddIpBanAsync(normalizedIp, normalizedIp, duration, reason, isGlobal);
+        if (notifyResult)
+        {
+            _core.Scheduler.NextTick(() =>
+            {
+                context.Reply(ok
+                    ? $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {T("ipban_success", "IP {0} banned successfully.", normalizedIp)}"
+                    : $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {T("ipban_failed", "Failed to ban IP {0}.", normalizedIp)}");
+            });
+        }
+
         if (ok)
         {
-            await _adminLogManager.AddLogAsync("ipban", adminName, adminSteamId, null, ipAddress, $"duration={duration};global={isGlobal};reason={reason}");
+            await _adminLogManager.AddLogAsync("ipban", adminName, adminSteamId, null, normalizedIp, $"duration={duration};global={isGlobal};reason={reason}");
         }
+
+        return ok;
     }
 
     private IReadOnlyList<string> GetReasonsForLastAction(LastSanctionAction action)
@@ -663,6 +826,14 @@ public class BanCommands
         Gag
     }
 
+    [Flags]
+    private enum BanApplyMode
+    {
+        None = 0,
+        Steam = 1,
+        Ip = 2
+    }
+
     private sealed record OnlineTargetSnapshot(ulong SteamId, string Name, string? IpAddress);
 
     private bool HasPermission(ICommandContext context, string permission)
@@ -675,10 +846,58 @@ public class BanCommands
         return HasPlayerPermission(context.Sender!, permission);
     }
 
+    private string ResolveVisibleAdminName(IPlayer viewer, string adminName)
+    {
+        if (_tags.ShowAdminName)
+        {
+            return adminName;
+        }
+
+        var isAdminViewer =
+            _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.AdminRoot) ||
+            (!string.IsNullOrWhiteSpace(_permissions.AdminMenu) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.AdminMenu)) ||
+            (!string.IsNullOrWhiteSpace(_permissions.ListPlayers) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.ListPlayers));
+
+        return isAdminViewer ? adminName : "Admin";
+    }
+
     private bool HasPlayerPermission(IPlayer player, string permission)
     {
         return _core.Permission.PlayerHasPermission(player.SteamID, permission)
                || _core.Permission.PlayerHasPermission(player.SteamID, _permissions.AdminRoot);
+    }
+
+    private string T(string key, string fallback, params object[] args)
+    {
+        try
+        {
+            var value = args.Length == 0
+                ? PluginLocalizer.Get(_core)[key]
+                : PluginLocalizer.Get(_core)[key, args];
+
+            return string.Equals(value, key, StringComparison.OrdinalIgnoreCase)
+                ? (args.Length == 0 ? fallback : string.Format(fallback, args))
+                : value;
+        }
+        catch
+        {
+            return args.Length == 0 ? fallback : string.Format(fallback, args);
+        }
+    }
+
+    private BanApplyMode ResolveBanApplyMode(bool ipMode)
+    {
+        if (ipMode)
+        {
+            return BanApplyMode.Ip;
+        }
+
+        return _banType switch
+        {
+            2 => BanApplyMode.Ip,
+            3 => BanApplyMode.Steam | BanApplyMode.Ip,
+            _ => BanApplyMode.Steam
+        };
     }
 }
 

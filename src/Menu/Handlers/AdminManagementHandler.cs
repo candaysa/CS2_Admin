@@ -33,57 +33,24 @@ public class AdminManagementHandler : IAdminMenuHandler
     public IMenuAPI CreateMenu(IPlayer player)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-
-        string title;
-        try
-        {
-            title = PluginLocalizer.Get(_core)["menu_admin_management"];
-        }
-        catch
-        {
-            title = "Admin Management";
-        }
+        var title = T("menu_admin_management");
         builder.Design.SetMenuTitle(title);
 
         if (!IsRoot(player))
         {
-            var noPermissionButton = new ButtonMenuOption(PluginLocalizer.Get(_core)["no_permission"]) { CloseAfterClick = true };
+            var noPermissionButton = new ButtonMenuOption(T("no_permission")) { CloseAfterClick = true };
             noPermissionButton.Click += (_, _) => ValueTask.CompletedTask;
             builder.AddOption(noPermissionButton);
             return builder.Build();
         }
 
-        string addAdminText;
-        try
-        {
-            addAdminText = PluginLocalizer.Get(_core)["menu_add_admin"];
-        }
-        catch
-        {
-            addAdminText = "Add Admin";
-        }
+        var addAdminText = T("menu_add_admin");
         builder.AddOption(new SubmenuMenuOption(addAdminText, () => BuildAddAdminMenu(player)));
 
-        string removeAdminText;
-        try
-        {
-            removeAdminText = PluginLocalizer.Get(_core)["menu_remove_admin"];
-        }
-        catch
-        {
-            removeAdminText = "Remove Admin";
-        }
+        var removeAdminText = T("menu_remove_admin");
         builder.AddOption(new SubmenuMenuOption(removeAdminText, () => BuildRemoveAdminMenu(player)));
 
-        string listAdminsText;
-        try
-        {
-            listAdminsText = PluginLocalizer.Get(_core)["menu_list_admins"];
-        }
-        catch
-        {
-            listAdminsText = "List Admins";
-        }
+        var listAdminsText = T("menu_list_admins");
         builder.AddOption(new SubmenuMenuOption(listAdminsText, () => BuildListAdminsMenu(player)));
 
         return builder.Build();
@@ -94,29 +61,13 @@ public class AdminManagementHandler : IAdminMenuHandler
     private IMenuAPI BuildAddAdminMenu(IPlayer admin)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        string title;
-        try
-        {
-            title = PluginLocalizer.Get(_core)["menu_select_player_add"];
-        }
-        catch
-        {
-            title = "Select Player to Add";
-        }
+        var title = T("menu_select_player_add");
         builder.Design.SetMenuTitle(title);
 
         var players = _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid).ToList();
         foreach (var target in players)
         {
-            var fallbackName = "Player " + target.PlayerID;
-            try
-            {
-                fallbackName = PluginLocalizer.Get(_core)["player_fallback_name", target.PlayerID];
-            }
-            catch
-            {
-                // Use default fallback
-            }
+            var fallbackName = T("player_fallback_name", target.PlayerID);
             var btn = new ButtonMenuOption(target.Controller.PlayerName ?? fallbackName) { CloseAfterClick = false };
             btn.Click += (_, args) =>
             {
@@ -133,12 +84,12 @@ public class AdminManagementHandler : IAdminMenuHandler
     private void OpenAddAdminGroupMenu(IPlayer admin, IPlayer target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        builder.Design.SetMenuTitle(PluginLocalizer.Get(_core)["menu_select_group"]);
+        builder.Design.SetMenuTitle(T("menu_select_group"));
 
         var groups = _groupManager.GetAllGroupsAsync().GetAwaiter().GetResult();
         foreach (var group in groups)
         {
-            var groupBtn = new ButtonMenuOption($"{group.Name} (imm: {group.Immunity})") { CloseAfterClick = true };
+            var groupBtn = new ButtonMenuOption(T("menu_group_with_immunity", group.Name, group.Immunity)) { CloseAfterClick = true };
             groupBtn.Click += (_, args) =>
             {
                 var adminPlayer = args.Player;
@@ -150,7 +101,7 @@ public class AdminManagementHandler : IAdminMenuHandler
 
         if (groups.Count == 0)
         {
-            var empty = new ButtonMenuOption(PluginLocalizer.Get(_core)["menu_no_groups"]) { CloseAfterClick = true };
+            var empty = new ButtonMenuOption(T("menu_no_groups")) { CloseAfterClick = true };
             empty.Click += (_, _) => ValueTask.CompletedTask;
             builder.AddOption(empty);
         }
@@ -161,29 +112,13 @@ public class AdminManagementHandler : IAdminMenuHandler
     private IMenuAPI BuildRemoveAdminMenu(IPlayer admin)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        string title;
-        try
-        {
-            title = PluginLocalizer.Get(_core)["menu_select_admin_remove"];
-        }
-        catch
-        {
-            title = "Select Admin to Remove";
-        }
+        var title = T("menu_select_admin_remove");
         builder.Design.SetMenuTitle(title);
 
         var players = _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid).ToList();
         foreach (var target in players)
         {
-            var fallbackName = "Player " + target.PlayerID;
-            try
-            {
-                fallbackName = PluginLocalizer.Get(_core)["player_fallback_name", target.PlayerID];
-            }
-            catch
-            {
-                // Use default fallback
-            }
+            var fallbackName = T("player_fallback_name", target.PlayerID);
             var btn = new ButtonMenuOption(target.Controller.PlayerName ?? fallbackName) { CloseAfterClick = true };
             btn.Click += (_, args) =>
             {
@@ -204,12 +139,12 @@ public class AdminManagementHandler : IAdminMenuHandler
 
         if (!IsRoot(admin))
         {
-            admin.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_permission"]}");
+            admin.SendChat($" \x02{T("prefix")}\x01 {T("no_permission")}");
             return;
         }
 
-        var targetName = target.Controller.PlayerName ?? PluginLocalizer.Get(_core)["player_fallback_name", target.PlayerID];
-        var adminName = admin.Controller.PlayerName ?? PluginLocalizer.Get(_core)["console_name"];
+        var targetName = target.Controller.PlayerName ?? T("player_fallback_name", target.PlayerID);
+        var adminName = admin.Controller.PlayerName ?? T("console_name");
         var targetSteamId = target.SteamID;
         var adminSteamId = admin.SteamID;
 
@@ -227,15 +162,15 @@ public class AdminManagementHandler : IAdminMenuHandler
 
             if (!success)
             {
-                _core.Scheduler.NextTick(() => admin.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["addadmin_failed"]}"));
+                _core.Scheduler.NextTick(() => admin.SendChat($" \x02{T("prefix")}\x01 {T("addadmin_failed")}"));
                 return;
             }
 
             var effectiveFlags = await _adminManager.GetEffectiveFlagsAsync(targetSteamId);
             _core.Scheduler.NextTick(() =>
             {
-                admin.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["addadmin_success", targetName, targetSteamId, string.Join(",", effectiveFlags)]}");
-                target.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["addadmin_granted"]}");
+                admin.SendChat($" \x02{T("prefix")}\x01 {T("addadmin_success", targetName, targetSteamId, string.Join(",", effectiveFlags))}");
+                target.SendChat($" \x02{T("prefix")}\x01 {T("addadmin_granted")}");
                 if (_config.Tags.Enabled)
                 {
                     PlayerUtils.SetScoreTagReliable(_core, target.PlayerID, groupName);
@@ -260,7 +195,7 @@ public class AdminManagementHandler : IAdminMenuHandler
     {
         if (!IsRoot(admin))
         {
-            admin.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_permission"]}");
+            admin.SendChat($" \x02{T("prefix")}\x01 {T("no_permission")}");
             return;
         }
 
@@ -273,7 +208,7 @@ public class AdminManagementHandler : IAdminMenuHandler
     {
         if (!IsRoot(admin))
         {
-            admin.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_permission"]}");
+            admin.SendChat($" \x02{T("prefix")}\x01 {T("no_permission")}");
             return;
         }
 
@@ -284,12 +219,12 @@ public class AdminManagementHandler : IAdminMenuHandler
     private IMenuAPI BuildListAdminsMenu(IPlayer admin)
     {
         var builder = _core.MenusAPI.CreateBuilder();
-        builder.Design.SetMenuTitle(PluginLocalizer.Get(_core)["menu_list_admins"]);
+        builder.Design.SetMenuTitle(T("menu_list_admins"));
 
         var admins = _adminManager.GetAllAdminsAsync().GetAwaiter().GetResult();
         if (admins.Count == 0)
         {
-            var empty = new ButtonMenuOption(PluginLocalizer.Get(_core)["menu_no_admins"]) { CloseAfterClick = true };
+            var empty = new ButtonMenuOption(T("menu_no_admins")) { CloseAfterClick = true };
             empty.Click += (_, _) => ValueTask.CompletedTask;
             builder.AddOption(empty);
             return builder.Build();
@@ -297,13 +232,26 @@ public class AdminManagementHandler : IAdminMenuHandler
 
         foreach (var item in admins)
         {
-            var title = $"{item.Name} | #{item.Id} | {item.SteamId}";
+            var title = T("menu_admin_list_entry", item.Name, item.Id, item.SteamId);
             var detail = new ButtonMenuOption(title) { CloseAfterClick = false };
             detail.Click += (_, _) => ValueTask.CompletedTask;
             builder.AddOption(detail);
         }
 
         return builder.Build();
+    }
+
+    private string T(string key, params object[] args)
+    {
+        try
+        {
+            var localizer = PluginLocalizer.Get(_core);
+            return args.Length == 0 ? localizer[key] : localizer[key, args];
+        }
+        catch
+        {
+            return key;
+        }
     }
 }
 

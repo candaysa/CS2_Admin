@@ -1,4 +1,4 @@
-using CS2_Admin.Models;
+﻿using CS2_Admin.Models;
 using CS2_Admin.Utils;
 using Dommel;
 using Microsoft.Extensions.Logging;
@@ -23,7 +23,7 @@ public class AdminPlaytimeDbManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             MigrationRunner.RunMigrations(connection);
             _core.Logger.LogInformationIfEnabled("[CS2_Admin] Admin playtime database initialized successfully");
         }
@@ -42,7 +42,7 @@ public class AdminPlaytimeDbManager
 
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var allEntries = connection.GetAll<AdminPlaytime>().ToDictionary(x => x.SteamId);
             var now = DateTime.UtcNow;
 
@@ -88,7 +88,7 @@ public class AdminPlaytimeDbManager
 
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             return connection
                 .GetAll<AdminPlaytime>()
                 .OrderByDescending(x => x.PlaytimeMinutes)
@@ -103,3 +103,5 @@ public class AdminPlaytimeDbManager
         }
     }
 }
+
+

@@ -1,4 +1,4 @@
-using Dommel;
+﻿using Dommel;
 using CS2_Admin.Models;
 using CS2_Admin.Utils;
 using Microsoft.Extensions.Logging;
@@ -32,7 +32,7 @@ public class MuteManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             MigrationRunner.RunMigrations(connection);
 
             _core.Logger.LogInformationIfEnabled("[CS2_Admin] Mute database initialized successfully");
@@ -63,7 +63,7 @@ public class MuteManager
                     Status = MuteStatus.Active
                 };
 
-                using var connection = _core.Database.GetConnection("admins");
+                using var connection = _core.Database.GetConnection("mysql_detailed");
                 var id = connection.Insert(mute);
                 mute.Id = Convert.ToInt32(id);
                 _muteCache[steamId] = mute;
@@ -85,7 +85,7 @@ public class MuteManager
             try
             {
                 var admin = _currentAdmin.Value ?? new AdminContext();
-                using var connection = _core.Database.GetConnection("admins");
+                using var connection = _core.Database.GetConnection("mysql_detailed");
                 
                 var mute = connection.FirstOrDefault<Mute>(m => m.SteamId == steamId && m.Status == MuteStatus.Active);
                 if (mute == null) return false;
@@ -124,7 +124,7 @@ public class MuteManager
                 return cachedMute;
             }
 
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var mute = connection.FirstOrDefault<Mute>(m => 
                 m.SteamId == steamId && 
                 m.Status == MuteStatus.Active &&
@@ -164,7 +164,7 @@ public class MuteManager
         {
             try
             {
-                using var connection = _core.Database.GetConnection("admins");
+                using var connection = _core.Database.GetConnection("mysql_detailed");
                 var mutes = connection.Select<Mute>(m => m.SteamId == steamId);
                 return mutes.Count();
             }
@@ -182,7 +182,7 @@ public class MuteManager
         {
             try
             {
-                using var connection = _core.Database.GetConnection("admins");
+                using var connection = _core.Database.GetConnection("mysql_detailed");
                 var expiredMutes = connection.Select<Mute>(m => 
                     m.Status == MuteStatus.Active && 
                     m.ExpiresAt != null && 
@@ -214,5 +214,7 @@ public class MuteManager
         _muteCache.Clear();
     }
 }
+
+
 
 

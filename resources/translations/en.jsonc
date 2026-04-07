@@ -1,10 +1,9 @@
 ﻿{
-  // General Messages
   "prefix": "CS2_Admin",
   "no_permission": "You don't have permission to use this command.",
   "player_not_found": "Player not found.",
   "no_valid_targets": "No valid targets found.",
-  "invalid_duration": "Invalid duration. Use -1 for permanent.",
+  "invalid_duration": "Invalid duration. Use minutes (60), or units like 30s, 1h, 2d, 3w, 6m, or -1 for permanent.",
   "invalid_steamid": "Invalid SteamID.",
   "invalid_team": "Invalid team. Use: t, ct, or spec",
   "player_only_command": "This command can only be used by players.",
@@ -19,11 +18,9 @@
   "console_name": "Console",
   "unknown": "Unknown",
   "player_fallback_name": "Player {0}",
-  
-  // Ban Messages
-  "ban_usage": "Usage: !ban <target> <duration in minutes> [reason]",
-  "addban_usage": "Usage: !addban <steamid> <duration in minutes> [reason]",
-  "unban_usage": "Usage: !unban <steamid> [reason]",
+  "ban_usage": "Usage: !ban <target> <duration> [reason]",
+  "addban_usage": "Usage: !addban <steamid> <duration> [reason]",
+  "unban_usage": "Usage: !unban <steamid|name|ip> [reason]",
   "player_already_banned": "Player {0} is already banned.",
   "steamid_already_banned": "SteamID {0} is already banned.",
   "steamid_not_banned": "SteamID {0} is not banned.",
@@ -34,6 +31,10 @@
   "ban_failed": "Ban action failed.",
   "addban_failed": "Failed to add offline ban.",
   "unbanned_success": "Unbanned SteamID {0}. Reason: {1}",
+  "unbanned_ip_success": "Unbanned IP {0}. Reason: {1}",
+  "unban_failed": "Unban failed. No active ban matched.",
+  "unban_name_not_found": "No active banned player matched '{0}'.",
+  "unban_name_ambiguous": "Multiple banned players matched '{0}'. Use SteamID. Matches: {1}",
   "duration_permanent": "Permanent",
   "duration_permanently": "permanently",
   "duration_minutes": "{0} minutes",
@@ -46,8 +47,6 @@
   "lastban_action_applied": "{0} applied to {1}.",
   "lastban_action_failed": "Failed to apply {0}.",
   "lastban_ip_already_banned": "IP {0} is already banned.",
-
-  // Warn Messages
   "warn_usage": "Usage: !warn <target> <reason>",
   "unwarn_usage": "Usage: !unwarn <target> [reason]",
   "warns_usage": "Usage: !warns <target>",
@@ -61,9 +60,7 @@
   "unwarned_personal_chat": "Your active warn was removed. Reason: {0}",
   "warns_summary": "{0} | Total warns: {1} | Active warns: {2}",
   "warns_active_detail": "Active warn => Reason: {0}, Expires: {1}",
-  
-  // Mute Messages
-  "mute_usage": "Usage: !mute <target> <duration in minutes> [reason]",
+  "mute_usage": "Usage: !mute <target> <duration> [reason]",
   "unmute_usage": "Usage: !unmute <target> [reason]",
   "player_already_muted": "Player {0} is already muted.",
   "player_not_muted": "Player {0} is not muted.",
@@ -76,9 +73,7 @@
   "mute_expired": "Your mute has expired. You can now use voice chat.",
   "muted_warning_permanent": "You are permanently muted.",
   "muted_warning_minutes": "You are muted for {0} more minutes.",
-  
-  // Gag Messages
-  "gag_usage": "Usage: !gag <target> <duration in minutes> [reason]",
+  "gag_usage": "Usage: !gag <target> <duration> [reason]",
   "ungag_usage": "Usage: !ungag <target> [reason]",
   "player_already_gagged": "Player {0} is already gagged.",
   "player_not_gagged": "Player {0} is not gagged.",
@@ -93,9 +88,7 @@
   "gagged_warning_minutes": "You are gagged for {0} more minutes.",
   "gagged_chat_warning_permanent": "You are permanently gagged and cannot chat.",
   "gagged_chat_warning_minutes": "You are gagged for {0} more minutes.",
-  
-  // Silence Messages
-  "silence_usage": "Usage: !silence <target> <duration in minutes> [reason]",
+  "silence_usage": "Usage: !silence <target> <duration> [reason]",
   "unsilence_usage": "Usage: !unsilence <target> [reason]",
   "sanction_group_targets_not_allowed": "This sanction command does not support @all/@ct/@t targets.",
   "player_already_silenced": "Player {0} is already silenced.",
@@ -106,56 +99,40 @@
   "unsilenced_notification": "{0} unsilenced {1}. Reason: {2}",
   "unsilenced_personal_html": "<font color='#00ff00'><b>YOU HAVE BEEN UNSILENCED</b></font><br><br>Reason: <font color='#ffffff'>{0}</font>",
   "unsilenced_personal_chat": "You have been unsilenced. Reason: {0}",
-  
-  // Kick Messages
   "kick_usage": "Usage: !kick <target> [reason]",
   "kicked_notification": "{0} kicked {1}. Reason: {2}",
   "kicked_personal_html": "<font color='#ff0000'><b>YOU HAVE BEEN KICKED</b></font><br><br>Reason: <font color='#ffffff'>{0}</font>",
   "kicked_personal_chat": "You have been kicked. Reason: {0}",
-
-  // Slap Messages
   "slap_usage": "Usage: !slap <target> [damage]",
   "slapped_notification": "{0} slapped {1} for {2} damage.",
   "slapped_personal_html": "<font color='#ffcc00'><b>YOU HAVE BEEN SLAPPED</b></font><br><br>By: <font color='#ffffff'>{0}</font><br>Damage: <font color='#ff6600'>{1}</font>",
   "slapped_personal_chat": "You were slapped by {0} for {1} damage.",
-  
-  // Slay Messages
   "slay_usage": "Usage: !slay <target>",
   "slayed_notification_single": "{0} slayed {1}.",
   "slayed_notification_multiple": "{0} slayed {1} players.",
   "slayed_personal_html": "<font color='#ff0000'><b>YOU HAVE BEEN SLAYED</b></font><br><br>By: <font color='#ffcc00'>{0}</font>",
   "slayed_personal_chat": "You have been slayed by {0}.",
-  
-  // Respawn Messages
   "respawn_usage": "Usage: !respawn <target>",
   "respawned_notification_single": "{0} respawned {1}.",
   "respawned_notification_multiple": "{0} respawned {1} players.",
   "respawned_personal_html": "<font color='#00ff00'><b>YOU HAVE BEEN RESPAWNED</b></font><br><br>By: <font color='#ffcc00'>{0}</font>",
   "respawned_personal_chat": "You have been respawned by {0}.",
-  
-  // Team Change Messages
   "team_usage": "Usage: !team <target> <t/ct/spec>",
   "team_changed_notification": "{0} moved {1} to {2}.",
   "team_changed_personal_html": "<font color='#00ccff'><b>TEAM CHANGED</b></font><br><br>New Team: <font color='#ffcc00'>{0}</font><br>By: <font color='#ffffff'>{1}</font>",
   "team_changed_personal_chat": "You have been moved to {0} by {1}.",
-  
-  // Teleport Messages
   "goto_usage": "Usage: !goto <target>",
   "goto_success": "You have teleported to {0}.",
   "goto_notification": "{0} teleported to {1}.",
   "bring_usage": "Usage: !bring <target>",
   "bring_success": "You have been brought to {0}.",
   "bring_notification": "{0} brought {1}.",
-  
-  // Noclip Messages
   "noclip_usage": "Usage: !noclip <target>",
   "noclip_toggled_notification": "{0} toggled noclip {1} for {2}.",
   "noclip_toggled_personal_html": "<font color='{0}'><b>NOCLIP {1}</b></font><br><br>By: <font color='#ffcc00'>{2}</font>",
   "noclip_toggled_personal_chat": "Noclip has been toggled {0} for you by {1}.",
   "noclip_on": "ON",
   "noclip_off": "OFF",
-  
-  // Freeze Messages
   "freeze_usage": "Usage: !freeze <target> [seconds]",
   "freeze_notification_single": "{0} froze {1}.",
   "freeze_notification_multiple": "{0} froze {1} players.",
@@ -166,8 +143,6 @@
   "unfreeze_notification_multiple": "{0} unfroze {1} players.",
   "unfrozen_personal_html": "<font color='#00ff00'><b>YOU HAVE BEEN UNFROZEN</b></font><br><br>By: <font color='#ffcc00'>{0}</font>",
   "unfrozen_personal_chat": "You have been unfrozen by {0}.",
-  
-  // Server Commands
   "map_usage": "Usage: !map <mapname>",
   "map_available": "Available maps: {0}",
   "map_not_found": "Map {0} not found in configuration.",
@@ -189,8 +164,6 @@
   "cvar_not_found": "ConVar {0} not found.",
   "cvar_set": "{0} set {1} to {2}",
   "cvar_value": "{0} = {1}",
-  
-  // Chat Commands
   "asay_prefix": "[AdminChat]",
   "say_prefix": "[Admin]",
   "psay_prefix": "[PM]",
@@ -213,8 +186,6 @@
   "admintime_console_header": "Admin Playtime Top List:",
   "admintime_console_entry": "{0}. {1} ({2}) - {3} min",
   "admintime_menu_entry": "{0}. {1} - {2} min",
-  
-  // Admin Management
   "addadmin_success": "Added admin: {0} ({1}) with flags: {2}",
   "addadmin_failed": "Failed to add admin.",
   "addadmin_granted": "You have been granted admin privileges.",
@@ -250,8 +221,6 @@
   "listgroups_entry": "{0} | imm={1} | flags={2}",
   "adminreload_success": "Admins and groups have been reloaded.",
   "adminreload_failed": "Failed to reload admins and groups.",
-  
-  // Player List
   "players_list_header": "--------- PLAYER LIST ---------",
   "players_list_footer": "--------- END PLAYER LIST ---------",
   "players_list_entry": "#{0} | {1} | {2}",
@@ -259,23 +228,21 @@
   "players_list_json_console": "Player list (JSON) has been printed to your console.",
   "players_yes": "Yes",
   "players_no": "No",
-  
-  // Who Command
-  "who_header": "--------- INFO ABOUT \"{0}\" ---------",
-  "who_footer": "--------- END INFO ABOUT \"{0}\" ---------",
-  "who_name": "- Name: \"{0}\"",
-  "who_userid": "- UserID: \"{0}\"",
-  "who_steamid": "- SteamID64: \"{0}\"",
-  "who_team": "- Team: \"{0}\" ({1})",
-  "who_ip": "- IP Address: \"{0}\"",
-  "who_ping": "- Ping: \"{0}\"",
-  "who_alive": "- Alive: \"{0}\"",
-  "who_admin_flags": "- Admin Flags: \"{0}\" (Immunity: {1})",
-  "who_active_ban_yes": "- Active Ban: YES (Reason: \"{0}\", Expires: {1})",
+  "who_header": "--------- INFO ABOUT \\\\\"{0}\\\\\" ---------",
+  "who_footer": "--------- END INFO ABOUT \\\\\"{0}\\\\\" ---------",
+  "who_name": "- Name: \\\\\"{0}\\\\\"",
+  "who_userid": "- UserID: \\\\\"{0}\\\\\"",
+  "who_steamid": "- SteamID64: \\\\\"{0}\\\\\"",
+  "who_team": "- Team: \\\\\"{0}\\\\\" ({1})",
+  "who_ip": "- IP Address: \\\\\"{0}\\\\\"",
+  "who_ping": "- Ping: \\\\\"{0}\\\\\"",
+  "who_alive": "- Alive: \\\\\"{0}\\\\\"",
+  "who_admin_flags": "- Admin Flags: \\\\\"{0}\\\\\" (Immunity: {1})",
+  "who_active_ban_yes": "- Active Ban: YES (Reason: \\\\\"{0}\\\\\", Expires: {1})",
   "who_active_ban_no": "- Active Ban: NO",
-  "who_active_mute_yes": "- Active Mute: YES (Reason: \"{0}\", Expires: {1})",
+  "who_active_mute_yes": "- Active Mute: YES (Reason: \\\\\"{0}\\\\\", Expires: {1})",
   "who_active_mute_no": "- Active Mute: NO",
-  "who_active_gag_yes": "- Active Gag: YES (Reason: \"{0}\", Expires: {1})",
+  "who_active_gag_yes": "- Active Gag: YES (Reason: \\\\\"{0}\\\\\", Expires: {1})",
   "who_active_gag_no": "- Active Gag: NO",
   "who_active_warn_yes": "Active Warn: YES (Reason: {0}, Expires: {1})",
   "who_active_warn_no": "Active Warn: NO",
@@ -287,16 +254,12 @@
   "who_unknown": "Unknown",
   "who_none": "<none>",
   "who_usage": "Usage: !who <target>",
-  
-  // Join Notification
   "join_summary": "{0} ({1}) joined | Bans:{2} Mutes:{3} Gags:{4} Warns:{5} | Active Punishments: {6}",
   "join_active_none": "None",
   "join_active_ban": "ban",
   "join_active_mute": "mute",
   "join_active_gag": "gag",
   "join_active_warn": "warn",
-  
-  // Discord Webhook Messages
   "discord_ban_title": "Player Banned",
   "discord_unban_title": "Player Unbanned",
   "discord_mute_title": "Player Muted",
@@ -320,8 +283,6 @@
   "discord_reason": "Reason",
   "discord_permanent": "Permanent",
   "discord_minutes": "{0} minutes",
-  
-  // Menu Messages
   "menu_admin_title": "Admin Menu",
   "menu_player_management": "Player Management",
   "menu_server_management": "Server Management",
@@ -333,8 +294,6 @@
   "menu_no_players": "No players found",
   "menu_no_admins": "No admins found",
   "menu_select_player_report": "Select Player To Report",
-  
-  // Server Management Menu
   "menu_restart_game": "Restart Game",
   "menu_change_map": "Change Map",
   "menu_change_ws_map": "Change Workshop Map",
@@ -346,8 +305,6 @@
   "menu_respawn_off": "Respawn OFF",
   "menu_restart_delay": "Delay (Seconds)",
   "menu_restart_now": "Restart Now",
-  
-  // Player Management Menu
   "menu_ban": "Ban",
   "menu_warn": "Warn",
   "menu_warn_history": "Warn History",
@@ -375,8 +332,6 @@
   "menu_enter_flags": "Enter Admin Flags",
   "menu_flags": "Flags",
   "menu_list_admins": "List Admins",
-  
-  // Fun Commands Menu
   "menu_slap": "Slap Player",
   "menu_slay": "Slay Player",
   "menu_respawn": "Respawn Player",
@@ -385,8 +340,6 @@
   "menu_freeze": "Freeze Player",
   "menu_unfreeze": "Unfreeze Player",
   "menu_select_team": "Select Team",
-  
-  // Team Names
   "team_unassigned": "Unassigned",
   "team_spectator": "Spectator",
   "team_terrorist": "Terrorist",
@@ -394,14 +347,10 @@
   "team_unknown": "Unknown",
   "team_t": "Terrorists",
   "team_spec": "Spectators",
-
-  // Warn History
   "warn_history_empty": "No warn history found.",
   "warn_status_active": "Active",
   "warn_status_expired": "Expired",
   "warn_status_removed": "Removed",
-
-  // Extra Player/Fun/Vote Commands
   "resize_usage": "Usage: !resize <target> <scale>",
   "resize_not_supported": "Resize is not supported on this server runtime.",
   "resize_notification": "{0} resized {1} player(s) to scale {2}.",
@@ -450,8 +399,9 @@
   "menu_give": "Give Item",
   "menu_select_value": "Select Value",
   "menu_select_item": "Select Item",
-  "gagged_chat_admin_visible": "[GAG] {0}: {1}"
+  "gagged_chat_admin_visible": "[GAG] {0}: {1}",
+  "menu_goto": "Goto",
+  "menu_bring": "Bring",
+  "menu_group_with_immunity": "{0} (imm: {1})",
+  "menu_admin_list_entry": "{0} | #{1} | {2}"
 }
-
-
-

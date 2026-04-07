@@ -1,4 +1,4 @@
-using CS2_Admin.Models;
+﻿using CS2_Admin.Models;
 using CS2_Admin.Utils;
 using Dommel;
 using Microsoft.Extensions.Logging;
@@ -25,7 +25,7 @@ public class AdminLogManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             MigrationRunner.RunMigrations(connection);
             _core.Logger.LogInformationIfEnabled("[CS2_Admin] Admin log database initialized successfully");
         }
@@ -39,7 +39,7 @@ public class AdminLogManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             connection.Insert(new AdminLog
             {
                 Action = action,
@@ -81,3 +81,5 @@ public class AdminLogManager
                && !action.Equals("report", StringComparison.OrdinalIgnoreCase);
     }
 }
+
+

@@ -2,6 +2,8 @@ using CS2_Admin.Config;
 using CS2_Admin.Database;
 using CS2_Admin.Utils;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
+using System.Text.Json;
 using SwiftlyS2.Shared;
 using SwiftlyS2.Shared.Commands;
 using SwiftlyS2.Shared.Menus;
@@ -11,6 +13,13 @@ namespace CS2_Admin.Commands;
 
 public class ServerCommands
 {
+    private const string WorkshopDetailsApiUrl = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/";
+    private static readonly HttpClient WorkshopApiClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(2)
+    };
+    private static readonly ConcurrentDictionary<uint, string> WorkshopNameCache = new();
+
     private readonly ISwiftlyCore _core;
     private readonly AdminLogManager _adminLogManager;
     private readonly PermissionsConfig _permissions;
@@ -44,6 +53,15 @@ public class ServerCommands
         _gameMaps = gameMaps;
         _workshopMaps = workshopMaps;
         _commands = commands;
+
+        // Seed runtime cache with configured workshop names.
+        foreach (var entry in _workshopMaps.Maps)
+        {
+            if (!string.IsNullOrWhiteSpace(entry.Key))
+            {
+                WorkshopNameCache.TryAdd(entry.Value, entry.Key);
+            }
+        }
     }
 
     public void OnMapCommand(ICommandContext context)
@@ -112,6 +130,7 @@ public class ServerCommands
 
         var input = args[0];
         uint workshopId;
+        string mapDisplayName;
 
         // Try to parse as workshop ID
         if (!uint.TryParse(input, out workshopId))
@@ -127,6 +146,12 @@ public class ServerCommands
             }
 
             workshopId = matchedMap.Value;
+            mapDisplayName = matchedMap.Key;
+            WorkshopNameCache[workshopId] = mapDisplayName;
+        }
+        else
+        {
+            mapDisplayName = ResolveWorkshopDisplayName(workshopId);
         }
 
         var adminName = context.Sender?.Controller.PlayerName ?? PluginLocalizer.Get(_core)["console_name"];
@@ -134,7 +159,7 @@ public class ServerCommands
 
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["wsmap_changing", adminName, workshopId, changeDelaySeconds]}");
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["wsmap_changing", adminName, mapDisplayName, changeDelaySeconds]}");
         }
 
         _core.Scheduler.DelayBySeconds(changeDelaySeconds, () =>
@@ -146,8 +171,77 @@ public class ServerCommands
             });
         });
 
-        _ = _adminLogManager.AddLogAsync("wsmap", adminName, context.Sender?.SteamID ?? 0, null, null, $"workshop_id={workshopId}");
-        _core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} changed to workshop map {WorkshopId}", adminName, workshopId);
+        _ = _adminLogManager.AddLogAsync("wsmap", adminName, context.Sender?.SteamID ?? 0, null, null, $"workshop_id={workshopId};map_name={mapDisplayName}");
+        _core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} changed to workshop map {MapName} ({WorkshopId})", adminName, mapDisplayName, workshopId);
+    }
+
+    private string ResolveWorkshopDisplayName(uint workshopId)
+    {
+        var knownMap = _workshopMaps.Maps.FirstOrDefault(m => m.Value == workshopId);
+        if (!string.IsNullOrWhiteSpace(knownMap.Key))
+        {
+            WorkshopNameCache[workshopId] = knownMap.Key;
+            return knownMap.Key;
+        }
+
+        if (WorkshopNameCache.TryGetValue(workshopId, out var cached) && !string.IsNullOrWhiteSpace(cached))
+        {
+            return cached;
+        }
+
+        var fetched = TryFetchWorkshopTitle(workshopId);
+        if (!string.IsNullOrWhiteSpace(fetched))
+        {
+            WorkshopNameCache[workshopId] = fetched;
+            return fetched;
+        }
+
+        return workshopId.ToString();
+    }
+
+    private string? TryFetchWorkshopTitle(uint workshopId)
+    {
+        try
+        {
+            using var form = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["itemcount"] = "1",
+                ["publishedfileids[0]"] = workshopId.ToString()
+            });
+            using var response = WorkshopApiClient.PostAsync(WorkshopDetailsApiUrl, form).GetAwaiter().GetResult();
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var json = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("response", out var responseNode))
+            {
+                return null;
+            }
+
+            if (!responseNode.TryGetProperty("publishedfiledetails", out var detailsNode) ||
+                detailsNode.ValueKind != JsonValueKind.Array ||
+                detailsNode.GetArrayLength() == 0)
+            {
+                return null;
+            }
+
+            var first = detailsNode[0];
+            if (!first.TryGetProperty("title", out var titleNode))
+            {
+                return null;
+            }
+
+            var title = titleNode.GetString()?.Trim();
+            return string.IsNullOrWhiteSpace(title) ? null : title;
+        }
+        catch (Exception ex)
+        {
+            _core.Logger.LogDebug("[CS2_Admin] Workshop title resolve failed for {WorkshopId}: {Message}", workshopId, ex.Message);
+            return null;
+        }
     }
 
     public void OnRestartCommand(ICommandContext context)
@@ -439,6 +533,7 @@ public class ServerCommands
             option.Click += (_, args) =>
             {
                 var player = args.Player;
+                var playerId = player.PlayerID;
                 lock (_voteLock)
                 {
                     if (_activeVote == null || _activeVote.EndsAtUtc <= DateTime.UtcNow)
@@ -449,7 +544,14 @@ public class ServerCommands
                     _activeVote.VotesBySteamId[player.SteamID] = answerIndex;
                 }
 
-                player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["vote_received", vote.Answers[answerIndex]]}");
+                _core.Scheduler.NextTick(() =>
+                {
+                    var live = _core.PlayerManager.GetPlayer(playerId);
+                    if (live?.IsValid == true)
+                    {
+                        live.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["vote_received", vote.Answers[answerIndex]]}");
+                    }
+                });
                 return ValueTask.CompletedTask;
             };
             builder.AddOption(option);
@@ -491,16 +593,19 @@ public class ServerCommands
         }
 
         var totalVotes = vote.VotesBySteamId.Count;
-        foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
+        _core.Scheduler.NextTick(() =>
         {
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["vote_result_header", vote.Question, totalVotes]}");
-            for (var i = 0; i < vote.Answers.Count; i++)
+            foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
             {
-                player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["vote_result_line", i + 1, vote.Answers[i], counts[i]]}");
-            }
+                player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["vote_result_header", vote.Question, totalVotes]}");
+                for (var i = 0; i < vote.Answers.Count; i++)
+                {
+                    player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["vote_result_line", i + 1, vote.Answers[i], counts[i]]}");
+                }
 
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["vote_result_winner", vote.Answers[winnerIndex], counts[winnerIndex]]}");
-        }
+                player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["vote_result_winner", vote.Answers[winnerIndex], counts[winnerIndex]]}");
+            }
+        });
 
         _ = _adminLogManager.AddLogAsync("vote_result", vote.StartedBy, vote.StartedBySteamId, null, null, $"question={vote.Question};winner={vote.Answers[winnerIndex]};votes={counts[winnerIndex]};total={totalVotes}");
     }

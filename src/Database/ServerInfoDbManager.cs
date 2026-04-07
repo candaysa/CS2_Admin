@@ -1,4 +1,4 @@
-using CS2_Admin.Models;
+﻿using CS2_Admin.Models;
 using CS2_Admin.Utils;
 using Dommel;
 using Microsoft.Extensions.Logging;
@@ -19,7 +19,7 @@ public class ServerInfoDbManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             MigrationRunner.RunMigrations(connection);
             await UpsertCurrentServerAsync();
         }
@@ -33,7 +33,7 @@ public class ServerInfoDbManager
     {
         try
         {
-            using var connection = _core.Database.GetConnection("admins");
+            using var connection = _core.Database.GetConnection("mysql_detailed");
             var serverId = ServerIdentity.GetServerId(_core);
             var existing = connection.FirstOrDefault<ServerInfo>(x => x.ServerId == serverId);
             if (existing != null)
@@ -60,3 +60,5 @@ public class ServerInfoDbManager
         }
     }
 }
+
+

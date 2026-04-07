@@ -4,15 +4,20 @@ namespace CS2_Admin.Config;
 
 public class PluginConfig
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
     public int Version { get; set; } = CurrentVersion;
+    public bool Debug { get; set; } = false;
     public string Language { get; set; } = "en";
     public List<string> LanguageOptions { get; set; } = ["en", "tr", "de", "fr", "it", "el", "ru", "bg", "hu"];
-    public DiscordConfig Discord { get; set; } = new();
+    [JsonIgnore]
+    public DiscordFileConfig Discord { get; set; } = new();
     public MessagesConfig Messages { get; set; } = new();
-    public DebugConfig Debug { get; set; } = new();
     public MultiServerConfig MultiServer { get; set; } = new();
+    public int BanType { get; set; } = 1; // 1=SteamID, 2=IP, 3=SteamID+IP
+    [JsonIgnore]
     public TagsConfig Tags { get; set; } = new();
+    [JsonIgnore]
+    public bool ShowAdminName { get; set; } = true;
     public AdminPlaytimeConfig AdminPlaytime { get; set; } = new();
     [JsonIgnore]
     public CommandsConfig Commands { get; set; } = new();
@@ -20,6 +25,7 @@ public class PluginConfig
     public PermissionsConfig Permissions { get; set; } = new();
     [JsonIgnore]
     public GameMapsConfig GameMaps { get; set; } = new();
+    [JsonIgnore]
     public WorkshopMapsConfig WorkshopMaps { get; set; } = new();
     [JsonIgnore]
     public MapsFileConfig MapsFile { get; set; } = new();
@@ -30,6 +36,51 @@ public class TagsConfig
 {
     public bool Enabled { get; set; } = true;
     public string PlayerTag { get; set; } = "PLAYER";
+    public bool ShowAdminName { get; set; } = true;
+}
+
+public class ChatTagsFileConfig
+{
+    public const int CurrentVersion = 1;
+    public int Version { get; set; } = CurrentVersion;
+    public bool ScoreboardEnabled { get; set; } = true;
+    public bool ChatEnabled { get; set; } = true;
+    public string PlayerTag { get; set; } = "PLAYER";
+    public bool ShowAdminName { get; set; } = true;
+    public List<string> SupportedColors { get; set; } =
+    [
+        "[default]",
+        "[white]",
+        "[silver]",
+        "[gray]",
+        "[grey]",
+        "[lightyellow]",
+        "[yellow]",
+        "[gold]",
+        "[lightred]",
+        "[red]",
+        "[darkred]",
+        "[olive]",
+        "[lime]",
+        "[green]",
+        "[lightblue]",
+        "[blue]",
+        "[darkblue]",
+        "[bluegrey]",
+        "[lightpurple]",
+        "[purple]",
+        "[magenta]"
+    ];
+    // Legacy alias for older tags.json files.
+    public bool Enabled { get; set; } = true;
+    public Dictionary<string, ChatTagGroupStyle> Groups { get; set; } = new();
+}
+
+public class ChatTagGroupStyle
+{
+    public string ChatColor { get; set; } = "";
+    public string TagColor { get; set; } = "";
+    public string NameColor { get; set; } = "";
 }
 
 public class AdminPlaytimeConfig
@@ -45,18 +96,15 @@ public class MultiServerConfig
     public bool GlobalBansByDefault { get; set; } = true;
 }
 
-public class DebugConfig
-{
-    public bool Enabled { get; set; } = false;
-}
-
 public class MessagesConfig
 {
+    public string Prefix { get; set; } = "CS2_Admin";
     public bool EnableCenterHtmlMessages { get; set; } = true;
     public int CenterHtmlDurationMs { get; set; } = 5000;
+    public float BanKickDelaySeconds { get; set; } = 5f;
 }
 
-public class DiscordConfig
+public class DiscordFileConfig
 {
     public string Webhook { get; set; } = "";
     public string CallAdminWebhook { get; set; } = "";

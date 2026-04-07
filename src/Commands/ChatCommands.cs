@@ -17,6 +17,7 @@ public class ChatCommands
     private readonly AdminLogManager _adminLogManager;
     private readonly DiscordWebhook _discord;
     private readonly PermissionsConfig _permissions;
+    private readonly TagsConfig _tags;
     private readonly MessagesConfig _messages;
     private readonly CommandsConfig _commands;
     private readonly SanctionMenuConfig _sanctions;
@@ -26,6 +27,7 @@ public class ChatCommands
         AdminLogManager adminLogManager,
         DiscordWebhook discord,
         PermissionsConfig permissions,
+        TagsConfig tags,
         MessagesConfig messages,
         CommandsConfig commands,
         SanctionMenuConfig sanctions)
@@ -34,6 +36,7 @@ public class ChatCommands
         _adminLogManager = adminLogManager;
         _discord = discord;
         _permissions = permissions;
+        _tags = tags;
         _messages = messages;
         _commands = commands;
         _sanctions = sanctions;
@@ -90,10 +93,11 @@ public class ChatCommands
         var messageText = string.Join(" ", args);
         var adminName = context.Sender?.Controller.PlayerName ?? PluginLocalizer.Get(_core)["console_name"];
         var prefix = PluginLocalizer.Get(_core)["say_prefix"];
-        var msg = $" \x04{prefix}\x01 \x10{adminName}\x01: {messageText}";
 
         foreach (var p in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
+            var visibleAdmin = ResolveVisibleAdminName(p, adminName);
+            var msg = $" \x04{prefix}\x01 \x10{visibleAdmin}\x01: {messageText}";
             p.SendChat(msg);
         }
 
@@ -127,8 +131,9 @@ public class ChatCommands
         var messageText = string.Join(" ", args.Skip(1));
         var adminName = context.Sender?.Controller.PlayerName ?? PluginLocalizer.Get(_core)["console_name"];
         var prefix = PluginLocalizer.Get(_core)["psay_prefix"];
+        var visibleAdmin = ResolveVisibleAdminName(target, adminName);
 
-        target.SendChat($" \x04{prefix}\x01 \x10{adminName}\x01: {messageText}");
+        target.SendChat($" \x04{prefix}\x01 \x10{visibleAdmin}\x01: {messageText}");
         context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["psay_sent", target.Controller.PlayerName]}");
 
         _ = _adminLogManager.AddLogAsync("psay", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"message={messageText}", target.Controller.PlayerName);
@@ -156,11 +161,11 @@ public class ChatCommands
         var htmlPrefix = PluginLocalizer.Get(_core)["csay_html_prefix"];
         var chatPrefix = PluginLocalizer.Get(_core)["csay_prefix"];
 
-        var html = $"{htmlPrefix} <font color='#ffcc00'>{adminName}</font><br><font color='#ffffff'>{messageText}</font>";
-        var chat = $" \x04{chatPrefix}\x01 \x10{adminName}\x01: {messageText}";
-
         foreach (var p in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
+            var visibleAdmin = ResolveVisibleAdminName(p, adminName);
+            var html = $"{htmlPrefix} <font color='#ffcc00'>{visibleAdmin}</font><br><font color='#ffffff'>{messageText}</font>";
+            var chat = $" \x04{chatPrefix}\x01 \x10{visibleAdmin}\x01: {messageText}";
             PlayerUtils.SendNotification(p, _messages, html, chat);
         }
 
@@ -189,11 +194,11 @@ public class ChatCommands
         var htmlPrefix = PluginLocalizer.Get(_core)["hsay_html_prefix"];
         var chatPrefix = PluginLocalizer.Get(_core)["hsay_prefix"];
 
-        var html = $"{htmlPrefix} <font color='#ffcc00'>{adminName}</font><br><font color='#ffffff'>{messageText}</font>";
-        var chat = $" \x04{chatPrefix}\x01 \x10{adminName}\x01: {messageText}";
-
         foreach (var p in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
+            var visibleAdmin = ResolveVisibleAdminName(p, adminName);
+            var html = $"{htmlPrefix} <font color='#ffcc00'>{visibleAdmin}</font><br><font color='#ffffff'>{messageText}</font>";
+            var chat = $" \x04{chatPrefix}\x01 \x10{visibleAdmin}\x01: {messageText}";
             PlayerUtils.SendNotification(p, _messages, html, chat);
         }
 
@@ -389,6 +394,21 @@ public class ChatCommands
         {
             return fallback;
         }
+    }
+
+    private string ResolveVisibleAdminName(IPlayer viewer, string adminName)
+    {
+        if (_tags.ShowAdminName)
+        {
+            return adminName;
+        }
+
+        var isAdminViewer =
+            _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.AdminRoot) ||
+            (!string.IsNullOrWhiteSpace(_permissions.AdminMenu) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.AdminMenu)) ||
+            (!string.IsNullOrWhiteSpace(_permissions.ListPlayers) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.ListPlayers));
+
+        return isAdminViewer ? adminName : "Admin";
     }
 
     private readonly record struct ReportTarget(ulong SteamId, string Name);
