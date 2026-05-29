@@ -13,10 +13,6 @@ public class PluginConfig
     public DiscordFileConfig Discord { get; set; } = new();
     public MessagesConfig Messages { get; set; } = new();
     public MultiServerConfig MultiServer { get; set; } = new();
-    [JsonPropertyName("BanType_Info_Comment")]
-    public string BanTypeInfo { get; set; } = "1=SteamID, 2=IP, 3=SteamID+IP";
-    public int BanType { get; set; } = 1; // 1=SteamID, 2=IP, 3=SteamID+IP
-
     [JsonPropertyName("BanMode_Info_Comment")]
     public string BanModeInfo { get; set; } = "steamid, ip, both";
     public string BanMode { get; set; } = "steamid"; // steamid, ip, both
@@ -38,9 +34,9 @@ public class PluginConfig
     public SanctionMenuConfig Sanctions { get; set; } = new();
 
     [JsonIgnore]
-    public int EffectiveBanType => ParseBanType(BanMode, BanType);
+    public int EffectiveBanType => ParseBanMode(BanMode);
 
-    public static int ParseBanType(string? mode, int fallback)
+    public static int ParseBanMode(string? mode)
     {
         if (!string.IsNullOrWhiteSpace(mode))
         {
@@ -60,12 +56,12 @@ public class PluginConfig
             }
         }
 
-        return fallback is >= 1 and <= 3 ? fallback : 1;
+        return 1;
     }
 
-    public static string NormalizeBanMode(string? mode, int fallback)
+    public static string NormalizeBanMode(string? mode)
     {
-        return ParseBanType(mode, fallback) switch
+        return ParseBanMode(mode) switch
         {
             2 => "ip",
             3 => "both",

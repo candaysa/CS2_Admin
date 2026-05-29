@@ -176,7 +176,7 @@ public partial class CS2_Admin : BasePlugin
                 Core.Configuration.Manager.Bind(_config);
             }
 
-            _config.BanMode = PluginConfig.NormalizeBanMode(_config.BanMode, _config.BanType);
+            _config.BanMode = PluginConfig.NormalizeBanMode(_config.BanMode);
 
             // Resolve language defensively from multiple config layouts.
             // Priority: root Language > CS2_Admin.Language > CS2Admin.Language > bound value.
@@ -1618,8 +1618,10 @@ public partial class CS2_Admin : BasePlugin
             }
 
             var desiredBanMode = PluginConfig.NormalizeBanMode(
-                targetSection["BanMode"]?.GetValue<string>(),
-                targetSection["BanType"]?.GetValue<int>() ?? _config.BanType);
+                targetSection["BanMode"]?.GetValue<string>());
+
+            targetSection.Remove("BanType");
+            targetSection.Remove("BanType_Info_Comment");
 
             var currentBanMode = targetSection["BanMode"]?.GetValue<string>();
             if (string.Equals(currentBanMode, desiredBanMode, StringComparison.OrdinalIgnoreCase))

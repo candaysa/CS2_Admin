@@ -215,7 +215,7 @@ public class BanCommands
                 {
                     _core.Scheduler.NextTick(() =>
                     {
-                        context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {T("ban_type_requires_ip_target", "BanType is IP-only. Use target IP with !ban/!ipban.")}");
+                        context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {T("ban_type_requires_ip_target", "BanMode is IP-only. Use target IP with !ban/!ipban.")}");
                     });
                     return;
                 }
