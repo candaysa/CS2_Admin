@@ -288,6 +288,7 @@ public class AdminCommands
 
         _ = Task.Run(async () =>
         {
+            var existingAdmin = await _adminManager.GetAdminAsync(targetSteamId);
             var success = await _adminManager.EditAdminAsync(targetSteamId, field, value);
             _core.Scheduler.NextTick(() =>
             {
@@ -300,7 +301,7 @@ public class AdminCommands
             {
                 await TryAutoReloadAsync();
                 await ApplyTagToOnlinePlayerAsync(targetSteamId);
-                await _adminLogManager.AddLogAsync("editadmin", adminName, adminSteamId, targetSteamId, null, $"{field}={value}");
+                await _adminLogManager.AddLogAsync("editadmin", adminName, adminSteamId, targetSteamId, null, $"{field}={value}", existingAdmin?.Name);
             }
         });
     }
@@ -335,6 +336,7 @@ public class AdminCommands
 
         _ = Task.Run(async () =>
         {
+            var existingAdmin = await _adminManager.GetAdminAsync(targetSteamId);
             var success = await _adminManager.RemoveAdminAsync(targetSteamId);
             _core.Scheduler.NextTick(() =>
             {
@@ -348,7 +350,7 @@ public class AdminCommands
                 NotifyOnlinePlayer(targetSteamId, PluginLocalizer.Get(_core)["removeadmin_revoked"]);
                 await TryAutoReloadAsync();
                 await ApplyTagToOnlinePlayerAsync(targetSteamId);
-                await _adminLogManager.AddLogAsync("removeadmin", adminName, adminSteamId, targetSteamId, null, "");
+                await _adminLogManager.AddLogAsync("removeadmin", adminName, adminSteamId, targetSteamId, null, "", existingAdmin?.Name);
             }
         });
     }

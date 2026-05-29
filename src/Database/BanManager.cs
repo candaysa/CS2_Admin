@@ -4,14 +4,14 @@ using Dapper;
 using Dommel;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
+using System.Collections.Concurrent;
 
 namespace CS2_Admin.Database;
 
 public class BanManager
 {
     private readonly ISwiftlyCore _core;
-    private readonly Dictionary<string, Ban> _banCache = new();
-    private DateTime _lastCacheUpdate = DateTime.MinValue;
+    private readonly ConcurrentDictionary<string, CacheEntry> _banCache = new();
     private readonly TimeSpan _cacheLifetime = TimeSpan.FromMinutes(5);
     private readonly AsyncLocal<AdminContext> _currentAdmin = new();
 
@@ -396,25 +396,30 @@ public class BanManager
     {
         ban = null;
         var normalizedIp = NormalizeIpAddress(ipAddress);
-        if (DateTime.UtcNow - _lastCacheUpdate >= _cacheLifetime)
-        {
-            return false;
-        }
-
         var steamKey = GetSteamKey(steamId);
-        if (_banCache.TryGetValue(steamKey, out var steamBan) && steamBan.IsActive)
+        if (_banCache.TryGetValue(steamKey, out var steamBanEntry))
         {
-            ban = steamBan;
-            return true;
+            if (DateTime.UtcNow - steamBanEntry.CachedAt < _cacheLifetime && steamBanEntry.Ban.IsActive)
+            {
+                ban = steamBanEntry.Ban;
+                return true;
+            }
+
+            _banCache.TryRemove(steamKey, out _);
         }
 
         if (!string.IsNullOrWhiteSpace(normalizedIp))
         {
             var ipKey = GetIpKey(normalizedIp);
-            if (_banCache.TryGetValue(ipKey, out var ipBan) && ipBan.IsActive)
+            if (_banCache.TryGetValue(ipKey, out var ipBanEntry))
             {
-                ban = ipBan;
-                return true;
+                if (DateTime.UtcNow - ipBanEntry.CachedAt < _cacheLifetime && ipBanEntry.Ban.IsActive)
+                {
+                    ban = ipBanEntry.Ban;
+                    return true;
+                }
+
+                _banCache.TryRemove(ipKey, out _);
             }
         }
 
@@ -425,25 +430,23 @@ public class BanManager
     {
         if (ban.TargetType == BanTargetType.SteamId && ban.SteamId != 0)
         {
-            _banCache[GetSteamKey(ban.SteamId)] = ban;
+            _banCache[GetSteamKey(ban.SteamId)] = new CacheEntry(ban, DateTime.UtcNow);
         }
         else if (ban.TargetType == BanTargetType.Ip && !string.IsNullOrWhiteSpace(ban.IpAddress))
         {
-            _banCache[GetIpKey(ban.IpAddress)] = ban;
+            _banCache[GetIpKey(ban.IpAddress)] = new CacheEntry(ban, DateTime.UtcNow);
         }
-
-        _lastCacheUpdate = DateTime.UtcNow;
     }
 
     private void RemoveFromCache(Ban ban)
     {
         if (ban.TargetType == BanTargetType.SteamId && ban.SteamId != 0)
         {
-            _banCache.Remove(GetSteamKey(ban.SteamId));
+            _banCache.TryRemove(GetSteamKey(ban.SteamId), out _);
         }
         else if (ban.TargetType == BanTargetType.Ip && !string.IsNullOrWhiteSpace(ban.IpAddress))
         {
-            _banCache.Remove(GetIpKey(ban.IpAddress));
+            _banCache.TryRemove(GetIpKey(ban.IpAddress), out _);
         }
     }
 
@@ -643,7 +646,6 @@ public class BanManager
     public void ClearCache()
     {
         _banCache.Clear();
-        _lastCacheUpdate = DateTime.MinValue;
     }
 
     private static bool IsActiveStatus(string? rawStatus)
@@ -751,6 +753,8 @@ public class BanManager
         public string? TargetName { get; set; }
         public string? IpAddress { get; set; }
     }
+
+    private readonly record struct CacheEntry(Ban Ban, DateTime CachedAt);
 }
 
 public sealed record ActiveBanTarget(ulong SteamId, string TargetName, string? IpAddress);

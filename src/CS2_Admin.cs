@@ -41,8 +41,13 @@ public partial class CS2_Admin : BasePlugin
     private AdminDbManager _adminDbManager = null!;
     private AdminLogManager _adminLogManager = null!;
     private ServerInfoDbManager _serverInfoDbManager = null!;
+    private DiscordServerStatusDbManager _discordServerStatusDbManager = null!;
+    private DiscordMessageStateDbManager _discordMessageStateDbManager = null!;
     private AdminPlaytimeDbManager _adminPlaytimeDbManager = null!;
+    private RankLeaderboardDbManager _rankLeaderboardDbManager = null!;
     private PlayerIpDbManager _playerIpDbManager = null!;
+    private PlayerSessionManager _playerSessionManager = null!;
+    private PlayerNameHistoryManager _playerNameHistoryManager = null!;
 
     // Command handlers
     private BanCommands _banCommands = null!;
@@ -58,7 +63,8 @@ public partial class CS2_Admin : BasePlugin
     private EventHandlers _eventHandlers = null!;
 
     // Utils
-    private DiscordWebhook _discord = null!;
+    private DiscordBotService _discord = null!;
+    private PlayerSanctionStateService _sanctionStateService = null!;
     private RecentPlayersTracker _recentPlayersTracker = null!;
     private ChatTagConfigManager _chatTagConfigManager = null!;
     private Timer? _adminPlaytimeTimer;
@@ -111,8 +117,8 @@ public partial class CS2_Admin : BasePlugin
         AdminMenuManager = new AdminMenuManager(Core, Config, _warnManager, _adminDbManager, _groupDbManager, _adminLogManager, _adminPlaytimeDbManager);
 
         // Initialize utilities
-        _discord = new DiscordWebhook(Core, Config.Discord);
-        _adminLogManager.SetDiscordWebhook(_discord);
+        _discord = new DiscordBotService(Core, Config.Discord);
+        _adminLogManager.SetDiscordBotService(_discord);
 
         // Initialize command handlers
         InitializeCommandHandlers();
@@ -137,6 +143,7 @@ public partial class CS2_Admin : BasePlugin
         Core.Logger.LogInformationIfEnabled("[CS2Admin] Unloading plugin...");
         _eventHandlers?.UnregisterHooks();
         _adminPlaytimeTimer?.Dispose();
+        _discord?.StopBackgroundUpdates();
     }
 
     private void LoadConfiguration()
@@ -168,6 +175,8 @@ public partial class CS2_Admin : BasePlugin
             {
                 Core.Configuration.Manager.Bind(_config);
             }
+
+            _config.BanMode = PluginConfig.NormalizeBanMode(_config.BanMode, _config.BanType);
 
             // Resolve language defensively from multiple config layouts.
             // Priority: root Language > CS2_Admin.Language > CS2Admin.Language > bound value.
@@ -255,17 +264,19 @@ public partial class CS2_Admin : BasePlugin
         }
 
         CleanupLegacyCommandsFromConfig();
+        EnsureBanModeConfig();
         DebugSettings.LoggingEnabled = _config.Debug;
 
         try
         {
             Core.Configuration
-                .InitializeJsonWithModel<DiscordFileConfig>("discord.json", "CS2AdminDiscord")
+                .InitializeJsonWithModel<DiscordFileConfig>("discord.json", "CS2_Discord")
                 .Configure(builder => builder.AddJsonFile(Core.Configuration.GetConfigPath("discord.json"), optional: false, reloadOnChange: true));
             var discordConfig = new DiscordFileConfig();
-            Core.Configuration.Manager.GetSection("CS2AdminDiscord").Bind(discordConfig);
+            Core.Configuration.Manager.GetSection("CS2_Discord").Bind(discordConfig);
             _config.Discord = discordConfig;
-            Core.Logger.LogInformationIfEnabled("[CS2Admin] Discord webhooks loaded from {Path}", Core.Configuration.GetConfigPath("discord.json"));
+            ServerIdentity.ConfigurePublicIp(discordConfig.ServerPublicIp);
+            Core.Logger.LogInformationIfEnabled("[CS2Admin] Discord bot configuration loaded from {Path}", Core.Configuration.GetConfigPath("discord.json"));
         }
         catch (Exception ex)
         {
@@ -393,9 +404,15 @@ public partial class CS2_Admin : BasePlugin
         _adminDbManager = new AdminDbManager(Core, _groupDbManager);
         _adminLogManager = new AdminLogManager(Core);
         _serverInfoDbManager = new ServerInfoDbManager(Core);
+        _discordServerStatusDbManager = new DiscordServerStatusDbManager(Core);
+        _discordMessageStateDbManager = new DiscordMessageStateDbManager(Core);
         _adminPlaytimeDbManager = new AdminPlaytimeDbManager(Core, _adminDbManager);
+        _rankLeaderboardDbManager = new RankLeaderboardDbManager(Core);
         _playerIpDbManager = new PlayerIpDbManager(Core);
+        _playerSessionManager = new PlayerSessionManager(Core, _adminDbManager);
+        _playerNameHistoryManager = new PlayerNameHistoryManager(Core);
         _recentPlayersTracker = new RecentPlayersTracker();
+        _sanctionStateService = new PlayerSanctionStateService(_banManager, _muteManager, _gagManager, _warnManager, _config.MultiServer);
     }
 
     private void InitializeCommandHandlers()
@@ -417,7 +434,8 @@ public partial class CS2_Admin : BasePlugin
             _config.Messages,
             _config.Sanctions,
             _config.MultiServer,
-            _config.BanType);
+            _config.EffectiveBanType,
+            _sanctionStateService);
         _muteCommands = new MuteCommands(
             Core, 
             _muteManager, 
@@ -432,7 +450,8 @@ public partial class CS2_Admin : BasePlugin
             _config.Permissions.Gag,
             _config.Permissions.Silence,
             _config.Permissions.AdminRoot,
-            _config.Messages);
+            _config.Messages,
+            _sanctionStateService);
         _warnCommands = new WarnCommands(
             Core,
             _warnManager,
@@ -445,8 +464,9 @@ public partial class CS2_Admin : BasePlugin
             _config.Messages,
             _config.Sanctions,
             _config.Commands.Warn,
-            _config.Commands.Unwarn);
-        _playerCommands = new PlayerCommands(Core, _discord, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _adminLogManager, _config.MultiServer);
+            _config.Commands.Unwarn,
+            _sanctionStateService);
+        _playerCommands = new PlayerCommands(Core, _discord, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _adminLogManager, _playerNameHistoryManager, _config.MultiServer);
         _serverCommands = new ServerCommands(Core, _adminLogManager, _config.Permissions, _config.GameMaps, _config.WorkshopMaps, _config.Commands);
         _adminCommands = new AdminCommands(Core, _adminDbManager, _groupDbManager, _adminLogManager, _config.Permissions, _config.Tags, _config.Commands, AdminMenuManager, _chatTagConfigManager);
         _chatCommands = new ChatCommands(
@@ -463,7 +483,7 @@ public partial class CS2_Admin : BasePlugin
 
     private void InitializeEventHandlers()
     {
-        _eventHandlers = new EventHandlers(Core, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _groupDbManager, _playerIpDbManager, _recentPlayersTracker, _config.Permissions, _config.Tags, _config.Commands, _config.MultiServer, _chatTagConfigManager);
+        _eventHandlers = new EventHandlers(Core, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _groupDbManager, _playerIpDbManager, _playerSessionManager, _playerNameHistoryManager, _recentPlayersTracker, _sanctionStateService, _discord, _config.Permissions, _config.Tags, _config.Commands, _config.MultiServer, _chatTagConfigManager);
         _eventHandlers.SetDatabaseReady(false);
         _eventHandlers.OnPlayerDisconnected += playerId => _playerCommands.OnPlayerDisconnect(playerId);
         _eventHandlers.RegisterHooks();
@@ -499,6 +519,7 @@ public partial class CS2_Admin : BasePlugin
 
         _eventHandlers.SetDatabaseReady(true);
         StartAdminPlaytimeTracking();
+        _discord.StartBackgroundUpdates(_playerSessionManager, _discordServerStatusDbManager, _rankLeaderboardDbManager, _discordMessageStateDbManager);
         await _eventHandlers.RefreshAdminStateForAllOnlinePlayersAsync();
 
         Core.Logger.LogInformationIfEnabled(
@@ -571,8 +592,12 @@ public partial class CS2_Admin : BasePlugin
         await _adminDbManager.InitializeAsync();
         await _adminLogManager.InitializeAsync();
         await _serverInfoDbManager.InitializeAsync();
+        await _discordServerStatusDbManager.InitializeAsync();
+        await _discordMessageStateDbManager.InitializeAsync();
         await _adminPlaytimeDbManager.InitializeAsync();
         await _playerIpDbManager.InitializeAsync();
+        await _playerSessionManager.InitializeAsync();
+        await _playerNameHistoryManager.InitializeAsync();
     }
 
     private bool TryRunMigrations(string source)
@@ -625,10 +650,15 @@ public partial class CS2_Admin : BasePlugin
             "admin_gags",
             "admin_warns",
             "admin_log",
+            "admin_actions_log",
             "admin_servers",
+            "admin_discord_server_status",
+            "admin_discord_message_state",
             "admin_playtime",
             "admin_player_ips",
-            "admin_player_ip_history"
+            "admin_player_ip_history",
+            "admin_player_sessions",
+            "admin_player_names_history"
         };
 
         try
@@ -1210,6 +1240,8 @@ public partial class CS2_Admin : BasePlugin
             RegisterCommand(cmd, _playerCommands.OnKickCommand);
         foreach (var cmd in _config.Commands.Slap)
             RegisterCommand(cmd, _playerCommands.OnSlapCommand);
+        foreach (var cmd in _config.Commands.God)
+            RegisterCommand(cmd, _playerCommands.OnGodCommand);
         foreach (var cmd in _config.Commands.Slay)
             RegisterCommand(cmd, _playerCommands.OnSlayCommand);
         foreach (var cmd in _config.Commands.Respawn)
@@ -1230,6 +1262,10 @@ public partial class CS2_Admin : BasePlugin
             RegisterCommand(cmd, _playerCommands.OnResizeCommand);
         foreach (var cmd in _config.Commands.Drug)
             RegisterCommand(cmd, _playerCommands.OnDrugCommand);
+        foreach (var cmd in _config.Commands.Blind)
+            RegisterCommand(cmd, _playerCommands.OnBlindCommand);
+        foreach (var cmd in _config.Commands.Glow)
+            RegisterCommand(cmd, _playerCommands.OnGlowCommand);
         foreach (var cmd in _config.Commands.Beacon)
             RegisterCommand(cmd, _playerCommands.OnBeaconCommand);
         foreach (var cmd in _config.Commands.Burn)
@@ -1248,6 +1284,8 @@ public partial class CS2_Admin : BasePlugin
             RegisterCommand(cmd, _playerCommands.OnMoneyCommand);
         foreach (var cmd in _config.Commands.Give)
             RegisterCommand(cmd, _playerCommands.OnGiveCommand);
+        foreach (var cmd in _config.Commands.ListPlayers)
+            RegisterCommand(cmd, _playerCommands.OnPlayersCommand);
         foreach (var cmd in _config.Commands.Who)
             RegisterCommand(cmd, _playerCommands.OnWhoCommand);
 
@@ -1352,6 +1390,18 @@ public partial class CS2_Admin : BasePlugin
             commands.Beacon = ["beacon"];
             Core.Logger.LogWarningIfEnabled("[CS2Admin] Commands.Beacon alias list was empty. Restored default alias: beacon");
         }
+        else
+        {
+            EnsureAlias(commands.Beacon, "beacon");
+        }
+
+        EnsureAlias(commands.Beacon, "sw_beacon");
+
+        if (commands.ListPlayers == null || commands.ListPlayers.Count == 0)
+        {
+            commands.ListPlayers = ["players"];
+            Core.Logger.LogWarningIfEnabled("[CS2Admin] Commands.ListPlayers alias list was empty. Restored default alias: players");
+        }
     }
 
     private void EnsureInternalMenuAliases(CommandsConfig commands)
@@ -1359,6 +1409,7 @@ public partial class CS2_Admin : BasePlugin
         // Keep legacy aliases for compatibility, but prefer namespaced aliases to avoid collisions
         // with other admin plugins that register the same `sw_*` commands.
         EnsurePreferredAlias(commands.Slap, "cs2a_slap");
+        EnsurePreferredAlias(commands.God, "cs2a_god");
         EnsurePreferredAlias(commands.Slay, "cs2a_slay");
         EnsurePreferredAlias(commands.Respawn, "cs2a_respawn");
         EnsurePreferredAlias(commands.ChangeTeam, "cs2a_team");
@@ -1369,6 +1420,8 @@ public partial class CS2_Admin : BasePlugin
         EnsurePreferredAlias(commands.Unfreeze, "cs2a_unfreeze");
         EnsurePreferredAlias(commands.Resize, "cs2a_resize");
         EnsurePreferredAlias(commands.Drug, "cs2a_drug");
+        EnsurePreferredAlias(commands.Blind, "cs2a_blind");
+        EnsurePreferredAlias(commands.Glow, "cs2a_glow");
         EnsurePreferredAlias(commands.Beacon, "cs2a_beacon");
         EnsurePreferredAlias(commands.Burn, "cs2a_burn");
         EnsurePreferredAlias(commands.Disarm, "cs2a_disarm");
@@ -1397,6 +1450,21 @@ public partial class CS2_Admin : BasePlugin
 
         aliases.RemoveAll(x => string.Equals(x?.Trim(), preferredAlias, StringComparison.OrdinalIgnoreCase));
         aliases.Insert(0, preferredAlias);
+    }
+
+    private static void EnsureAlias(List<string>? aliases, string alias)
+    {
+        if (aliases == null || string.IsNullOrWhiteSpace(alias))
+        {
+            return;
+        }
+
+        if (aliases.Any(x => string.Equals(x?.Trim(), alias, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        aliases.Add(alias);
     }
 
     private bool ShouldSuppressDuplicateInvocation(ICommandContext context, string rawCommandName)
@@ -1522,8 +1590,57 @@ public partial class CS2_Admin : BasePlugin
         }
     }
 
+    private void EnsureBanModeConfig()
+    {
+        try
+        {
+            var configPath = Core.Configuration.GetConfigPath("config.json");
+            if (!File.Exists(configPath))
+            {
+                return;
+            }
+
+            var json = File.ReadAllText(configPath);
+            var root = JsonNode.Parse(json) as JsonObject;
+            if (root == null)
+            {
+                return;
+            }
+
+            JsonObject targetSection;
+            if (root["CS2Admin"] is JsonObject pluginSection)
+            {
+                targetSection = pluginSection;
+            }
+            else
+            {
+                targetSection = root;
+            }
+
+            var desiredBanMode = PluginConfig.NormalizeBanMode(
+                targetSection["BanMode"]?.GetValue<string>(),
+                targetSection["BanType"]?.GetValue<int>() ?? _config.BanType);
+
+            var currentBanMode = targetSection["BanMode"]?.GetValue<string>();
+            if (string.Equals(currentBanMode, desiredBanMode, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            targetSection["BanMode"] = desiredBanMode;
+            var rewritten = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(configPath, rewritten);
+            Core.Logger.LogInformationIfEnabled("[CS2Admin] Added/normalized BanMode in config.json: {BanMode}", desiredBanMode);
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to ensure BanMode in config.json: {Message}", ex.Message);
+        }
+    }
+
     private void RegisterEvents()
     {
+        Core.Event.OnClientPutInServer += _eventHandlers.OnClientPutInServer;
         Core.Event.OnClientSteamAuthorize += _eventHandlers.OnClientSteamAuthorize;
         Core.Event.OnClientDisconnected += _eventHandlers.OnClientDisconnected;
 

@@ -12,6 +12,7 @@ using SwiftlyS2.Shared.Misc;
 using System.Text.Json;
 using System.Globalization;
 using System.Reflection;
+using System.Drawing;
 
 namespace CS2_Admin.Commands;
 
@@ -21,7 +22,7 @@ public class PlayerCommands
     [];
 
     private readonly ISwiftlyCore _core;
-    private readonly DiscordWebhook _discord;
+    private readonly DiscordBotService _discord;
     private readonly PermissionsConfig _permissions;
     private readonly CommandsConfig _commands;
     private readonly TagsConfig _tags;
@@ -32,6 +33,7 @@ public class PlayerCommands
     private readonly WarnManager _warnManager;
     private readonly AdminDbManager _adminDbManager;
     private readonly AdminLogManager _adminLogManager;
+    private readonly PlayerNameHistoryManager _playerNameHistoryManager;
     private readonly MultiServerConfig _multiServerConfig;
     private readonly HashSet<int> _noclipPlayers = new();
     private readonly HashSet<int> _frozenPlayers = new();
@@ -71,7 +73,7 @@ public class PlayerCommands
 
     public PlayerCommands(
         ISwiftlyCore core,
-        DiscordWebhook discord,
+        DiscordBotService discord,
         PermissionsConfig permissions,
         CommandsConfig commands,
         TagsConfig tags,
@@ -82,6 +84,7 @@ public class PlayerCommands
         WarnManager warnManager,
         AdminDbManager adminDbManager,
         AdminLogManager adminLogManager,
+        PlayerNameHistoryManager playerNameHistoryManager,
         MultiServerConfig multiServerConfig)
     {
         _core = core;
@@ -96,7 +99,24 @@ public class PlayerCommands
         _warnManager = warnManager;
         _adminDbManager = adminDbManager;
         _adminLogManager = adminLogManager;
+        _playerNameHistoryManager = playerNameHistoryManager;
         _multiServerConfig = multiServerConfig;
+    }
+
+    private string L(string key, string fallback, params object[] args)
+    {
+        try
+        {
+            var localizer = PluginLocalizer.Get(_core);
+            var value = args.Length == 0 ? localizer[key] : localizer[key, args];
+            return string.Equals(value, key, StringComparison.OrdinalIgnoreCase)
+                ? (args.Length == 0 ? fallback : string.Format(CultureInfo.InvariantCulture, fallback, args))
+                : value;
+        }
+        catch
+        {
+            return args.Length == 0 ? fallback : string.Format(CultureInfo.InvariantCulture, fallback, args);
+        }
     }
 
     public void OnKickCommand(ICommandContext context)
@@ -154,8 +174,7 @@ public class PlayerCommands
             playerToKick?.Kick(reason, ENetworkDisconnectionReason.NETWORK_DISCONNECT_KICKED);
         });
 
-        _ = _discord.SendKickNotificationAsync(adminName, targetName, reason);
-        _ = _adminLogManager.AddLogAsync("kick", adminName, context.Sender?.SteamID ?? 0, targetSteamId, target.IPAddress, $"reason={reason}", target.Controller.PlayerName);
+        _ = _adminLogManager.AddLogAsync("kick", adminName, context.Sender?.SteamID ?? 0, targetSteamId, target.IPAddress, $"reason={reason}", target.Controller.PlayerName, target.PlayerID, reason);
 
         _core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} kicked {Target}. Reason: {Reason}", 
             adminName, targetName, reason);
@@ -193,7 +212,7 @@ public class PlayerCommands
             return;
         }
 
-        var damage = 5;
+        var damage = 0;
         if (args.Length > 1 && int.TryParse(args[1], out var parsedDamage))
         {
             damage = Math.Clamp(parsedDamage, 0, 100);
@@ -216,42 +235,12 @@ public class PlayerCommands
                     return;
                 }
 
-                if (damage > 0)
+                ApplySlap(livePawn, damage);
+
+                if (livePawn.Health <= 0)
                 {
-                    var currentHealth = livePawn.Health;
-                    var expectedHealth = Math.Max(currentHealth - damage, 0);
-
-                    if (expectedHealth <= 0)
-                    {
-                        if (livePawn.Health > 0)
-                        {
-                            livePawn.CommitSuicide(false, true);
-                        }
-
-                        return;
-                    }
-
-                    if (livePawn.Health > expectedHealth)
-                    {
-                        livePawn.Health = expectedHealth;
-                        livePawn.HealthUpdated();
-                    }
+                    return;
                 }
-
-                // Slap feedback: consistent medium-strength pop and random sway.
-                var currentVelocity = livePawn.AbsVelocity;
-                const float verticalBoost = 260f;
-                const float horizontalBoost = 95f;
-                var randomX = (float)(Random.Shared.NextDouble() * 2.0 - 1.0) * horizontalBoost;
-                var randomY = (float)(Random.Shared.NextDouble() * 2.0 - 1.0) * horizontalBoost;
-                var newVelocity = new Vector(
-                    currentVelocity.X + randomX,
-                    currentVelocity.Y + randomY,
-                    MathF.Max(currentVelocity.Z + 30f, verticalBoost));
-                livePawn.AbsVelocity = newVelocity;
-                var currentOrigin = livePawn.AbsOrigin ?? new Vector(0, 0, 0);
-                var currentRotation = livePawn.AbsRotation ?? new QAngle(0, 0, 0);
-                livePawn.Teleport(currentOrigin, currentRotation, newVelocity);
 
                 PlayerUtils.SendNotification(
                     liveTarget,
@@ -270,6 +259,105 @@ public class PlayerCommands
                 _core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} slapped {Target} for {Damage} damage", adminName, targetName, damage);
             });
         }
+    }
+
+    private static void ApplySlap(CCSPlayerPawn pawn, int damage)
+    {
+        if (damage > 0)
+        {
+            pawn.Health = Math.Max(pawn.Health - damage, 0);
+            pawn.HealthUpdated();
+        }
+
+        if (pawn.Health == 0)
+        {
+            pawn.CommitSuicide(false, false);
+            return;
+        }
+
+        var velocity = new Vector(
+            (float)Random.Shared.NextInt64(50, 230) * (Random.Shared.NextDouble() < 0.5 ? -1f : 1f),
+            (float)Random.Shared.NextInt64(50, 230) * (Random.Shared.NextDouble() < 0.5 ? -1f : 1f),
+            Random.Shared.NextInt64(100, 300));
+
+        pawn.Teleport(null, null, velocity);
+    }
+
+    public void OnGodCommand(ICommandContext context)
+    {
+        var args = CommandAliasUtils.NormalizeCommandArgs(context.Args, _commands.God);
+
+        if (!HasPermission(context, _permissions.God))
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_permission"]}");
+            return;
+        }
+
+        if (args.Length < 1)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["god_usage"]}");
+            return;
+        }
+
+        var targets = PlayerUtils.FindPlayersByTarget(_core, args[0], includeDeadPlayers: true);
+        if (targets.Count == 0)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_valid_targets"]}");
+            return;
+        }
+
+        targets = FilterTargetsByCanTarget(context, targets, allowSelf: true);
+        if (targets.Count == 0)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_valid_targets"]}");
+            return;
+        }
+
+        var adminName = context.Sender?.Controller.PlayerName ?? PluginLocalizer.Get(_core)["console_name"];
+        foreach (var target in targets)
+        {
+            _core.Scheduler.NextTick(() =>
+            {
+                var liveTarget = _core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamID);
+                if (liveTarget?.IsValid != true)
+                {
+                    return;
+                }
+
+                var pawn = liveTarget?.PlayerPawn;
+                if (pawn?.IsValid != true)
+                {
+                    return;
+                }
+
+                ToggleGodMode(pawn);
+                var enabled = !pawn.TakesDamage;
+                var stateLabel = enabled
+                    ? L("god_enabled", "ENABLED")
+                    : L("god_disabled", "DISABLED");
+                var targetName = liveTarget!.Controller?.PlayerName ?? PluginLocalizer.Get(_core)["unknown"];
+
+                foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
+                {
+                    var visibleAdmin = ResolveVisibleAdminName(player, adminName);
+                    player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {L("god_notification", "{0} toggled god mode {2} for {1}.", visibleAdmin, targetName, stateLabel)}");
+                }
+
+                PlayerUtils.SendNotification(
+                    liveTarget,
+                    _messagesConfig,
+                    L("god_personal_html", "<font color='#9b59b6'><b>GOD MODE {0}</b></font><br><br>By: <font color='#ffffff'>{1}</font>", stateLabel, ResolveVisibleAdminName(liveTarget, adminName)),
+                    $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {L("god_personal_chat", "God mode is now {0} for you by {1}.", stateLabel, ResolveVisibleAdminName(liveTarget, adminName))}");
+
+                _ = _adminLogManager.AddLogAsync("god", adminName, context.Sender?.SteamID ?? 0, liveTarget.SteamID, liveTarget.IPAddress, $"enabled={enabled}", targetName);
+            });
+        }
+    }
+
+    private static void ToggleGodMode(CCSPlayerPawn pawn)
+    {
+        pawn.TakesDamage = !pawn.TakesDamage;
+        pawn.TakesDamageUpdated();
     }
 
     public void OnSlayCommand(ICommandContext context)
@@ -1098,10 +1186,188 @@ public class PlayerCommands
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
             var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["drug_notification", visibleAdmin, targets.Count, durationSeconds]} | target: {targetNames}");
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {L("drug_notification", "{0} drugged {1} player(s) for {2} second(s).", visibleAdmin, targets.Count, durationSeconds)} | target: {targetNames}");
         }
 
         _ = _adminLogManager.AddLogAsync("drug", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={targets.Count};duration={durationSeconds}");
+    }
+
+    public void OnBlindCommand(ICommandContext context)
+    {
+        var args = CommandAliasUtils.NormalizeCommandArgs(context.Args, _commands.Blind);
+
+        if (!HasPermission(context, _permissions.Blind))
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_permission"]}");
+            return;
+        }
+
+        if (args.Length < 2)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["blind_usage"]}");
+            return;
+        }
+
+        if (!int.TryParse(args[1], out var parsedDuration))
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["blind_usage"]}");
+            return;
+        }
+
+        var durationSeconds = Math.Clamp(parsedDuration, 1, 60);
+        var targets = PlayerUtils.FindPlayersByTarget(_core, args[0], includeDeadPlayers: false)
+            .Where(p => p.PlayerPawn?.IsValid == true && p.PlayerPawn.Health > 0)
+            .ToList();
+        if (targets.Count == 0)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_valid_targets"]}");
+            return;
+        }
+
+        targets = FilterTargetsByCanTarget(context, targets, allowSelf: true);
+        if (targets.Count == 0)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_valid_targets"]}");
+            return;
+        }
+
+        foreach (var target in targets)
+        {
+            var targetSteamId = target.SteamID;
+            _core.Scheduler.NextTick(() =>
+            {
+                var liveTarget = _core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSteamId);
+                if (liveTarget?.IsValid != true)
+                {
+                    return;
+                }
+
+                if (!ApplyBlindEffect(liveTarget, durationSeconds))
+                {
+                    _core.Logger.LogWarningIfEnabled("[CS2_Admin] blind visual could not be applied for steamid={SteamId}", targetSteamId);
+                    return;
+                }
+
+                _core.Scheduler.DelayBySeconds(durationSeconds, () =>
+                {
+                    var sameTarget = _core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSteamId);
+                    if (sameTarget?.IsValid == true)
+                    {
+                        ClearBlindEffect(sameTarget);
+                    }
+                });
+            });
+        }
+
+        var adminName = context.Sender?.Controller.PlayerName ?? PluginLocalizer.Get(_core)["console_name"];
+        var targetNames = FormatTargetNames(targets);
+        foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
+        {
+            var visibleAdmin = ResolveVisibleAdminName(player, adminName);
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {L("blind_notification", "{0} blinded {1} player(s) for {2} second(s).", visibleAdmin, targets.Count, durationSeconds)} | target: {targetNames}");
+        }
+
+        _ = _adminLogManager.AddLogAsync("blind", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={targets.Count};duration={durationSeconds}");
+    }
+
+    public void OnGlowCommand(ICommandContext context)
+    {
+        var args = CommandAliasUtils.NormalizeCommandArgs(context.Args, _commands.Glow);
+
+        if (!HasPermission(context, _permissions.Glow))
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_permission"]}");
+            return;
+        }
+
+        if (args.Length < 2)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["glow_usage"]}");
+            return;
+        }
+
+        var disableGlow = args[1].Equals("off", StringComparison.OrdinalIgnoreCase);
+        var r = 255;
+        var g = 255;
+        var b = 255;
+        var a = 180;
+
+        if (!disableGlow)
+        {
+            if (args.Length < 4 ||
+                !int.TryParse(args[1], out r) ||
+                !int.TryParse(args[2], out g) ||
+                !int.TryParse(args[3], out b))
+            {
+                context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["glow_usage"]}");
+                return;
+            }
+
+            if (args.Length > 4 && !int.TryParse(args[4], out a))
+            {
+                context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["glow_usage"]}");
+                return;
+            }
+
+            r = Math.Clamp(r, 0, 255);
+            g = Math.Clamp(g, 0, 255);
+            b = Math.Clamp(b, 0, 255);
+            a = Math.Clamp(a, 0, 255);
+        }
+
+        var targets = PlayerUtils.FindPlayersByTarget(_core, args[0], includeDeadPlayers: false)
+            .Where(p => p.PlayerPawn?.IsValid == true && p.PlayerPawn.Health > 0)
+            .ToList();
+        if (targets.Count == 0)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_valid_targets"]}");
+            return;
+        }
+
+        targets = FilterTargetsByCanTarget(context, targets, allowSelf: true);
+        if (targets.Count == 0)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_valid_targets"]}");
+            return;
+        }
+
+        foreach (var target in targets)
+        {
+            var targetSteamId = target.SteamID;
+            _core.Scheduler.NextTick(() =>
+            {
+                var liveTarget = _core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSteamId);
+                if (liveTarget?.IsValid != true)
+                {
+                    return;
+                }
+
+                if (disableGlow)
+                {
+                    ClearGlow(liveTarget);
+                }
+                else
+                {
+                    ApplyGlow(liveTarget, r, g, b, a);
+                }
+            });
+        }
+
+        var adminName = context.Sender?.Controller.PlayerName ?? PluginLocalizer.Get(_core)["console_name"];
+        var targetNames = FormatTargetNames(targets);
+        foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
+        {
+            var visibleAdmin = ResolveVisibleAdminName(player, adminName);
+            var message = disableGlow
+                ? L("glow_off_notification", "{0} cleared glow for {1} player(s).", visibleAdmin, targets.Count)
+                : L("glow_notification", "{0} set glow for {1} player(s) to RGBA({2}, {3}, {4}, {5}).", visibleAdmin, targets.Count, r, g, b, a);
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {message} | target: {targetNames}");
+        }
+
+        var details = disableGlow
+            ? $"targets={targets.Count};off=true"
+            : $"targets={targets.Count};rgba={r},{g},{b},{a}";
+        _ = _adminLogManager.AddLogAsync("glow", adminName, context.Sender?.SteamID ?? 0, null, null, details);
     }
 
     public void OnBeaconCommand(ICommandContext context)
@@ -1504,6 +1770,8 @@ public class PlayerCommands
             target.Controller.PlayerNameUpdated();
             changed++;
             renamedTargetOldNames.Add(oldName);
+            _ = _playerNameHistoryManager.ObserveNameAsync(target.SteamID, newName, forceWrite: true);
+            _ = _playerNameHistoryManager.SetCustomNameAsync(target.SteamID, newName);
         }
 
         var adminName = context.Sender?.Controller.PlayerName ?? PluginLocalizer.Get(_core)["console_name"];
@@ -1720,46 +1988,54 @@ public class PlayerCommands
 
         var args = CommandAliasUtils.NormalizeCommandArgs(context.Args, _commands.ListPlayers);
         var isJson = args.Length >= 1 && string.Equals(args[0], "-json", StringComparison.OrdinalIgnoreCase);
+        var includeBots = args.Any(arg =>
+            string.Equals(arg, "-all", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(arg, "--all", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(arg, "-bots", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(arg, "--bots", StringComparison.OrdinalIgnoreCase));
 
         var players = _core.PlayerManager
             .GetAllPlayers()
-            .Where(p => p.IsValid)
+            .Where(p => p.IsValid && (includeBots || !p.IsFakeClient))
             .OrderBy(p => p.Controller.PlayerName)
             .ToList();
 
         if (!isJson)
         {
-            var lines = new List<string>
-            {
-                PluginLocalizer.Get(_core)["players_list_header"]
-            };
+            var lines = new List<string>(players.Count);
 
             foreach (var player in players)
             {
-                var tag = _tags.Enabled
-                    ? PlayerUtils.GetScoreTag(player, _tags.PlayerTag)
-                    : "-";
-
-                lines.Add(
-                    PluginLocalizer.Get(_core)["players_list_entry", player.PlayerID, tag, player.Controller.PlayerName ?? PluginLocalizer.Get(_core)["player_fallback_name", player.PlayerID]]);
+                lines.Add(FormatPlayerConsoleLine(player));
             }
-
-            lines.Add(PluginLocalizer.Get(_core)["players_list_footer"]);
 
             var output = string.Join('\n', lines);
 
             if (context.IsSentByPlayer && context.Sender != null)
             {
-                context.Sender.SendConsole(output);
+                if (!string.IsNullOrEmpty(output))
+                {
+                    context.Sender.SendConsole(output);
+                }
 
-                if (context.Sender.IsValid && !context.Sender.IsFakeClient)
+                if (context.Sender.IsValid && !context.Sender.IsFakeClient && !string.IsNullOrEmpty(output))
                 {
                     context.Sender.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["players_list_console"]}");
                 }
             }
             else
             {
-                _core.Logger.LogInformationIfEnabled("{PlayerList}", output);
+                if (lines.Count == 0)
+                {
+                    context.Reply("NO_PLAYERS");
+                }
+                else
+                {
+                    foreach (var line in lines)
+                    {
+                        context.Reply(line);
+                    }
+                }
             }
         }
         else
@@ -1778,21 +2054,21 @@ public class PlayerCommands
                     var score = p.Controller.Score;
                     var ping = (int)p.Controller.Ping;
                     var isAlive = p.PlayerPawn?.IsValid == true && p.PlayerPawn.Health > 0;
-                    var ip = (p.IPAddress ?? PluginLocalizer.Get(_core)["unknown"]).Split(':')[0];
+                    var ip = NormalizePlayerIp(p.IPAddress);
                     var tag = _tags.Enabled
                         ? PlayerUtils.GetScoreTag(p, _tags.PlayerTag)
                         : "-";
 
                     return new PlayerListEntry(
                         p.PlayerID,
-                        p.Controller.PlayerName,
-                        p.SteamID.ToString(),
+                        SanitizePlayerNameForConsole(p.Controller.PlayerName ?? PluginLocalizer.Get(_core)["player_fallback_name", p.PlayerID]),
+                        p.IsFakeClient ? "BOT" : p.SteamID.ToString(CultureInfo.InvariantCulture),
                         teamNum,
                         teamName,
                         score,
                         ping,
                         isAlive,
-                        ip,
+                        p.IsFakeClient ? "-" : ip,
                         tag
                     );
                 })
@@ -1811,9 +2087,56 @@ public class PlayerCommands
             }
             else
             {
-                _core.Logger.LogInformationIfEnabled("{PlayerListJson}", json);
+                context.Reply(json);
             }
         }
+    }
+
+    private string FormatPlayerConsoleLine(IPlayer player)
+    {
+        var userId = player.PlayerID;
+        var steamId = player.IsFakeClient ? "BOT" : player.SteamID.ToString(CultureInfo.InvariantCulture);
+        var playerName = SanitizePlayerNameForConsole(player.Controller.PlayerName ?? PluginLocalizer.Get(_core)["player_fallback_name", userId]);
+        var ipAddress = player.IsFakeClient ? "-" : NormalizePlayerIp(player.IPAddress);
+        return $"#{userId} | {steamId} | {playerName} | {ipAddress}";
+    }
+
+    private static string NormalizePlayerIp(string? ipAddress)
+    {
+        if (string.IsNullOrWhiteSpace(ipAddress))
+        {
+            return "-";
+        }
+
+        var normalized = ipAddress.Trim();
+        var colonIndex = normalized.IndexOf(':');
+        if (colonIndex > 0)
+        {
+            normalized = normalized[..colonIndex];
+        }
+
+        return string.IsNullOrWhiteSpace(normalized) ? "-" : normalized;
+    }
+
+    private static string SanitizePlayerNameForConsole(string playerName)
+    {
+        if (string.IsNullOrWhiteSpace(playerName))
+        {
+            return "Unknown";
+        }
+
+        var sanitized = playerName
+            .Replace('\r', ' ')
+            .Replace('\n', ' ')
+            .Replace('|', '/')
+            .Trim();
+
+        while (sanitized.Contains("  ", StringComparison.Ordinal))
+        {
+            sanitized = sanitized.Replace("  ", " ", StringComparison.Ordinal);
+        }
+
+        return string.IsNullOrWhiteSpace(sanitized) ? "Unknown" : sanitized;
     }
 
     public void OnWhoCommand(ICommandContext context)
@@ -2239,17 +2562,14 @@ public class PlayerCommands
                 pawn.VelocityModifier = 0.60f;
                 pawn.VelocityModifierUpdated();
 
-                var origin = pawn.AbsOrigin ?? new Vector(0, 0, 0);
-                var baseRot = _drugOriginalRotations.TryGetValue(playerId, out var savedRot)
-                    ? savedRot
-                    : (pawn.AbsRotation ?? new QAngle(0, 0, 0));
-                var nextYaw = baseRot.Y + Random.Shared.Next(-18, 19);
-                var nextRoll = ticksRemaining % 2 == 0 ? 12f : -12f;
                 var randomX = Random.Shared.Next(-45, 46);
                 var randomY = Random.Shared.Next(-45, 46);
                 var currentVelocity = pawn.AbsVelocity;
                 pawn.AbsVelocity = new Vector(currentVelocity.X + randomX, currentVelocity.Y + randomY, currentVelocity.Z);
-                pawn.Teleport(origin, new QAngle(baseRot.X, nextYaw, nextRoll), pawn.AbsVelocity);
+                TryApplyAimPunch(
+                    pawn,
+                    new QAngle((float)(Random.Shared.NextDouble() * 0.9 - 0.45), (float)(Random.Shared.NextDouble() * 1.2 - 0.6), 0f),
+                    new QAngle((float)(Random.Shared.NextDouble() * 3.0 - 1.5), (float)(Random.Shared.NextDouble() * 3.6 - 1.8), 0f));
 
                 // Visual drug effect: pulse viewmodel FOV with a small random jitter.
                 var baseFov = _drugOriginalViewmodelFov.TryGetValue(playerId, out var originalFov) && originalFov > 0
@@ -2293,11 +2613,7 @@ public class PlayerCommands
                     {
                         TrySetViewmodelFov(target, restoreFov);
                     }
-                    var finalOrigin = pawn.AbsOrigin ?? origin;
-                    if (_drugOriginalRotations.TryGetValue(playerId, out var originalRot))
-                    {
-                        pawn.Teleport(finalOrigin, new QAngle(originalRot.X, originalRot.Y, 0f), pawn.AbsVelocity);
-                    }
+                    TryApplyAimPunch(pawn, new QAngle(0f, 0f, 0f), new QAngle(0f, 0f, 0f));
                     _drugPlayers.Remove(playerId);
                     _drugOriginalRotations.Remove(playerId);
                     _drugOriginalViewmodelFov.Remove(playerId);
@@ -2669,6 +2985,74 @@ public class PlayerCommands
         TrySetFloatPropertyWithUpdated(pawn, "BlindAlpha", 0f);
         TrySetNestedNumericPropertyWithUpdated(pawn, "BlindStartTime", 0f);
         TrySetNestedNumericPropertyWithUpdated(pawn, "BlindUntilTime", 0f);
+    }
+
+    private bool ApplyBlindEffect(IPlayer target, float holdSeconds)
+    {
+        var applied = false;
+        try
+        {
+            using var message = _core.NetMessage.Create<CUserMessageFade>();
+            message.Duration = Convert.ToUInt32(0.15f * 512);
+            message.HoldTime = Convert.ToUInt32(Math.Clamp(holdSeconds, 0f, 60f) * 512);
+            message.Flags = 0x0008 | 0x0010; // stay out + purge
+            message.Color = 0xFF000000;
+            message.Recipients.AddRecipient(target.PlayerID);
+            message.Send();
+            applied = true;
+        }
+        catch
+        {
+            // fall back below
+        }
+
+        return TryApplyFlashOverlay(target, holdSeconds, 255f) || applied;
+    }
+
+    private void ClearBlindEffect(IPlayer target)
+    {
+        try
+        {
+            using var message = _core.NetMessage.Create<CUserMessageFade>();
+            message.Duration = 0;
+            message.HoldTime = 0;
+            message.Flags = 0x0001 | 0x0010; // fade in + purge
+            message.Color = 0xFF000000;
+            message.Recipients.AddRecipient(target.PlayerID);
+            message.Send();
+        }
+        catch
+        {
+            // fall back below
+        }
+
+        ClearFlashOverlay(target);
+    }
+
+    private void ApplyGlow(IPlayer target, int r, int g, int b, int a)
+    {
+        var pawn = target.PlayerPawn;
+        if (pawn?.IsValid != true)
+        {
+            return;
+        }
+
+        pawn.RenderMode = RenderMode_t.kRenderTransAlpha;
+        pawn.Render = new(r, g, b, a);
+        pawn.RenderUpdated();
+    }
+
+    private void ClearGlow(IPlayer target)
+    {
+        var pawn = target.PlayerPawn;
+        if (pawn?.IsValid != true)
+        {
+            return;
+        }
+
+        pawn.RenderMode = RenderMode_t.kRenderNormal;
+        pawn.Render = new(255, 255, 255, 255);
+        pawn.RenderUpdated();
     }
 
     private void CaptureBurnVisualState(IPlayer target)
@@ -3131,6 +3515,28 @@ public class PlayerCommands
     private static string NormalizeItemName(string input)
     {
         var normalized = input.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return "weapon_knife";
+        }
+
+        var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["m4a1s"] = "weapon_m4a1_silencer",
+            ["m4a1-s"] = "weapon_m4a1_silencer",
+            ["m4a1_s"] = "weapon_m4a1_silencer",
+            ["m4a4"] = "weapon_m4a1",
+            ["usp-s"] = "weapon_usp_silencer",
+            ["usps"] = "weapon_usp_silencer",
+            ["deagle"] = "weapon_deagle",
+            ["awp"] = "weapon_awp"
+        };
+
+        if (aliases.TryGetValue(normalized, out var mapped))
+        {
+            return mapped;
+        }
+
         if (normalized.StartsWith("weapon_", StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith("item_", StringComparison.OrdinalIgnoreCase))
         {
@@ -3347,45 +3753,12 @@ public class PlayerCommands
 
     private bool CanTarget(ICommandContext context, IPlayer target, bool allowSelf = false)
     {
-        if (!context.IsSentByPlayer || context.Sender == null)
-        {
-            return true;
-        }
-
-        if (context.Sender.SteamID == target.SteamID)
-        {
-            if (allowSelf)
-            {
-                return true;
-            }
-
-            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["cannot_target_self"]}");
-            return false;
-        }
-
-        var adminImm = _adminDbManager.GetEffectiveImmunityAsync(context.Sender.SteamID).GetAwaiter().GetResult();
-        var targetImm = _adminDbManager.GetEffectiveImmunityAsync(target.SteamID).GetAwaiter().GetResult();
-        if (targetImm >= adminImm && targetImm > 0)
-        {
-            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["cannot_target_immunity"]}");
-            return false;
-        }
-
-        return true;
+        return PlayerUtils.CanAdminTargetAsync(_core, _adminDbManager, context, target.SteamID, allowSelf).GetAwaiter().GetResult();
     }
 
     private List<IPlayer> FilterTargetsByCanTarget(ICommandContext context, IEnumerable<IPlayer> targets, bool allowSelf = false)
     {
-        var result = new List<IPlayer>();
-        foreach (var target in targets)
-        {
-            if (CanTarget(context, target, allowSelf))
-            {
-                result.Add(target);
-            }
-        }
-
-        return result;
+        return PlayerUtils.FilterTargetsByAccessAsync(_core, _adminDbManager, context, targets, allowSelf).GetAwaiter().GetResult();
     }
 
 }

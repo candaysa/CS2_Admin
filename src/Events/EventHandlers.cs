@@ -12,6 +12,7 @@ using SwiftlyS2.Shared.Misc;
 using SwiftlyS2.Shared.Players;
 using SwiftlyS2.Shared.ProtobufDefinitions;
 using System.Text.RegularExpressions;
+using System.Collections.Concurrent;
 
 namespace CS2_Admin.Events;
 
@@ -36,7 +37,11 @@ public class EventHandlers
     private readonly AdminDbManager _adminManager;
     private readonly GroupDbManager _groupManager;
     private readonly PlayerIpDbManager _playerIpManager;
+    private readonly PlayerSessionManager _playerSessionManager;
+    private readonly PlayerNameHistoryManager _playerNameHistoryManager;
     private readonly RecentPlayersTracker _recentPlayersTracker;
+    private readonly PlayerSanctionStateService _sanctionStateService;
+    private readonly DiscordBotService _discord;
     private readonly PermissionsConfig _permissions;
     private readonly TagsConfig _tags;
     private readonly CommandsConfig _commands;
@@ -46,6 +51,7 @@ public class EventHandlers
     private readonly Dictionary<int, DateTime> _muteWarnTimestamps = new();
     private readonly Dictionary<int, DateTime> _gagWarnTimestamps = new();
     private readonly Dictionary<int, RecentPlayerInfo> _connectedPlayerSnapshots = new();
+    private readonly ConcurrentDictionary<int, byte> _connectNotificationsSent = new();
     private readonly Dictionary<ulong, string> _lastKnownAdminTags = new();
     
     private Guid _chatHookGuid = Guid.Empty;
@@ -66,7 +72,11 @@ public class EventHandlers
         AdminDbManager adminManager,
         GroupDbManager groupManager,
         PlayerIpDbManager playerIpManager,
+        PlayerSessionManager playerSessionManager,
+        PlayerNameHistoryManager playerNameHistoryManager,
         RecentPlayersTracker recentPlayersTracker,
+        PlayerSanctionStateService sanctionStateService,
+        DiscordBotService discord,
         PermissionsConfig permissions,
         TagsConfig tags,
         CommandsConfig commands,
@@ -81,12 +91,33 @@ public class EventHandlers
         _adminManager = adminManager;
         _groupManager = groupManager;
         _playerIpManager = playerIpManager;
+        _playerSessionManager = playerSessionManager;
+        _playerNameHistoryManager = playerNameHistoryManager;
         _recentPlayersTracker = recentPlayersTracker;
+        _sanctionStateService = sanctionStateService;
+        _discord = discord;
         _permissions = permissions;
         _tags = tags;
         _commands = commands;
         _multiServerConfig = multiServerConfig;
         _chatTagConfigManager = chatTagConfigManager;
+    }
+
+    public void OnClientPutInServer(IOnClientPutInServerEvent @event)
+    {
+        var player = _core.PlayerManager.GetPlayer(@event.PlayerId);
+        if (player?.IsValid != true || player.IsFakeClient)
+        {
+            return;
+        }
+
+        _connectedPlayerSnapshots[@event.PlayerId] = new RecentPlayerInfo(
+            player.SteamID,
+            player.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"],
+            player.IPAddress,
+            DateTime.UtcNow);
+        
+        _core.Scheduler.DelayBySeconds(3f, () => TrySendConnectNotification(@event.PlayerId));
     }
     
     public void RegisterHooks()
@@ -158,24 +189,26 @@ public class EventHandlers
             var playerId = player.PlayerID;
             
             // Check mute expiry
-            var cachedMute = _muteManager.GetActiveMuteFromCache(steamId);
+            var cachedMute = _sanctionStateService.GetCachedMute(steamId) ?? _muteManager.GetActiveMuteFromCache(steamId);
             if (cachedMute != null && cachedMute.IsExpired)
             {
                 // Mute has expired - notify player and remove mute
                 player.SendChat($" \x04{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["mute_expired"]}");
                 player.VoiceFlags = VoiceFlagValue.Normal;
                 _muteManager.ClearCache();
+                _sanctionStateService.Invalidate(steamId);
                 _muteWarnTimestamps.Remove(playerId);
                 _core.Logger.LogInformationIfEnabled("[CS2_Admin] Mute expired for player {SteamId}", steamId);
             }
             
             // Check gag expiry
-            var cachedGag = _gagManager.GetActiveGagFromCache(steamId);
+            var cachedGag = _sanctionStateService.GetCachedGag(steamId) ?? _gagManager.GetActiveGagFromCache(steamId);
             if (cachedGag != null && cachedGag.IsExpired)
             {
                 // Gag has expired - notify player
                 player.SendChat($" \x04{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["gag_expired"]}");
                 _gagManager.ClearCache();
+                _sanctionStateService.Invalidate(steamId);
                 _gagWarnTimestamps.Remove(playerId);
                 _core.Logger.LogInformationIfEnabled("[CS2_Admin] Gag expired for player {SteamId}", steamId);
             }
@@ -206,6 +239,7 @@ public class EventHandlers
             playerName,
             playerIp,
             DateTime.UtcNow);
+        TrySendConnectNotification(playerId);
         ScheduleDeferredBanRecheck(playerId, 1.5f);
         ScheduleDeferredBanRecheck(playerId, 5f);
 
@@ -215,6 +249,25 @@ public class EventHandlers
         {
             try
             {
+                if (_databaseReady)
+                {
+                    await _playerSessionManager.OpenSessionAsync(steamId, playerName, playerId, playerIp);
+                    await _playerNameHistoryManager.ObserveNameAsync(steamId, playerName, forceWrite: true);
+                    var customName = await _playerNameHistoryManager.GetCustomNameAsync(steamId);
+                    if (!string.IsNullOrWhiteSpace(customName))
+                    {
+                        _core.Scheduler.NextTick(() =>
+                        {
+                            var live = _core.PlayerManager.GetPlayer(playerId);
+                            if (live?.IsValid == true && live.Controller?.IsValid == true)
+                            {
+                                live.Controller.PlayerName = customName;
+                                live.Controller.PlayerNameUpdated();
+                            }
+                        });
+                    }
+                }
+
                 // Persist latest SteamID <-> IP mapping early, even if player gets kicked by ban checks.
                 await _playerIpManager.UpsertPlayerIpAsync(
                     steamId,
@@ -238,7 +291,8 @@ public class EventHandlers
                 }
 
                 // Check if player is muted and apply voice mute
-                var mute = await _muteManager.GetActiveMuteAsync(steamId);
+                var sanctionState = await _sanctionStateService.RefreshAsync(steamId, playerIp);
+                var mute = sanctionState.Mute;
                 if (mute != null && mute.IsActive)
                 {
                     _core.Scheduler.NextTick(() =>
@@ -438,10 +492,12 @@ public class EventHandlers
                 var player = _core.PlayerManager.GetPlayer(playerId);
                 return (player?.IPAddress, player?.Controller.PlayerName);
             });
-            var activeBan = await _banManager.GetActiveBanAsync(steamId, joiningState.IPAddress, _multiServerConfig.Enabled);
-            var activeMute = await _muteManager.GetActiveMuteAsync(steamId);
-            var activeGag = await _gagManager.GetActiveGagAsync(steamId);
-            var activeWarn = await _warnManager.GetActiveWarnAsync(steamId);
+            var sanctionState = _sanctionStateService.GetCachedState(steamId)
+                                ?? await _sanctionStateService.RefreshAsync(steamId, joiningState.IPAddress);
+            var activeBan = sanctionState.Ban;
+            var activeMute = sanctionState.Mute;
+            var activeGag = sanctionState.Gag;
+            var activeWarn = sanctionState.Warn;
             var joiningAdmin = await _adminManager.GetAdminAsync(steamId);
             var shouldShowToJoiningPlayer = joiningAdmin != null && joiningAdmin.IsActive;
             if (!shouldShowToJoiningPlayer)
@@ -533,6 +589,7 @@ public class EventHandlers
         
         _muteWarnTimestamps.Remove(playerId);
         _gagWarnTimestamps.Remove(playerId);
+        _connectNotificationsSent.TryRemove(playerId, out _);
 
         RecentPlayerInfo? snapshot = null;
         var player = _core.PlayerManager.GetPlayer(playerId);
@@ -552,8 +609,11 @@ public class EventHandlers
         if (snapshot != null)
         {
             _recentPlayersTracker.Add(snapshot);
+            _ = _discord.SendDisconnectNotificationAsync(snapshot.Name, snapshot.SteamId, snapshot.IpAddress);
             _ = Task.Run(async () =>
             {
+                await _playerSessionManager.CloseSessionAsync(snapshot.SteamId, snapshot.Name, playerId, snapshot.IpAddress);
+                await _playerNameHistoryManager.ObserveNameAsync(snapshot.SteamId, snapshot.Name, forceWrite: true);
                 await _playerIpManager.UpsertPlayerIpAsync(snapshot.SteamId, snapshot.Name, snapshot.IpAddress);
             });
         }
@@ -561,6 +621,40 @@ public class EventHandlers
         _connectedPlayerSnapshots.Remove(playerId);
 
         OnPlayerDisconnected?.Invoke(playerId);
+    }
+
+    private void TrySendConnectNotification(int playerId)
+    {
+        if (_connectNotificationsSent.ContainsKey(playerId))
+        {
+            return;
+        }
+
+        if (!_connectedPlayerSnapshots.TryGetValue(playerId, out var snapshot))
+        {
+            return;
+        }
+
+        var player = _core.PlayerManager.GetPlayer(playerId);
+        if (player?.IsValid == true && player.IsFakeClient)
+        {
+            return;
+        }
+
+        if (!_connectNotificationsSent.TryAdd(playerId, 0))
+        {
+            return;
+        }
+
+        var activePlayers = _core.PlayerManager
+            .GetAllPlayers()
+            .Count(p => p.IsValid && !p.IsFakeClient);
+
+        _ = _discord.SendConnectNotificationAsync(
+            snapshot.Name,
+            snapshot.SteamId,
+            snapshot.IpAddress,
+            activePlayers);
     }
 
     public HookResult OnPlayerSpeak(int playerId)
@@ -619,7 +713,7 @@ public class EventHandlers
 
     public bool CheckGag(ulong steamId, int playerId, IPlayer player)
     {
-        var cachedGag = _gagManager.GetActiveGagFromCache(steamId);
+        var cachedGag = _sanctionStateService.GetCachedGag(steamId) ?? _gagManager.GetActiveGagFromCache(steamId);
 
         if (cachedGag != null && cachedGag.IsActive)
         {
@@ -639,7 +733,15 @@ public class EventHandlers
                     player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["gagged_warning_minutes", remainingMinutes]}");
                 }
                 _gagWarnTimestamps[playerId] = DateTime.UtcNow;
-                _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug] gag block (voice/chat precheck) steamid={SteamId} playerId={PlayerId}", steamId, playerId);
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Gag] precheck-block steamid={SteamId} playerId={PlayerId} name={PlayerName} gagId={GagId} admin={Admin} expiresAt={ExpiresAt} reason={Reason}",
+                    steamId,
+                    playerId,
+                    player.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"],
+                    cachedGag.Id,
+                    cachedGag.AdminName,
+                    cachedGag.ExpiresAt?.ToString("o") ?? "permanent",
+                    cachedGag.Reason);
             }
 
             return true; // Block message
@@ -648,7 +750,16 @@ public class EventHandlers
         // Check database asynchronously for cache miss
         _ = Task.Run(async () =>
         {
-            await _gagManager.GetActiveGagAsync(steamId);
+            var loadedState = await _sanctionStateService.RefreshAsync(steamId, player.IPAddress);
+            var loadedGag = loadedState.Gag;
+            if (loadedGag != null)
+            {
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Gag] precheck-cache-miss-resolved-active steamid={SteamId} playerId={PlayerId} gagId={GagId}",
+                    steamId,
+                    playerId,
+                    loadedGag.Id);
+            }
         });
 
         return false;
@@ -663,6 +774,7 @@ public class EventHandlers
         if (_databaseReady)
         {
             _ = RefreshAdminStateForAllOnlinePlayersAsync();
+            _ = ReapplyCustomNamesAsync();
         }
 
         return HookResult.Continue;
@@ -772,6 +884,35 @@ public class EventHandlers
     public Task RefreshTagsForAllOnlinePlayersAsync()
     {
         return RefreshAdminStateForAllOnlinePlayersAsync();
+    }
+
+    private async Task ReapplyCustomNamesAsync()
+    {
+        var snapshots = await RunOnMainThreadAsync(() =>
+            _core.PlayerManager
+                .GetAllPlayers()
+                .Where(p => p.IsValid && !p.IsFakeClient)
+                .Select(p => (p.PlayerID, p.SteamID))
+                .ToList());
+
+        foreach (var snapshot in snapshots)
+        {
+            var customName = await _playerNameHistoryManager.GetCustomNameAsync(snapshot.SteamID);
+            if (string.IsNullOrWhiteSpace(customName))
+            {
+                continue;
+            }
+
+            _core.Scheduler.NextTick(() =>
+            {
+                var live = _core.PlayerManager.GetPlayer(snapshot.PlayerID);
+                if (live?.IsValid == true && live.Controller?.IsValid == true)
+                {
+                    live.Controller.PlayerName = customName;
+                    live.Controller.PlayerNameUpdated();
+                }
+            });
+        }
     }
 
     private async Task<string> ResolveTagForPlayerAsync(ulong steamId, Admin? admin = null)
@@ -888,6 +1029,12 @@ public class EventHandlers
         if (player == null || !player.IsValid)
             return HookResult.Continue;
 
+        if (_databaseReady)
+        {
+            _ = _playerNameHistoryManager.ObserveNameAsync(player.SteamID, player.Controller.PlayerName);
+            _ = _playerSessionManager.TouchSessionAsync(player.SteamID, player.Controller.PlayerName, playerId, player.IPAddress);
+        }
+
         // Gagged players can still execute commands; only normal chat is restricted.
         if (!string.IsNullOrWhiteSpace(text) && (text.StartsWith("!") || text.StartsWith("/")))
         {
@@ -921,7 +1068,16 @@ public class EventHandlers
                     player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["gagged_chat_warning_minutes", remainingMinutes]}");
                 }
                 _gagWarnTimestamps[playerId] = DateTime.UtcNow;
-                _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug] gag chat blocked steamid={SteamId} playerId={PlayerId}", steamId, playerId);
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Gag] chat-block steamid={SteamId} playerId={PlayerId} name={PlayerName} gagId={GagId} admin={Admin} expiresAt={ExpiresAt} reason={Reason} text={Text}",
+                    steamId,
+                    playerId,
+                    player.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"],
+                    cachedGag.Id,
+                    cachedGag.AdminName,
+                    cachedGag.ExpiresAt?.ToString("o") ?? "permanent",
+                    cachedGag.Reason,
+                    string.IsNullOrWhiteSpace(text) ? "-" : text.Trim());
             }
 
             var playerName = player.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"];
@@ -949,8 +1105,21 @@ public class EventHandlers
         // Check database asynchronously for cache miss (for next time)
         _ = Task.Run(async () =>
         {
-            await _gagManager.GetActiveGagAsync(steamId);
+            var loadedGag = await _gagManager.GetActiveGagAsync(steamId);
+            if (loadedGag != null)
+            {
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Gag] precheck-cache-miss-resolved-active steamid={SteamId} playerId={PlayerId} gagId={GagId}",
+                    steamId,
+                    playerId,
+                    loadedGag.Id);
+            }
         });
+
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            _ = _discord.SendChatNotificationAsync(player, text, teamOnly);
+        }
 
         if (_chatTagConfigManager.Config.ChatEnabled && !string.IsNullOrWhiteSpace(text))
         {
@@ -1151,6 +1320,18 @@ public class EventHandlers
                     snapshot.Name,
                     snapshot.Ip,
                     DateTime.UtcNow);
+            }
+
+            var sessionSnapshots = connectedSnapshots
+                .Select(snapshot => new PlayerSessionSnapshot(snapshot.PlayerID, snapshot.SteamID, snapshot.Name, snapshot.Ip))
+                .ToList();
+
+            await _playerSessionManager.ReconcileOpenSessionsAsync(sessionSnapshots);
+
+            foreach (var snapshot in connectedSnapshots)
+            {
+                await _playerNameHistoryManager.ObserveNameAsync(snapshot.SteamID, snapshot.Name, forceWrite: true);
+                _playerNameHistoryManager.PrimeObservedName(snapshot.SteamID, snapshot.Name);
             }
 
             var snapshots = await RunOnMainThreadAsync(() =>

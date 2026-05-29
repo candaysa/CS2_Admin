@@ -15,7 +15,7 @@ public class WarnCommands
     private readonly WarnManager _warnManager;
     private readonly AdminDbManager _adminDbManager;
     private readonly AdminLogManager _adminLogManager;
-    private readonly DiscordWebhook _discord;
+    private readonly DiscordBotService _discord;
     private readonly string _warnPermission;
     private readonly string _unwarnPermission;
     private readonly string _adminRootPermission;
@@ -23,20 +23,22 @@ public class WarnCommands
     private readonly SanctionMenuConfig _sanctions;
     private readonly IReadOnlyList<string> _warnAliases;
     private readonly IReadOnlyList<string> _unwarnAliases;
+    private readonly PlayerSanctionStateService _sanctionStateService;
 
     public WarnCommands(
         ISwiftlyCore core,
         WarnManager warnManager,
         AdminDbManager adminDbManager,
         AdminLogManager adminLogManager,
-        DiscordWebhook discord,
+        DiscordBotService discord,
         string warnPermission,
         string unwarnPermission,
         string adminRootPermission,
         MessagesConfig messagesConfig,
         SanctionMenuConfig sanctions,
         IReadOnlyList<string> warnAliases,
-        IReadOnlyList<string> unwarnAliases)
+        IReadOnlyList<string> unwarnAliases,
+        PlayerSanctionStateService sanctionStateService)
     {
         _core = core;
         _warnManager = warnManager;
@@ -50,6 +52,7 @@ public class WarnCommands
         _sanctions = sanctions;
         _warnAliases = warnAliases;
         _unwarnAliases = unwarnAliases;
+        _sanctionStateService = sanctionStateService;
     }
 
     public void OnWarnCommand(ICommandContext context)
@@ -116,6 +119,8 @@ public class WarnCommands
                 return;
             }
 
+            await _sanctionStateService.RefreshAsync(targetSteamId, targetIp);
+
             _core.Scheduler.NextTick(() =>
             {
                 var warnedLine = GetLocalizedSafe(
@@ -136,8 +141,7 @@ public class WarnCommands
                 }
             });
 
-            await _discord.SendWarnNotificationAsync(adminName, targetName, duration, reason);
-            await _adminLogManager.AddLogAsync("warn", adminName, adminSteamId, targetSteamId, targetIp, $"duration={duration};reason={reason}", targetName);
+            await _adminLogManager.AddLogAsync("warn", adminName, adminSteamId, targetSteamId, targetIp, $"duration={duration};reason={reason}", targetName, target.PlayerID, reason);
 
             _core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} warned {Target} for {Duration} minutes. Reason: {Reason}",
                 adminName, targetName, duration, reason);
@@ -192,6 +196,8 @@ public class WarnCommands
                 return;
             }
 
+            await _sanctionStateService.RefreshAsync(targetSteamId, targetIp);
+
             _core.Scheduler.NextTick(() =>
             {
                 context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["unwarned_notification", targetName, reason]}");
@@ -207,7 +213,7 @@ public class WarnCommands
                 }
             });
 
-            await _adminLogManager.AddLogAsync("unwarn", adminName, adminSteamId, targetSteamId, targetIp, $"reason={reason}", targetName);
+            await _adminLogManager.AddLogAsync("unwarn", adminName, adminSteamId, targetSteamId, targetIp, $"reason={reason}", targetName, target.PlayerID, reason);
             _core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} removed warn from {Target}. Reason: {Reason}",
                 adminName, targetName, reason);
         });
@@ -215,20 +221,7 @@ public class WarnCommands
 
     private async Task<bool> ValidateCanPunishAsync(ICommandContext context, ulong targetSteamId)
     {
-        if (!context.IsSentByPlayer || context.Sender == null)
-        {
-            return true;
-        }
-
-        var adminImm = await _adminDbManager.GetEffectiveImmunityAsync(context.Sender.SteamID);
-        var targetImm = await _adminDbManager.GetEffectiveImmunityAsync(targetSteamId);
-        if (targetImm >= adminImm && targetImm > 0)
-        {
-            _core.Scheduler.NextTick(() => context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["cannot_target_immunity"]}"));
-            return false;
-        }
-
-        return true;
+        return await PlayerUtils.CanAdminTargetAsync(_core, _adminDbManager, context, targetSteamId);
     }
 
     private bool HasPermission(ICommandContext context, string permission)
@@ -365,7 +358,6 @@ public class WarnCommands
             });
         }
 
-        await _discord.SendWarnNotificationAsync(execution.AdminName, execution.TargetName, duration, reason);
         await _adminLogManager.AddLogAsync("warn", execution.AdminName, execution.AdminSteamId, execution.TargetSteamId, null, $"duration={duration};reason={reason};source=menu", execution.TargetName);
         return true;
     }

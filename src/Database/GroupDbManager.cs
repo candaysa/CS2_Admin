@@ -1,4 +1,4 @@
-﻿using CS2_Admin.Models;
+using CS2_Admin.Models;
 using CS2_Admin.Utils;
 using Dommel;
 using Microsoft.Extensions.Logging;
@@ -48,8 +48,7 @@ public class GroupDbManager
         try
         {
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            var group = connection.FirstOrDefault<AdminGroup>(g => g.Name == normalizedName)
-                        ?? connection.GetAll<AdminGroup>()
+            var group = connection.GetAll<AdminGroup>()
                             .FirstOrDefault(g => g.Name.Equals(normalizedName, StringComparison.OrdinalIgnoreCase));
             if (group != null)
             {
@@ -96,9 +95,8 @@ public class GroupDbManager
         try
         {
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            var existing = connection.FirstOrDefault<AdminGroup>(g => g.Name == normalizedName)
-                           ?? connection.GetAll<AdminGroup>()
-                               .FirstOrDefault(g => g.Name.Equals(normalizedName, StringComparison.OrdinalIgnoreCase));
+            var existing = connection.GetAll<AdminGroup>()
+                                .FirstOrDefault(g => g.Name.Equals(normalizedName, StringComparison.OrdinalIgnoreCase));
             if (existing != null)
             {
                 existing.Name = normalizedName;
@@ -143,9 +141,8 @@ public class GroupDbManager
         try
         {
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            var existing = connection.FirstOrDefault<AdminGroup>(g => g.Name == normalizedName)
-                           ?? connection.GetAll<AdminGroup>()
-                               .FirstOrDefault(g => g.Name.Equals(normalizedName, StringComparison.OrdinalIgnoreCase));
+            var existing = connection.GetAll<AdminGroup>()
+                                .FirstOrDefault(g => g.Name.Equals(normalizedName, StringComparison.OrdinalIgnoreCase));
             if (existing == null)
             {
                 return false;

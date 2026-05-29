@@ -28,7 +28,14 @@ public class Gag
     public DateTime? ExpiresAt { get; set; }
 
     [Column("status")]
-    public GagStatus Status { get; set; } = GagStatus.Active;
+    public string StatusValue { get; set; } = GagStatusNames.Active;
+
+    [NotMapped]
+    public GagStatus Status
+    {
+        get => GagStatusNames.Parse(StatusValue);
+        set => StatusValue = GagStatusNames.ToDatabaseValue(value);
+    }
 
     [Column("ungag_admin_name")]
     public string? UngagAdminName { get; set; }
@@ -60,4 +67,35 @@ public enum GagStatus
     Active,
     Expired,
     Ungagged
+}
+
+public static class GagStatusNames
+{
+    public const string Active = "active";
+    public const string Expired = "expired";
+    public const string Ungagged = "ungagged";
+
+    public static GagStatus Parse(string? value)
+    {
+        return value?.Trim().ToLowerInvariant() switch
+        {
+            Active or "0" => GagStatus.Active,
+            Expired or "1" => GagStatus.Expired,
+            Ungagged or "2" => GagStatus.Ungagged,
+            _ => Enum.TryParse<GagStatus>(value, ignoreCase: true, out var parsed)
+                ? parsed
+                : GagStatus.Active
+        };
+    }
+
+    public static string ToDatabaseValue(GagStatus status)
+    {
+        return status switch
+        {
+            GagStatus.Active => Active,
+            GagStatus.Expired => Expired,
+            GagStatus.Ungagged => Ungagged,
+            _ => Active
+        };
+    }
 }

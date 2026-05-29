@@ -15,7 +15,7 @@ public class AdminPlaytimeCommands
     private readonly ISwiftlyCore _core;
     private readonly AdminPlaytimeDbManager _adminPlaytimeDbManager;
     private readonly AdminLogManager _adminLogManager;
-    private readonly DiscordWebhook _discord;
+    private readonly DiscordBotService _discord;
     private readonly PermissionsConfig _permissions;
     private readonly AdminPlaytimeConfig _adminPlaytimeConfig;
 
@@ -23,7 +23,7 @@ public class AdminPlaytimeCommands
         ISwiftlyCore core,
         AdminPlaytimeDbManager adminPlaytimeDbManager,
         AdminLogManager adminLogManager,
-        DiscordWebhook discord,
+        DiscordBotService discord,
         PermissionsConfig permissions,
         AdminPlaytimeConfig adminPlaytimeConfig)
     {

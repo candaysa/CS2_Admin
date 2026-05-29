@@ -1,4 +1,4 @@
-﻿using CS2_Admin.Models;
+using CS2_Admin.Models;
 using CS2_Admin.Utils;
 using Dommel;
 using Microsoft.Extensions.Logging;
@@ -8,17 +8,39 @@ namespace CS2_Admin.Database;
 
 public class AdminLogManager
 {
+    private static readonly HashSet<string> AuditActions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ban",
+        "ipban",
+        "addban",
+        "unban",
+        "kick",
+        "mute",
+        "unmute",
+        "gag",
+        "ungag",
+        "warn",
+        "unwarn",
+        "addadmin",
+        "editadmin",
+        "removeadmin",
+        "addgroup",
+        "editgroup",
+        "removegroup",
+        "adminreload"
+    };
+
     private readonly ISwiftlyCore _core;
-    private DiscordWebhook? _discordWebhook;
+    private DiscordBotService? _discordBot;
 
     public AdminLogManager(ISwiftlyCore core)
     {
         _core = core;
     }
 
-    public void SetDiscordWebhook(DiscordWebhook discordWebhook)
+    public void SetDiscordBotService(DiscordBotService discordBot)
     {
-        _discordWebhook = discordWebhook;
+        _discordBot = discordBot;
     }
 
     public async Task InitializeAsync()
@@ -35,11 +57,23 @@ public class AdminLogManager
         }
     }
 
-    public async Task AddLogAsync(string action, string adminName, ulong adminSteamId, ulong? targetSteamId, string? targetIp, string details, string? targetName = null)
+    public async Task AddLogAsync(
+        string action,
+        string adminName,
+        ulong adminSteamId,
+        ulong? targetSteamId,
+        string? targetIp,
+        string details,
+        string? targetName = null,
+        int? targetUserId = null,
+        string? reason = null)
     {
         try
         {
             using var connection = _core.Database.GetConnection("mysql_detailed");
+            var now = DateTime.UtcNow;
+            var serverId = ServerIdentity.GetServerId(_core);
+
             connection.Insert(new AdminLog
             {
                 Action = action,
@@ -48,21 +82,37 @@ public class AdminLogManager
                 TargetSteamId = targetSteamId,
                 TargetIp = targetIp,
                 Details = details,
-                ServerId = ServerIdentity.GetServerId(_core),
+                ServerId = serverId,
                 ServerIp = ServerIdentity.GetIp(_core),
                 ServerPort = ServerIdentity.GetPort(_core),
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = now
             });
+
+            if (ShouldWriteAuditAction(action))
+            {
+                connection.Insert(new AdminActionLogRecord
+                {
+                    Action = NormalizeAction(action),
+                    TargetSteamId = targetSteamId is > 0 ? targetSteamId : null,
+                    TargetName = TrimToLength(targetName, 64),
+                    TargetUserId = targetUserId,
+                    AdminName = TrimToLength(adminName, 64) ?? string.Empty,
+                    AdminSteamId = adminSteamId == 0 ? null : adminSteamId,
+                    Reason = TrimToLength(reason ?? ExtractReason(details), 2048),
+                    ServerId = string.IsNullOrWhiteSpace(serverId) ? string.Empty : serverId,
+                    CreatedAt = now
+                });
+            }
 
             if (ShouldSendAdminActionWebhook(action, adminSteamId))
             {
-                await _discordWebhook!.SendAdminActionNotificationAsync(
+                await _discordBot!.SendAdminActionNotificationAsync(
                     action,
                     adminName,
                     adminSteamId,
                     targetSteamId,
                     details,
-                    ServerIdentity.GetServerId(_core),
+                    serverId,
                     targetName);
             }
         }
@@ -74,12 +124,69 @@ public class AdminLogManager
 
     private bool ShouldSendAdminActionWebhook(string action, ulong adminSteamId)
     {
-        if (_discordWebhook == null)
+        if (_discordBot == null)
             return false;
 
         return !action.Equals("calladmin", StringComparison.OrdinalIgnoreCase)
                && !action.Equals("report", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool ShouldWriteAuditAction(string action)
+    {
+        return AuditActions.Contains(NormalizeAction(action));
+    }
+
+    private static string NormalizeAction(string action)
+    {
+        if (string.IsNullOrWhiteSpace(action))
+        {
+            return string.Empty;
+        }
+
+        var normalized = action.Trim().ToLowerInvariant();
+        if (normalized == "ban_both")
+        {
+            return "ban";
+        }
+
+        return normalized.StartsWith("lastban_", StringComparison.Ordinal)
+            ? normalized["lastban_".Length..]
+            : normalized;
+    }
+
+    private static string? ExtractReason(string? details)
+    {
+        if (string.IsNullOrWhiteSpace(details))
+        {
+            return null;
+        }
+
+        const string marker = "reason=";
+        var index = details.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index < 0)
+        {
+            return null;
+        }
+
+        var start = index + marker.Length;
+        var end = details.IndexOf(';', start);
+        if (end < 0)
+        {
+            end = details.Length;
+        }
+
+        var parsedReason = details[start..end].Trim();
+        return string.IsNullOrWhiteSpace(parsedReason) ? null : parsedReason;
+    }
+
+    private static string? TrimToLength(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
 }
-
-

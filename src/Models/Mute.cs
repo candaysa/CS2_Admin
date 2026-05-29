@@ -28,7 +28,14 @@ public class Mute
     public DateTime? ExpiresAt { get; set; }
 
     [Column("status")]
-    public MuteStatus Status { get; set; } = MuteStatus.Active;
+    public string StatusValue { get; set; } = MuteStatusNames.Active;
+
+    [NotMapped]
+    public MuteStatus Status
+    {
+        get => MuteStatusNames.Parse(StatusValue);
+        set => StatusValue = MuteStatusNames.ToDatabaseValue(value);
+    }
 
     [Column("unmute_admin_name")]
     public string? UnmuteAdminName { get; set; }
@@ -60,4 +67,35 @@ public enum MuteStatus
     Active,
     Expired,
     Unmuted
+}
+
+public static class MuteStatusNames
+{
+    public const string Active = "active";
+    public const string Expired = "expired";
+    public const string Unmuted = "unmuted";
+
+    public static MuteStatus Parse(string? value)
+    {
+        return value?.Trim().ToLowerInvariant() switch
+        {
+            Active or "0" => MuteStatus.Active,
+            Expired or "1" => MuteStatus.Expired,
+            Unmuted or "2" => MuteStatus.Unmuted,
+            _ => Enum.TryParse<MuteStatus>(value, ignoreCase: true, out var parsed)
+                ? parsed
+                : MuteStatus.Active
+        };
+    }
+
+    public static string ToDatabaseValue(MuteStatus status)
+    {
+        return status switch
+        {
+            MuteStatus.Active => Active,
+            MuteStatus.Expired => Expired,
+            MuteStatus.Unmuted => Unmuted,
+            _ => Active
+        };
+    }
 }

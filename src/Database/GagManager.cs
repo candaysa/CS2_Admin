@@ -1,16 +1,16 @@
-﻿using Dommel;
 using CS2_Admin.Models;
 using CS2_Admin.Utils;
+using Dommel;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
+using System.Collections.Concurrent;
 
 namespace CS2_Admin.Database;
 
 public class GagManager
 {
     private readonly ISwiftlyCore _core;
-    private readonly Dictionary<ulong, Gag> _gagCache = new();
-    private DateTime _lastCacheUpdate = DateTime.MinValue;
+    private readonly ConcurrentDictionary<ulong, CacheEntry> _gagCache = new();
     private readonly TimeSpan _cacheLifetime = TimeSpan.FromMinutes(5);
     private readonly AsyncLocal<AdminContext> _currentAdmin = new();
 
@@ -66,7 +66,14 @@ public class GagManager
                 using var connection = _core.Database.GetConnection("mysql_detailed");
                 var id = connection.Insert(gag);
                 gag.Id = Convert.ToInt32(id);
-                _gagCache[steamId] = gag;
+                _gagCache[steamId] = new CacheEntry(gag, DateTime.UtcNow);
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Gag] add steamid={SteamId} gagId={GagId} admin={Admin} expiresAt={ExpiresAt} reason={Reason}",
+                    steamId,
+                    gag.Id,
+                    gag.AdminName,
+                    gag.ExpiresAt?.ToString("o") ?? "permanent",
+                    gag.Reason);
 
                 return true;
             }
@@ -86,9 +93,12 @@ public class GagManager
             {
                 var admin = _currentAdmin.Value ?? new AdminContext();
                 using var connection = _core.Database.GetConnection("mysql_detailed");
-                
-                var gag = connection.FirstOrDefault<Gag>(g => g.SteamId == steamId && g.Status == GagStatus.Active);
-                if (gag == null) return false;
+
+                var gag = connection.FirstOrDefault<Gag>(g => g.SteamId == steamId && g.StatusValue == GagStatusNames.Active);
+                if (gag == null)
+                {
+                    return false;
+                }
 
                 gag.Status = GagStatus.Ungagged;
                 gag.UngagAdminName = admin.Name;
@@ -97,7 +107,13 @@ public class GagManager
                 gag.UngagDate = DateTime.UtcNow;
 
                 connection.Update(gag);
-                _gagCache.Remove(steamId);
+                _gagCache.TryRemove(steamId, out _);
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Gag] ungag steamid={SteamId} gagId={GagId} admin={Admin} reason={Reason}",
+                    steamId,
+                    gag.Id,
+                    gag.UngagAdminName ?? "-",
+                    gag.UngagReason ?? "-");
 
                 return true;
             }
@@ -113,31 +129,50 @@ public class GagManager
     {
         try
         {
-            if (_gagCache.TryGetValue(steamId, out Gag? cachedGag) &&
-                DateTime.UtcNow - _lastCacheUpdate < _cacheLifetime)
+            if (_gagCache.TryGetValue(steamId, out var cachedEntry))
             {
-                if (cachedGag.IsExpired || cachedGag.Status != GagStatus.Active)
+                var cachedGag = cachedEntry.Gag;
+                if (DateTime.UtcNow - cachedEntry.CachedAtUtc < _cacheLifetime)
                 {
-                    _gagCache.Remove(steamId);
-                    return null;
+                    if (cachedGag.IsExpired || cachedGag.Status != GagStatus.Active)
+                    {
+                        _gagCache.TryRemove(steamId, out _);
+                        return null;
+                    }
+
+                    _core.Logger.LogInformationIfEnabled(
+                        "[CS2_Admin][Trace][Gag] cache-hit steamid={SteamId} gagId={GagId} expiresAt={ExpiresAt} cachedAt={CachedAt}",
+                        steamId,
+                        cachedGag.Id,
+                        cachedGag.ExpiresAt?.ToString("o") ?? "permanent",
+                        cachedEntry.CachedAtUtc.ToString("o"));
+                    return cachedGag;
                 }
-                return cachedGag;
+
+                _gagCache.TryRemove(steamId, out _);
             }
 
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            var gag = connection.FirstOrDefault<Gag>(g => 
-                g.SteamId == steamId && 
-                g.Status == GagStatus.Active &&
+            var gag = connection.FirstOrDefault<Gag>(g =>
+                g.SteamId == steamId &&
+                g.StatusValue == GagStatusNames.Active &&
                 (g.ExpiresAt == null || g.ExpiresAt > DateTime.UtcNow));
 
             if (gag != null)
             {
-                _gagCache[steamId] = gag;
-                _lastCacheUpdate = DateTime.UtcNow;
+                _gagCache[steamId] = new CacheEntry(gag, DateTime.UtcNow);
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Gag] db-load-active steamid={SteamId} gagId={GagId} admin={Admin} createdAt={CreatedAt} expiresAt={ExpiresAt} reason={Reason}",
+                    steamId,
+                    gag.Id,
+                    gag.AdminName,
+                    gag.CreatedAt.ToString("o"),
+                    gag.ExpiresAt?.ToString("o") ?? "permanent",
+                    gag.Reason);
             }
             else
             {
-                _gagCache.Remove(steamId);
+                _gagCache.TryRemove(steamId, out _);
             }
 
             return gag;
@@ -151,10 +186,20 @@ public class GagManager
 
     public Gag? GetActiveGagFromCache(ulong steamId)
     {
-        if (_gagCache.TryGetValue(steamId, out Gag? cachedGag) && cachedGag.IsActive)
+        if (_gagCache.TryGetValue(steamId, out var cachedEntry))
         {
-            return cachedGag;
+            if (DateTime.UtcNow - cachedEntry.CachedAtUtc >= _cacheLifetime)
+            {
+                _gagCache.TryRemove(steamId, out _);
+                return null;
+            }
+
+            if (cachedEntry.Gag.IsActive)
+            {
+                return cachedEntry.Gag;
+            }
         }
+
         return null;
     }
 
@@ -183,12 +228,12 @@ public class GagManager
             try
             {
                 using var connection = _core.Database.GetConnection("mysql_detailed");
-                var expiredGags = connection.Select<Gag>(g => 
-                    g.Status == GagStatus.Active && 
-                    g.ExpiresAt != null && 
+                var expiredGags = connection.Select<Gag>(g =>
+                    g.StatusValue == GagStatusNames.Active &&
+                    g.ExpiresAt != null &&
                     g.ExpiresAt <= DateTime.UtcNow);
 
-                int cleaned = 0;
+                var cleaned = 0;
                 foreach (var gag in expiredGags)
                 {
                     gag.Status = GagStatus.Expired;
@@ -213,8 +258,6 @@ public class GagManager
     {
         _gagCache.Clear();
     }
+
+    private sealed record CacheEntry(Gag Gag, DateTime CachedAtUtc);
 }
-
-
-
-

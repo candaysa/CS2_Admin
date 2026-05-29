@@ -22,7 +22,7 @@ public class BanCommands
     private readonly AdminLogManager _adminLogManager;
     private readonly PlayerIpDbManager _playerIpDbManager;
     private readonly RecentPlayersTracker _recentPlayersTracker;
-    private readonly DiscordWebhook _discord;
+    private readonly DiscordBotService _discord;
     private readonly PermissionsConfig _permissions;
     private readonly CommandsConfig _commands;
     private readonly TagsConfig _tags;
@@ -30,6 +30,7 @@ public class BanCommands
     private readonly SanctionMenuConfig _sanctions;
     private readonly MultiServerConfig _multiServerConfig;
     private readonly int _banType;
+    private readonly PlayerSanctionStateService _sanctionStateService;
 
     public BanCommands(
         ISwiftlyCore core,
@@ -41,14 +42,15 @@ public class BanCommands
         AdminLogManager adminLogManager,
         PlayerIpDbManager playerIpDbManager,
         RecentPlayersTracker recentPlayersTracker,
-        DiscordWebhook discord,
+        DiscordBotService discord,
         PermissionsConfig permissions,
         CommandsConfig commands,
         TagsConfig tags,
         MessagesConfig messagesConfig,
         SanctionMenuConfig sanctions,
         MultiServerConfig multiServerConfig,
-        int banType)
+        int banType,
+        PlayerSanctionStateService sanctionStateService)
     {
         _core = core;
         _banManager = banManager;
@@ -67,6 +69,7 @@ public class BanCommands
         _sanctions = sanctions;
         _multiServerConfig = multiServerConfig;
         _banType = banType is >= 1 and <= 3 ? banType : 1;
+        _sanctionStateService = sanctionStateService;
     }
 
     public void OnBanCommand(ICommandContext context) => HandleOnlineBan(context, false);
@@ -108,6 +111,7 @@ public class BanCommands
         var targetSnapshot = resolvedTarget == null
             ? null
             : new OnlineTargetSnapshot(
+                resolvedTarget.PlayerID,
                 resolvedTarget.SteamID,
                 resolvedTarget.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"],
                 resolvedTarget.IPAddress);
@@ -156,6 +160,8 @@ public class BanCommands
                     return;
                 }
 
+                await _sanctionStateService.RefreshAsync(targetSnapshot.SteamId, targetSnapshot.IpAddress);
+
                 var durationText = duration <= 0 ? PluginLocalizer.Get(_core)["duration_permanently"] : PluginLocalizer.Get(_core)["duration_for_minutes", duration];
                 _core.Scheduler.NextTick(() =>
                 {
@@ -187,7 +193,6 @@ public class BanCommands
                     }
                 });
 
-                await _discord.SendBanNotificationAsync(adminName, targetSnapshot.Name, duration, reason);
                 var actionName = shouldBanSteam && shouldBanIp
                     ? "ban_both"
                     : shouldBanIp ? "ipban" : "ban";
@@ -198,7 +203,9 @@ public class BanCommands
                     targetSnapshot.SteamId,
                     targetSnapshot.IpAddress,
                     $"duration={duration};global={isGlobal};reason={reason};ban_type={_banType};steam_applied={steamApplied};ip_applied={ipApplied}",
-                    targetSnapshot.Name);
+                    targetSnapshot.Name,
+                    targetSnapshot.PlayerId,
+                    reason);
                 return;
             }
 
@@ -330,6 +337,10 @@ public class BanCommands
 
                 success = affectedRows > 0;
                 _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug] unban requested steamid={SteamId} affected={AffectedRows}", steamId, affectedRows);
+                if (success)
+                {
+                    await _sanctionStateService.RefreshAsync(steamId, null);
+                }
             }
             else if (TryNormalizeIpTarget(targetArg, out var normalizedIp))
             {
@@ -393,8 +404,7 @@ public class BanCommands
 
             if (success)
             {
-                await _discord.SendUnbanNotificationAsync(adminName, targetSteamId?.ToString() ?? targetIp ?? "-", reason);
-                await _adminLogManager.AddLogAsync("unban", adminName, adminSteamId, targetSteamId, targetIp, $"reason={reason}");
+                await _adminLogManager.AddLogAsync("unban", adminName, adminSteamId, targetSteamId, targetIp, $"reason={reason}", null, null, reason);
             }
         });
     }
@@ -591,8 +601,7 @@ public class BanCommands
             context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["addban_success", targetSteamId, durationDisplay]}");
         });
 
-        await _discord.SendBanNotificationAsync(adminName, targetSteamId.ToString(), duration, reason);
-        await _adminLogManager.AddLogAsync("addban", adminName, adminSteamId, targetSteamId, null, $"duration={duration};global={isGlobal};reason={reason}");
+        await _adminLogManager.AddLogAsync("addban", adminName, adminSteamId, targetSteamId, null, $"duration={duration};global={isGlobal};reason={reason}", null, null, reason);
     }
 
     private async Task<bool> AddOfflineIpBanAsync(
@@ -638,7 +647,7 @@ public class BanCommands
 
         if (ok)
         {
-            await _adminLogManager.AddLogAsync("ipban", adminName, adminSteamId, null, normalizedIp, $"duration={duration};global={isGlobal};reason={reason}");
+            await _adminLogManager.AddLogAsync("ipban", adminName, adminSteamId, null, normalizedIp, $"duration={duration};global={isGlobal};reason={reason}", null, null, reason);
         }
 
         return ok;
@@ -680,7 +689,7 @@ public class BanCommands
                 }
 
                 await _adminLogManager.AddLogAsync("lastban_ban", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};global={isGlobal};reason={reason}", target.Name);
-                await _discord.SendBanNotificationAsync(adminName, target.Name, duration, reason);
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
                 _core.Scheduler.NextTick(() => admin.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["lastban_action_applied", PluginLocalizer.Get(_core)["menu_ban"], target.Name]}"));
                 return;
             }
@@ -708,7 +717,7 @@ public class BanCommands
                 }
 
                 await _adminLogManager.AddLogAsync("lastban_ipban", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};global={isGlobal};reason={reason}", target.Name);
-                await _discord.SendBanNotificationAsync(adminName, target.Name, duration, reason);
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
                 _core.Scheduler.NextTick(() => admin.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["lastban_action_applied", PluginLocalizer.Get(_core)["menu_ipban"], target.Name]}"));
                 return;
             }
@@ -723,7 +732,7 @@ public class BanCommands
                 }
 
                 await _adminLogManager.AddLogAsync("lastban_warn", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};reason={reason}", target.Name);
-                await _discord.SendWarnNotificationAsync(adminName, target.Name, duration, reason);
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
                 _core.Scheduler.NextTick(() => admin.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["lastban_action_applied", PluginLocalizer.Get(_core)["menu_warn"], target.Name]}"));
                 return;
             }
@@ -745,7 +754,7 @@ public class BanCommands
                 }
 
                 await _adminLogManager.AddLogAsync("lastban_mute", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};reason={reason}", target.Name);
-                await _discord.SendMuteNotificationAsync(adminName, target.Name, duration, reason);
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
                 _core.Scheduler.NextTick(() => admin.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["lastban_action_applied", PluginLocalizer.Get(_core)["menu_mute"], target.Name]}"));
                 return;
             }
@@ -767,7 +776,7 @@ public class BanCommands
                 }
 
                 await _adminLogManager.AddLogAsync("lastban_gag", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};reason={reason}", target.Name);
-                await _discord.SendGagNotificationAsync(adminName, target.Name, duration, reason);
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
                 _core.Scheduler.NextTick(() => admin.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["lastban_action_applied", PluginLocalizer.Get(_core)["menu_gag"], target.Name]}"));
                 return;
             }
@@ -778,33 +787,12 @@ public class BanCommands
 
     private async Task<bool> ValidateCanPunishLastTargetAsync(IPlayer admin, RecentPlayerInfo target)
     {
-        var adminImm = await _adminDbManager.GetEffectiveImmunityAsync(admin.SteamID);
-        var targetImm = await _adminDbManager.GetEffectiveImmunityAsync(target.SteamId);
-        if (targetImm >= adminImm && targetImm > 0)
-        {
-            _core.Scheduler.NextTick(() => admin.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["cannot_target_immunity"]}"));
-            return false;
-        }
-
-        return true;
+        return await PlayerUtils.CanAdminTargetAsync(_core, _adminDbManager, admin, target.SteamId);
     }
 
     private async Task<bool> ValidateCanPunishAsync(ICommandContext context, ulong targetSteamId)
     {
-        if (!context.IsSentByPlayer || context.Sender == null)
-        {
-            return true;
-        }
-
-        var adminImm = await _adminDbManager.GetEffectiveImmunityAsync(context.Sender.SteamID);
-        var targetImm = await _adminDbManager.GetEffectiveImmunityAsync(targetSteamId);
-        if (targetImm >= adminImm && targetImm > 0)
-        {
-            _core.Scheduler.NextTick(() => context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["cannot_target_immunity"]}"));
-            return false;
-        }
-
-        return true;
+        return await PlayerUtils.CanAdminTargetAsync(_core, _adminDbManager, context, targetSteamId);
     }
 
     private bool ResolveGlobalMode()
@@ -834,7 +822,7 @@ public class BanCommands
         Ip = 2
     }
 
-    private sealed record OnlineTargetSnapshot(ulong SteamId, string Name, string? IpAddress);
+    private sealed record OnlineTargetSnapshot(int PlayerId, ulong SteamId, string Name, string? IpAddress);
 
     private bool HasPermission(ICommandContext context, string permission)
     {
