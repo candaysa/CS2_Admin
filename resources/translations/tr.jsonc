@@ -414,11 +414,9 @@
   "blind_usage": "KullanÄ±m: !blind <hedef> <saniye>",
   "blind_notification": "{0}, {1} oyuncuyu {2} saniyeliÄŸine kÃ¶r etti.",
   "menu_god": "God Mode",
-  "menu_blind": "KÃ¶r Et"
-,
+  "menu_blind": "KÃ¶r Et",
   "glow_usage": "KullanÃ„Â±m: !glow <hedef> <r> <g> <b> [a] veya !glow <hedef> off",
   "glow_notification": "{0}, {1} oyuncuya RGBA({2}, {3}, {4}, {5}) glow verdi.",
   "glow_off_notification": "{0}, {1} oyuncudan glow efektini kaldÃ„Â±rdÃ„Â±.",
   "menu_glow": "Glow Ver"
 }
-

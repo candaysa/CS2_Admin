@@ -404,5 +404,19 @@
   "beacon_usage": "Χρήση: !beacon <στόχος> [δευτερόλεπτα|off]",
   "beacon_started": "{0} ενεργοποίησε beacon για {1} παίκτη/ες για {2} δευτερόλεπτα.",
   "beacon_stopped": "Το beacon σταμάτησε για {0} παίκτη/ες.",
-  "beacon_ping": "BEACON -> {0} (#{1})"
+  "beacon_ping": "BEACON -> {0} (#{1})",
+  "god_usage": "Χρήση: !god <στόχος>",
+  "god_notification": "Ο/Η {0} έκανε god mode {2} για {1}.",
+  "god_personal_html": "<font color='#9b59b6'><b>GOD MODE {0}</b></font><br><br>Από: <font color='#ffffff'>{1}</font>",
+  "god_personal_chat": "Το God mode είναι τώρα {0} για εσάς από {1}.",
+  "god_enabled": "ΕΝΕΡΓΟΠΟΙΗΜΕΝΟ",
+  "god_disabled": "ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΟ",
+  "blind_usage": "Χρήση: !blind <στόχος> <δευτερόλεπτα>",
+  "blind_notification": "Ο/Η {0} τύφλωσε {1} παίκτη(ες) για {2} δευτερόλεπτο(α).",
+  "menu_god": "Ενεργοποίηση God Mode",
+  "menu_blind": "Τύφλωση Παίκτη",
+  "glow_usage": "Χρήση: !glow <στόχος> <r> <g> <b> [a] ή !glow <στόχος> off",
+  "glow_notification": "Ο/Η {0} έβαλε λάμψη σε {1} παίκτη(ες) σε RGBA({2}, {3}, {4}, {5}).",
+  "glow_off_notification": "Ο/Η {0} αφαίρεσε την λάμψη για {1} παίκτη(ες).",
+  "menu_glow": "Λάμψη Παίκτη"
 }

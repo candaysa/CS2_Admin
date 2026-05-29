@@ -404,5 +404,19 @@
   "menu_goto": "Отиди при",
   "menu_bring": "Доведи",
   "menu_group_with_immunity": "{0} (имунитет: {1})",
-  "menu_admin_list_entry": "{0} | ID:{1} | {2}"
+  "menu_admin_list_entry": "{0} | ID:{1} | {2}",
+  "god_usage": "Употреба: !god <цел>",
+  "god_notification": "{0} превключи god mode на {2} за {1}.",
+  "god_personal_html": "<font color='#9b59b6'><b>GOD MODE {0}</b></font><br><br>От: <font color='#ffffff'>{1}</font>",
+  "god_personal_chat": "God mode сега е {0} за вас от {1}.",
+  "god_enabled": "ВКЛЮЧЕН",
+  "god_disabled": "ИЗКЛЮЧЕН",
+  "blind_usage": "Употреба: !blind <цел> <секунди>",
+  "blind_notification": "{0} ослепи {1} играч(и) за {2} секунда(и).",
+  "menu_god": "God Mode",
+  "menu_blind": "Ослепи играч",
+  "glow_usage": "Употреба: !glow <цел> <r> <g> <b> [a] или !glow <цел> off",
+  "glow_notification": "{0} зададе сияние за {1} играч(и) на RGBA({2}, {3}, {4}, {5}).",
+  "glow_off_notification": "{0} премахна сиянието за {1} играч(и).",
+  "menu_glow": "Сияние играч"
 }

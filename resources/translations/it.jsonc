@@ -404,5 +404,19 @@
   "beacon_started": "{0} ha attivato il beacon su {1} giocatore/i per {2} secondo/i.",
   "beacon_stopped": "Beacon fermato per {0} giocatore/i.",
   "beacon_ping": "BEACON -> {0} (#{1})",
-  "gagged_chat_admin_visible": "[Gag] {0}: {1}"
+  "gagged_chat_admin_visible": "[Gag] {0}: {1}",
+  "god_usage": "Uso: !god <bersaglio>",
+  "god_notification": "{0} ha impostato la god mode su {2} per {1}.",
+  "god_personal_html": "<font color='#9b59b6'><b>GOD MODE {0}</b></font><br><br>Da: <font color='#ffffff'>{1}</font>",
+  "god_personal_chat": "La god mode è ora {0} per te da parte di {1}.",
+  "god_enabled": "ATTIVATA",
+  "god_disabled": "DISATTIVATA",
+  "blind_usage": "Uso: !blind <bersaglio> <secondi>",
+  "blind_notification": "{0} ha accecato {1} giocatore/i per {2} secondo/i.",
+  "menu_god": "Attiva/Disattiva God",
+  "menu_blind": "Acceca Giocatore",
+  "glow_usage": "Uso: !glow <bersaglio> <r> <g> <b> [a] oppure !glow <bersaglio> off",
+  "glow_notification": "{0} ha impostato il bagliore per {1} giocatore/i su RGBA({2}, {3}, {4}, {5}).",
+  "glow_off_notification": "{0} ha rimosso il bagliore per {1} giocatore/i.",
+  "menu_glow": "Fai brillare Giocatore"
 }

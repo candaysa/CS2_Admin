@@ -404,5 +404,19 @@
   "beacon_usage": "Verwendung: !beacon <target> [sekunden|aus]",
   "beacon_started": "{0} hat Beacon für {1} Spieler {2} Sekunde(n) lang aktiviert.",
   "beacon_stopped": "Beacon für {0} Spieler gestoppt.",
-  "beacon_ping": "BEACON -> {0} (#{1})"
+  "beacon_ping": "BEACON -> {0} (#{1})",
+  "god_usage": "Verwendung: !god <ziel>",
+  "god_notification": "{0} hat Gott-Modus für {1} auf {2} geschaltet.",
+  "god_personal_html": "<font color='#9b59b6'><b>GOTT-MODUS {0}</b></font><br><br>Von: <font color='#ffffff'>{1}</font>",
+  "god_personal_chat": "Der Gott-Modus ist nun {0} für dich durch {1}.",
+  "god_enabled": "AKTIVIERT",
+  "god_disabled": "DEAKTIVIERT",
+  "blind_usage": "Verwendung: !blind <ziel> <sekunden>",
+  "blind_notification": "{0} hat {1} Spieler für {2} Sekunde(n) geblendet.",
+  "menu_god": "Gott-Modus umschalten",
+  "menu_blind": "Spieler blenden",
+  "glow_usage": "Verwendung: !glow <ziel> <r> <g> <b> [a] oder !glow <ziel> off",
+  "glow_notification": "{0} setzte das Leuchten für {1} Spieler auf RGBA({2}, {3}, {4}, {5}).",
+  "glow_off_notification": "{0} hat das Leuchten für {1} Spieler entfernt.",
+  "menu_glow": "Spieler leuchten lassen"
 }

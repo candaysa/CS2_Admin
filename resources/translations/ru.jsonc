@@ -404,5 +404,19 @@
   "menu_goto": "Телепорт к игроку",
   "menu_bring": "Телепорт игрока к себе",
   "menu_group_with_immunity": "{0} (иммунитет: {1})",
-  "menu_admin_list_entry": "{0} | ID:{1} | {2}"
+  "menu_admin_list_entry": "{0} | ID:{1} | {2}",
+  "god_usage": "Использование: !god <цель>",
+  "god_notification": "{0} переключил режим бога {2} для {1}.",
+  "god_personal_html": "<font color='#9b59b6'><b>РЕЖИМ БОГА {0}</b></font><br><br>От: <font color='#ffffff'>{1}</font>",
+  "god_personal_chat": "Режим бога теперь {0} для вас от {1}.",
+  "god_enabled": "ВКЛЮЧЕН",
+  "god_disabled": "ВЫКЛЮЧЕН",
+  "blind_usage": "Использование: !blind <цель> <секунды>",
+  "blind_notification": "{0} ослепил {1} игрока(ов) на {2} секунд(ы).",
+  "menu_god": "Режим бога",
+  "menu_blind": "Ослепить игрока",
+  "glow_usage": "Использование: !glow <цель> <r> <g> <b> [a] или !glow <цель> off",
+  "glow_notification": "{0} установил свечение для {1} игрока(ов) на RGBA({2}, {3}, {4}, {5}).",
+  "glow_off_notification": "{0} очистил свечение для {1} игрока(ов).",
+  "menu_glow": "Свечение игрока"
 }

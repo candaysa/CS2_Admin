@@ -404,5 +404,19 @@
   "discord_mute_title": "Joueur réduit au silence",
   "discord_gag_title": "Joueur bâillonné",
   "discord_silence_title": "Joueur totalement réduit au silence",
-  "gagged_chat_admin_visible": "[Gag] {0}: {1}"
+  "gagged_chat_admin_visible": "[Gag] {0}: {1}",
+  "god_usage": "Utilisation : !god <cible>",
+  "god_notification": "{0} a basculé le mode dieu sur {2} pour {1}.",
+  "god_personal_html": "<font color='#9b59b6'><b>MODE DIEU {0}</b></font><br><br>Par : <font color='#ffffff'>{1}</font>",
+  "god_personal_chat": "Le mode dieu est maintenant {0} pour vous par {1}.",
+  "god_enabled": "ACTIVÉ",
+  "god_disabled": "DÉSACTIVÉ",
+  "blind_usage": "Utilisation : !blind <cible> <secondes>",
+  "blind_notification": "{0} a aveuglé {1} joueur(s) pendant {2} seconde(s).",
+  "menu_god": "Basculer Mode Dieu",
+  "menu_blind": "Aveugler Joueur",
+  "glow_usage": "Utilisation : !glow <cible> <r> <g> <b> [a] ou !glow <cible> off",
+  "glow_notification": "{0} a défini l'éclat pour {1} joueur(s) sur RGBA({2}, {3}, {4}, {5}).",
+  "glow_off_notification": "{0} a supprimé l'éclat de {1} joueur(s).",
+  "menu_glow": "Faire briller Joueur"
 }
