@@ -13,7 +13,12 @@ public class PluginConfig
     public DiscordFileConfig Discord { get; set; } = new();
     public MessagesConfig Messages { get; set; } = new();
     public MultiServerConfig MultiServer { get; set; } = new();
+    [JsonPropertyName("BanType_Info_Comment")]
+    public string BanTypeInfo { get; set; } = "1=SteamID, 2=IP, 3=SteamID+IP";
     public int BanType { get; set; } = 1; // 1=SteamID, 2=IP, 3=SteamID+IP
+
+    [JsonPropertyName("BanMode_Info_Comment")]
+    public string BanModeInfo { get; set; } = "steamid, ip, both";
     public string BanMode { get; set; } = "steamid"; // steamid, ip, both
     [JsonIgnore]
     public TagsConfig Tags { get; set; } = new();
