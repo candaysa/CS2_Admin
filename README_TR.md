@@ -2,7 +2,7 @@
 
 # CS2_ADMIN
 
-Eklenti Surumu: `1.0.6`
+Eklenti Surumu: `1.0.9`
 
 ## Ozellikler
 

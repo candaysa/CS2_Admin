@@ -2,7 +2,7 @@
 
 # CS2_ADMIN
 
-Plugin Version: `1.0.6`
+Plugin Version: `1.0.9`
 
 ## Features
 
