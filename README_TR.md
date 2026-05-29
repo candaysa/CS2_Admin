@@ -1,6 +1,8 @@
+﻿[🇬🇧 Read in English](README.md)
+
 # CS2_ADMIN
 
-Eklenti Surumu: `1.0.4`
+Eklenti Surumu: `1.0.6`
 
 ## Ozellikler
 
@@ -75,7 +77,6 @@ Use `sw_` commands in server console (without `!`).
 - `sw_hson` / `sw_hsoff`
 - `sw_bhopon` / `sw_bhopoff`
 - `sw_respawnon` / `sw_respawnoff`
-- `sw_rcon <command>`
 - `sw_cvar <cvar> [value]`
 - `sw_admintime`
 - `sw_admintimesend`
@@ -131,7 +132,6 @@ Use `sw_` commands in server console (without `!`).
 - `!hson` / `!hsoff`
 - `!bunnyon` / `!bunnyoff`
 - `!respawnon` / `!respawnoff`
-- `!rcon <command>`
 - `!cvar <cvar> [value]`
 - `!admintime`
 - `!admintimesend`
@@ -182,7 +182,7 @@ Default core permissions:
 - `slap`, `slay`, `respawn`, `team`, `noclip`, `goto`, `bring`, `freeze`, `unfreeze`, `resize`, `drug`, `burn`, `disarm`, `speed`, `gravity`, `rename`, `hp`, `money`, `give`.
 
 - `admin.rcon`:
-- `rcon`, `hson/hsoff`, `bhopon/bhopoff`, `respawnon/respawnoff`.
+- `hson/hsoff`, `bhopon/bhopoff`, `respawnon/respawnoff`.
 
 - `admin.cvar`:
 - `cvar`.
@@ -253,3 +253,4 @@ Not: Tag yenileme join + gecikmeli yenileme + periyodik yenileme ile guclendiril
 - `permissions.json` icinde `Version` bulunur.
 - `maps.json` icinde `Version` ile normal/workshop map listeleri bulunur.
 - `resources/translations/*.jsonc` -> dil dosyalari (`en`, `tr`, `de`, `fr`, `it`, `el`, `ru`, `bg`, `hu`).
+
