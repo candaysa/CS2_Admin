@@ -273,6 +273,7 @@
   "menu_last_actions": "Actions : {0}",
   "menu_no_actions_available": "Aucune action disponible",
   "menu_select_player": "Sélectionner un joueur",
+  "menu_back": "Retour",
   "menu_select_reason": "Sélectionner une raison",
   "menu_select_duration": "Sélectionner une durée",
   "menu_select_group": "Sélectionner un groupe",

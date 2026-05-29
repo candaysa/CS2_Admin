@@ -37,6 +37,7 @@ public class ServerCommands
         public DateTime EndsAtUtc { get; init; }
         public required string StartedBy { get; init; }
         public ulong StartedBySteamId { get; init; }
+        public IMenuAPI? Menu { get; set; }
     }
 
     public ServerCommands(
@@ -509,12 +510,14 @@ public class ServerCommands
         }
 
         var menu = BuildVoteMenu(vote);
+        vote.Menu = menu;
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid && !p.IsFakeClient))
         {
             _core.MenusAPI.OpenMenuForPlayer(player, menu);
             player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["vote_started", question]}");
         }
 
+        ScheduleVoteMenuRefresh(vote);
         _core.Scheduler.DelayBySeconds(30f, FinalizeVote);
 
         _ = _adminLogManager.AddLogAsync("vote", adminName, adminSteamId, null, null, $"question={question};answers={string.Join("|", answers)}");
@@ -608,6 +611,39 @@ public class ServerCommands
         });
 
         _ = _adminLogManager.AddLogAsync("vote_result", vote.StartedBy, vote.StartedBySteamId, null, null, $"question={vote.Question};winner={vote.Answers[winnerIndex]};votes={counts[winnerIndex]};total={totalVotes}");
+    }
+
+    private void ScheduleVoteMenuRefresh(ActiveVoteState vote)
+    {
+        _core.Scheduler.DelayBySeconds(1f, () =>
+        {
+            ActiveVoteState? current;
+            lock (_voteLock)
+            {
+                current = _activeVote;
+            }
+
+            if (!ReferenceEquals(current, vote) || vote.EndsAtUtc <= DateTime.UtcNow || vote.Menu == null)
+            {
+                return;
+            }
+
+            foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid && !p.IsFakeClient))
+            {
+                if (vote.VotesBySteamId.ContainsKey(player.SteamID))
+                {
+                    continue;
+                }
+
+                var currentMenu = _core.MenusAPI.GetCurrentMenu(player);
+                if (currentMenu != vote.Menu)
+                {
+                    _core.MenusAPI.OpenMenuForPlayer(player, vote.Menu);
+                }
+            }
+
+            ScheduleVoteMenuRefresh(vote);
+        });
     }
 
     private bool HasPermission(ICommandContext context, string permission)

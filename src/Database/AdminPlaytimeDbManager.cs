@@ -3,6 +3,7 @@ using CS2_Admin.Utils;
 using Dommel;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
+using System.Text.RegularExpressions;
 
 namespace CS2_Admin.Database;
 
@@ -56,7 +57,7 @@ public class AdminPlaytimeDbManager
 
                 if (allEntries.TryGetValue(player.SteamId, out var existing))
                 {
-                    existing.PlayerName = player.PlayerName;
+                    existing.PlayerName = NormalizePlayerName(player.PlayerName, player.SteamId);
                     existing.PlaytimeMinutes += minutesToAdd;
                     existing.UpdatedAt = now;
                     connection.Update(existing);
@@ -66,7 +67,7 @@ public class AdminPlaytimeDbManager
                 var row = new AdminPlaytime
                 {
                     SteamId = player.SteamId,
-                    PlayerName = player.PlayerName,
+                    PlayerName = NormalizePlayerName(player.PlayerName, player.SteamId),
                     PlaytimeMinutes = minutesToAdd,
                     CreatedAt = now,
                     UpdatedAt = now
@@ -101,6 +102,18 @@ public class AdminPlaytimeDbManager
             _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error getting admin playtime top list: {Message}", ex.Message);
             return [];
         }
+    }
+
+    private static string NormalizePlayerName(string? playerName, ulong steamId)
+    {
+        var safe = string.IsNullOrWhiteSpace(playerName) ? steamId.ToString() : playerName.Trim();
+        safe = Regex.Replace(safe, @"[^\u0000-\uFFFF]", string.Empty);
+        if (string.IsNullOrWhiteSpace(safe))
+        {
+            safe = steamId.ToString();
+        }
+
+        return safe.Length <= 64 ? safe : safe[..64];
     }
 }
 

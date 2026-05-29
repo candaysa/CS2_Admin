@@ -3,14 +3,14 @@ using CS2_Admin.Utils;
 using Dommel;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
+using System.Collections.Concurrent;
 
 namespace CS2_Admin.Database;
 
 public class WarnManager
 {
     private readonly ISwiftlyCore _core;
-    private readonly Dictionary<ulong, Warn> _warnCache = new();
-    private DateTime _lastCacheUpdate = DateTime.MinValue;
+    private readonly ConcurrentDictionary<ulong, CacheEntry> _warnCache = new();
     private readonly TimeSpan _cacheLifetime = TimeSpan.FromMinutes(5);
     private readonly AsyncLocal<AdminContext> _currentAdmin = new();
 
@@ -65,8 +65,7 @@ public class WarnManager
                 using var connection = _core.Database.GetConnection("mysql_detailed");
                 var id = connection.Insert(warn);
                 warn.Id = Convert.ToInt64(id);
-                _warnCache[steamId] = warn;
-                _lastCacheUpdate = DateTime.UtcNow;
+                _warnCache[steamId] = new CacheEntry(warn, DateTime.UtcNow);
                 return true;
             }
             catch (Exception ex)
@@ -106,7 +105,7 @@ public class WarnManager
                 warn.UnwarnDate = DateTime.UtcNow;
 
                 connection.Update(warn);
-                _warnCache.Remove(steamId);
+                _warnCache.TryRemove(steamId, out _);
                 return true;
             }
             catch (Exception ex)
@@ -121,16 +120,23 @@ public class WarnManager
     {
         try
         {
-            if (_warnCache.TryGetValue(steamId, out var cachedWarn) &&
-                DateTime.UtcNow - _lastCacheUpdate < _cacheLifetime)
+            if (_warnCache.TryGetValue(steamId, out var cachedWarnEntry))
             {
-                if (cachedWarn.IsExpired || cachedWarn.Status != WarnStatus.Active)
+                if (DateTime.UtcNow - cachedWarnEntry.CachedAt >= _cacheLifetime)
                 {
-                    _warnCache.Remove(steamId);
-                    return null;
+                    _warnCache.TryRemove(steamId, out _);
                 }
+                else
+                {
+                    var cachedWarn = cachedWarnEntry.Warn;
+                    if (cachedWarn.IsExpired || cachedWarn.Status != WarnStatus.Active)
+                    {
+                        _warnCache.TryRemove(steamId, out _);
+                        return null;
+                    }
 
-                return cachedWarn;
+                    return cachedWarn;
+                }
             }
 
             using var connection = _core.Database.GetConnection("mysql_detailed");
@@ -144,12 +150,11 @@ public class WarnManager
 
             if (warn != null)
             {
-                _warnCache[steamId] = warn;
-                _lastCacheUpdate = DateTime.UtcNow;
+                _warnCache[steamId] = new CacheEntry(warn, DateTime.UtcNow);
             }
             else
             {
-                _warnCache.Remove(steamId);
+                _warnCache.TryRemove(steamId, out _);
             }
 
             return warn;
@@ -263,6 +268,8 @@ public class WarnManager
             }
         });
     }
+
+    private readonly record struct CacheEntry(Warn Warn, DateTime CachedAt);
 }
 
 public enum WarnHistoryFilter

@@ -14,6 +14,7 @@ public class PluginConfig
     public MessagesConfig Messages { get; set; } = new();
     public MultiServerConfig MultiServer { get; set; } = new();
     public int BanType { get; set; } = 1; // 1=SteamID, 2=IP, 3=SteamID+IP
+    public string BanMode { get; set; } = "steamid"; // steamid, ip, both
     [JsonIgnore]
     public TagsConfig Tags { get; set; } = new();
     [JsonIgnore]
@@ -30,6 +31,42 @@ public class PluginConfig
     [JsonIgnore]
     public MapsFileConfig MapsFile { get; set; } = new();
     public SanctionMenuConfig Sanctions { get; set; } = new();
+
+    [JsonIgnore]
+    public int EffectiveBanType => ParseBanType(BanMode, BanType);
+
+    public static int ParseBanType(string? mode, int fallback)
+    {
+        if (!string.IsNullOrWhiteSpace(mode))
+        {
+            switch (mode.Trim().ToLowerInvariant())
+            {
+                case "steam":
+                case "steamid":
+                    return 1;
+                case "ip":
+                    return 2;
+                case "both":
+                case "steam+ip":
+                case "steamid+ip":
+                case "ip+steam":
+                case "ip+steamid":
+                    return 3;
+            }
+        }
+
+        return fallback is >= 1 and <= 3 ? fallback : 1;
+    }
+
+    public static string NormalizeBanMode(string? mode, int fallback)
+    {
+        return ParseBanType(mode, fallback) switch
+        {
+            2 => "ip",
+            3 => "both",
+            _ => "steamid"
+        };
+    }
 }
 
 public class TagsConfig
@@ -106,10 +143,23 @@ public class MessagesConfig
 
 public class DiscordFileConfig
 {
-    public string Webhook { get; set; } = "";
-    public string CallAdminWebhook { get; set; } = "";
-    public string ReportWebhook { get; set; } = "";
-    public string AdminTimeWebhook { get; set; } = "";
+    public string ServerName { get; set; } = "";
+    public string BotToken { get; set; } = "";
+    public string ServerPublicIp { get; set; } = "";
+    public string StatusButtonLabel { get; set; } = "";
+    public string StatusHubKey { get; set; } = "default";
+    public string AdminLogChannelId { get; set; } = "";
+    public string ChatLogChannelId { get; set; } = "";
+    public string ConnectionLogChannelId { get; set; } = "";
+    public string CallAdminChannelId { get; set; } = "";
+    public string ReportChannelId { get; set; } = "";
+    public string AdminTimeChannelId { get; set; } = "";
+    public string ServerStatusChannelId { get; set; } = "";
+    public string LeaderboardChannelId { get; set; } = "";
+    public int ServerStatusPublishSeconds { get; set; } = 30;
+    public int ServerStatusUpdateSeconds { get; set; } = 60;
+    public int LeaderboardUpdateMinutes { get; set; } = 10;
+    public int LeaderboardTopLimit { get; set; } = 10;
 }
 
 public class CommandsConfig
@@ -163,6 +213,8 @@ public class CommandsConfig
     [JsonIgnore]
     public List<string> Slap { get; set; } = ["slap"];
     [JsonIgnore]
+    public List<string> God { get; set; } = ["god"];
+    [JsonIgnore]
     public List<string> Gag { get; set; } = ["gag"];
     [JsonIgnore]
     public List<string> Ungag { get; set; } = ["ungag"];
@@ -192,6 +244,10 @@ public class CommandsConfig
     public List<string> Resize { get; set; } = ["resize"];
     [JsonIgnore]
     public List<string> Drug { get; set; } = ["drug"];
+    [JsonIgnore]
+    public List<string> Blind { get; set; } = ["blind"];
+    [JsonIgnore]
+    public List<string> Glow { get; set; } = ["glow", "glove"];
     [JsonIgnore]
     public List<string> Beacon { get; set; } = ["beacon"];
     [JsonIgnore]
@@ -232,7 +288,7 @@ public class CommandsConfig
     public List<string> Rcon { get; set; } = ["rcon"];
     [JsonIgnore]
     public List<string> Cvar { get; set; } = ["cvar"];
-    public List<string> ListPlayers { get; set; } = [];
+    public List<string> ListPlayers { get; set; } = ["players"];
     public List<string> Who { get; set; } = ["who"];
 }
 
@@ -270,6 +326,7 @@ public class PermissionsConfig
     public string Unban { get; set; } = "admin.ban";
     public string Kick { get; set; } = "admin.kick";
     public string Slap { get; set; } = "admin.cheats";
+    public string God { get; set; } = "admin.cheats";
     public string Gag { get; set; } = "admin.mute";
     public string Ungag { get; set; } = "admin.mute";
     public string Mute { get; set; } = "admin.mute";
@@ -286,6 +343,8 @@ public class PermissionsConfig
     public string Unfreeze { get; set; } = "admin.cheats";
     public string Resize { get; set; } = "admin.cheats";
     public string Drug { get; set; } = "admin.cheats";
+    public string Blind { get; set; } = "admin.cheats";
+    public string Glow { get; set; } = "admin.cheats";
     public string Beacon { get; set; } = "admin.cheats";
     public string Burn { get; set; } = "admin.cheats";
     public string Disarm { get; set; } = "admin.cheats";

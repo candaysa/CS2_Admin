@@ -1,4 +1,4 @@
-﻿using CS2_Admin.Models;
+using CS2_Admin.Models;
 using CS2_Admin.Utils;
 using Dommel;
 using Microsoft.Extensions.Logging;
@@ -207,18 +207,13 @@ public class AdminDbManager
 
             using var connection = _core.Database.GetConnection("mysql_detailed");
             var now = DateTime.UtcNow;
-            var admin = connection.FirstOrDefault<Admin>(a =>
-                a.SteamId == steamId &&
-                (a.ExpiresAt == null || a.ExpiresAt > now));
 
-            // Some providers/runtime mappings are inconsistent with ulong predicates.
-            // Fallback to in-memory filtering over all records to avoid false negatives.
-            if (admin == null)
-            {
-                admin = connection
-                    .GetAll<Admin>()
-                    .FirstOrDefault(a => a.SteamId == steamId && (a.ExpiresAt == null || a.ExpiresAt > now));
-            }
+            // Dommel's LINQ-to-SQL cannot reliably translate ulong predicates,
+            // which can cause WHERE clauses to be dropped and return wrong rows.
+            // Always use GetAll + in-memory filtering for correctness.
+            var admin = connection
+                .GetAll<Admin>()
+                .FirstOrDefault(a => a.SteamId == steamId && (a.ExpiresAt == null || a.ExpiresAt > now));
 
             if (admin != null)
             {
@@ -244,8 +239,11 @@ public class AdminDbManager
         try
         {
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            var admins = connection.Select<Admin>(a =>
-                a.ExpiresAt == null || a.ExpiresAt > DateTime.UtcNow)
+            var now = DateTime.UtcNow;
+
+            // Use GetAll + in-memory filtering to avoid Dommel ulong predicate issues.
+            var admins = connection.GetAll<Admin>()
+                .Where(a => a.ExpiresAt == null || a.ExpiresAt > now)
                 .OrderByDescending(a => a.Immunity)
                 .ThenBy(a => a.Name)
                 .ToList();
@@ -336,9 +334,9 @@ public class AdminDbManager
         try
         {
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            var expiredAdmins = connection.Select<Admin>(a =>
-                a.ExpiresAt != null &&
-                a.ExpiresAt <= DateTime.UtcNow);
+            var now = DateTime.UtcNow;
+            var expiredAdmins = connection.GetAll<Admin>()
+                .Where(a => a.ExpiresAt != null && a.ExpiresAt <= now);
 
             var cleaned = 0;
             foreach (var admin in expiredAdmins)
@@ -425,12 +423,8 @@ public class AdminDbManager
 
     private static Admin? FindAdminRecordBySteamId(IDbConnection connection, ulong steamId)
     {
-        var admin = connection.FirstOrDefault<Admin>(a => a.SteamId == steamId);
-        if (admin != null)
-        {
-            return admin;
-        }
-
+        // Dommel's LINQ-to-SQL cannot reliably translate ulong predicates.
+        // Always use GetAll + in-memory filtering to prevent returning wrong admin rows.
         return connection.GetAll<Admin>().FirstOrDefault(a => a.SteamId == steamId);
     }
 }

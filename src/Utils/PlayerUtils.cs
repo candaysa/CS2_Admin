@@ -1,9 +1,11 @@
 using System.Text.RegularExpressions;
 using CS2_Admin.Config;
+using CS2_Admin.Database;
 using SwiftlyS2.Shared;
 using SwiftlyS2.Shared.Natives;
 using SwiftlyS2.Shared.Translation;
 using SwiftlyS2.Shared.Players;
+using SwiftlyS2.Shared.Commands;
 using SwiftlyS2.Shared.SchemaDefinitions;
 
 namespace CS2_Admin.Utils;
@@ -253,6 +255,93 @@ public static class PlayerUtils
         core.Scheduler.DelayBySeconds(0.2f, ApplyTag);
         core.Scheduler.DelayBySeconds(1.0f, ApplyTag);
         core.Scheduler.DelayBySeconds(3.0f, ApplyTag);
+    }
+
+    public static async Task<bool> CanAdminTargetAsync(
+        ISwiftlyCore core,
+        AdminDbManager adminDbManager,
+        ICommandContext context,
+        ulong targetSteamId,
+        bool allowSelf = false)
+    {
+        if (!context.IsSentByPlayer || context.Sender == null)
+        {
+            return true;
+        }
+
+        if (context.Sender.SteamID == targetSteamId)
+        {
+            if (allowSelf)
+            {
+                return true;
+            }
+
+            context.Reply($" \x02{PluginLocalizer.Get(core)["prefix"]}\x01 {PluginLocalizer.Get(core)["cannot_target_self"]}");
+            return false;
+        }
+
+        var adminImm = await adminDbManager.GetEffectiveImmunityAsync(context.Sender.SteamID);
+        var targetImm = await adminDbManager.GetEffectiveImmunityAsync(targetSteamId);
+        if (targetImm >= adminImm && targetImm > 0)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(core)["prefix"]}\x01 {PluginLocalizer.Get(core)["cannot_target_immunity"]}");
+            return false;
+        }
+
+        return true;
+    }
+
+    public static async Task<bool> CanAdminTargetAsync(
+        ISwiftlyCore core,
+        AdminDbManager adminDbManager,
+        IPlayer admin,
+        ulong targetSteamId,
+        bool allowSelf = false)
+    {
+        if (admin?.IsValid != true)
+        {
+            return false;
+        }
+
+        if (admin.SteamID == targetSteamId)
+        {
+            if (allowSelf)
+            {
+                return true;
+            }
+
+            admin.SendChat($" \x02{PluginLocalizer.Get(core)["prefix"]}\x01 {PluginLocalizer.Get(core)["cannot_target_self"]}");
+            return false;
+        }
+
+        var adminImm = await adminDbManager.GetEffectiveImmunityAsync(admin.SteamID);
+        var targetImm = await adminDbManager.GetEffectiveImmunityAsync(targetSteamId);
+        if (targetImm >= adminImm && targetImm > 0)
+        {
+            admin.SendChat($" \x02{PluginLocalizer.Get(core)["prefix"]}\x01 {PluginLocalizer.Get(core)["cannot_target_immunity"]}");
+            return false;
+        }
+
+        return true;
+    }
+
+    public static async Task<List<IPlayer>> FilterTargetsByAccessAsync(
+        ISwiftlyCore core,
+        AdminDbManager adminDbManager,
+        ICommandContext context,
+        IEnumerable<IPlayer> targets,
+        bool allowSelf = false)
+    {
+        var result = new List<IPlayer>();
+        foreach (var target in targets)
+        {
+            if (await CanAdminTargetAsync(core, adminDbManager, context, target.SteamID, allowSelf))
+            {
+                result.Add(target);
+            }
+        }
+
+        return result;
     }
 
     public static string GetScoreTag(IPlayer player, string fallbackTag)

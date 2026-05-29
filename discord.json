@@ -1,8 +1,21 @@
 {
-  "CS2AdminDiscord": {
-    "Webhook": "",
-    "CallAdminWebhook": "",
-    "ReportWebhook": "",
-    "AdminTimeWebhook": ""
+  "CS2_Discord": {
+    "ServerName": "",
+    "BotToken": "",
+    "ServerPublicIp": "",
+    "StatusButtonLabel": "",
+    "StatusHubKey": "default",
+    "AdminLogChannelId": "",
+    "ChatLogChannelId": "",
+    "ConnectionLogChannelId": "",
+    "CallAdminChannelId": "",
+    "ReportChannelId": "",
+    "AdminTimeChannelId": "",
+    "ServerStatusChannelId": "",
+    "LeaderboardChannelId": "",
+    "ServerStatusPublishSeconds": 30,
+    "ServerStatusUpdateSeconds": 60,
+    "LeaderboardUpdateMinutes": 10,
+    "LeaderboardTopLimit": 10
   }
 }

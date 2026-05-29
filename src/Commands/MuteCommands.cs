@@ -15,7 +15,7 @@ public class MuteCommands
     private readonly GagManager _gagManager;
     private readonly AdminDbManager _adminDbManager;
     private readonly AdminLogManager _adminLogManager;
-    private readonly DiscordWebhook _discord;
+    private readonly DiscordBotService _discord;
     private readonly CommandsConfig _commands;
     private readonly PermissionsConfig _permissions;
     private readonly TagsConfig _tags;
@@ -24,6 +24,7 @@ public class MuteCommands
     private readonly string _silencePermission;
     private readonly string _adminRootPermission;
     private readonly MessagesConfig _messagesConfig;
+    private readonly PlayerSanctionStateService _sanctionStateService;
 
     public MuteCommands(
         ISwiftlyCore core, 
@@ -31,7 +32,7 @@ public class MuteCommands
         GagManager gagManager,
         AdminDbManager adminDbManager,
         AdminLogManager adminLogManager,
-        DiscordWebhook discord, 
+        DiscordBotService discord, 
         CommandsConfig commands,
         PermissionsConfig permissions,
         TagsConfig tags,
@@ -39,7 +40,8 @@ public class MuteCommands
         string gagPermission,
         string silencePermission,
         string adminRootPermission,
-        MessagesConfig messagesConfig)
+        MessagesConfig messagesConfig,
+        PlayerSanctionStateService sanctionStateService)
     {
         _core = core;
         _muteManager = muteManager;
@@ -55,6 +57,7 @@ public class MuteCommands
         _silencePermission = silencePermission;
         _adminRootPermission = adminRootPermission;
         _messagesConfig = messagesConfig;
+        _sanctionStateService = sanctionStateService;
     }
 
     public void OnMuteCommand(ICommandContext context)
@@ -85,6 +88,11 @@ public class MuteCommands
             return;
         }
 
+        if (!EnsureSinglePunishTarget(context, targets, args[0]))
+        {
+            return;
+        }
+
         if (!SanctionDurationParser.TryParseToMinutes(args[1], out int duration))
         {
             context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["invalid_duration"]}");
@@ -99,6 +107,7 @@ public class MuteCommands
         var adminSteamId = context.Sender?.SteamID ?? 0;
         var targetSnapshots = targets
             .Select(t => new PunishTargetSnapshot(
+                t.PlayerID,
                 t.SteamID,
                 t.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"],
                 t.IPAddress))
@@ -122,6 +131,7 @@ public class MuteCommands
                 }
 
                 await _muteManager.AddMuteAsync(target.SteamId, duration, reason);
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
                 _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug] mute apply steamid={SteamId} duration={Duration} reason={Reason}", target.SteamId, duration, reason);
                 var durationText = duration <= 0 ? PluginLocalizer.Get(_core)["duration_permanently"] : PluginLocalizer.Get(_core)["duration_for_minutes", duration];
                 
@@ -144,8 +154,7 @@ public class MuteCommands
                     }
                 });
 
-                await _discord.SendMuteNotificationAsync(adminName, target.Name, duration, reason);
-                await _adminLogManager.AddLogAsync("mute", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};reason={reason}", target.Name);
+                await _adminLogManager.AddLogAsync("mute", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};reason={reason}", target.Name, target.PlayerId, reason);
 
                 _core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} muted {Target} for {Duration} minutes. Reason: {Reason}", 
                     adminName, target.Name, duration, reason);
@@ -181,6 +190,16 @@ public class MuteCommands
             return;
         }
 
+        if (!EnsureSinglePunishTarget(context, targets, args[0]))
+        {
+            return;
+        }
+
+        if (!EnsureSinglePunishTarget(context, targets, args[0]))
+        {
+            return;
+        }
+
         string reason = args.Length > 1 
             ? string.Join(" ", args.Skip(1)) 
             : PluginLocalizer.Get(_core)["no_reason"];
@@ -189,6 +208,7 @@ public class MuteCommands
         var adminSteamId = context.Sender?.SteamID ?? 0;
         var targetSnapshots = targets
             .Select(t => new PunishTargetSnapshot(
+                t.PlayerID,
                 t.SteamID,
                 t.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"],
                 t.IPAddress))
@@ -212,6 +232,7 @@ public class MuteCommands
                 }
 
                 await _muteManager.UnmuteAsync(target.SteamId, reason);
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
 
                 _core.Scheduler.NextTick(() =>
                 {
@@ -233,7 +254,7 @@ public class MuteCommands
 
                 _core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} unmuted {Target}. Reason: {Reason}", 
                     adminName, target.Name, reason);
-                await _adminLogManager.AddLogAsync("unmute", adminName, adminSteamId, target.SteamId, target.IpAddress, $"reason={reason}", target.Name);
+                await _adminLogManager.AddLogAsync("unmute", adminName, adminSteamId, target.SteamId, target.IpAddress, $"reason={reason}", target.Name, target.PlayerId, reason);
             }
         });
     }
@@ -266,6 +287,11 @@ public class MuteCommands
             return;
         }
 
+        if (!EnsureSinglePunishTarget(context, targets, args[0]))
+        {
+            return;
+        }
+
         if (!SanctionDurationParser.TryParseToMinutes(args[1], out int duration))
         {
             context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["invalid_duration"]}");
@@ -280,6 +306,7 @@ public class MuteCommands
         var adminSteamId = context.Sender?.SteamID ?? 0;
         var targetSnapshots = targets
             .Select(t => new PunishTargetSnapshot(
+                t.PlayerID,
                 t.SteamID,
                 t.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"],
                 t.IPAddress))
@@ -303,6 +330,7 @@ public class MuteCommands
                 }
 
                 await _gagManager.AddGagAsync(target.SteamId, duration, reason);
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
                 _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug] gag apply steamid={SteamId} duration={Duration} reason={Reason}", target.SteamId, duration, reason);
                 var durationText = duration <= 0 ? PluginLocalizer.Get(_core)["duration_permanently"] : PluginLocalizer.Get(_core)["duration_for_minutes", duration];
                 
@@ -324,8 +352,7 @@ public class MuteCommands
                     }
                 });
 
-                await _discord.SendGagNotificationAsync(adminName, target.Name, duration, reason);
-                await _adminLogManager.AddLogAsync("gag", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};reason={reason}", target.Name);
+                await _adminLogManager.AddLogAsync("gag", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};reason={reason}", target.Name, target.PlayerId, reason);
 
                 _core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} gagged {Target} for {Duration} minutes. Reason: {Reason}", 
                     adminName, target.Name, duration, reason);
@@ -361,6 +388,11 @@ public class MuteCommands
             return;
         }
 
+        if (!EnsureSinglePunishTarget(context, targets, args[0]))
+        {
+            return;
+        }
+
         string reason = args.Length > 1 
             ? string.Join(" ", args.Skip(1)) 
             : PluginLocalizer.Get(_core)["no_reason"];
@@ -369,6 +401,7 @@ public class MuteCommands
         var adminSteamId = context.Sender?.SteamID ?? 0;
         var targetSnapshots = targets
             .Select(t => new PunishTargetSnapshot(
+                t.PlayerID,
                 t.SteamID,
                 t.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"],
                 t.IPAddress))
@@ -392,6 +425,7 @@ public class MuteCommands
                 }
 
                 await _gagManager.UngagAsync(target.SteamId, reason);
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
 
                 _core.Scheduler.NextTick(() =>
                 {
@@ -412,7 +446,7 @@ public class MuteCommands
 
                 _core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} ungagged {Target}. Reason: {Reason}", 
                     adminName, target.Name, reason);
-                await _adminLogManager.AddLogAsync("ungag", adminName, adminSteamId, target.SteamId, target.IpAddress, $"reason={reason}", target.Name);
+                await _adminLogManager.AddLogAsync("ungag", adminName, adminSteamId, target.SteamId, target.IpAddress, $"reason={reason}", target.Name, target.PlayerId, reason);
             }
         });
     }
@@ -459,6 +493,7 @@ public class MuteCommands
         var adminSteamId = context.Sender?.SteamID ?? 0;
         var targetSnapshots = targets
             .Select(t => new PunishTargetSnapshot(
+                t.PlayerID,
                 t.SteamID,
                 t.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"],
                 t.IPAddress))
@@ -490,6 +525,8 @@ public class MuteCommands
                 if (existingGag == null)
                     await _gagManager.AddGagAsync(target.SteamId, duration, reason);
 
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
+
                 var durationText = duration <= 0 ? PluginLocalizer.Get(_core)["duration_permanently"] : PluginLocalizer.Get(_core)["duration_for_minutes", duration];
                 
                 _core.Scheduler.NextTick(() =>
@@ -511,7 +548,6 @@ public class MuteCommands
                     }
                 });
 
-                await _discord.SendSilenceNotificationAsync(adminName, target.Name, duration, reason);
                 await _adminLogManager.AddLogAsync("silence", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};reason={reason}", target.Name);
 
                 _core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} silenced {Target} for {Duration} minutes. Reason: {Reason}", 
@@ -556,6 +592,7 @@ public class MuteCommands
         var adminSteamId = context.Sender?.SteamID ?? 0;
         var targetSnapshots = targets
             .Select(t => new PunishTargetSnapshot(
+                t.PlayerID,
                 t.SteamID,
                 t.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"],
                 t.IPAddress))
@@ -587,6 +624,8 @@ public class MuteCommands
                 if (existingGag != null)
                     await _gagManager.UngagAsync(target.SteamId, reason);
 
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
+
                 _core.Scheduler.NextTick(() =>
                 {
                     foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
@@ -614,26 +653,7 @@ public class MuteCommands
 
     private async Task<bool> ValidateCanPunishAsync(ICommandContext context, ulong targetSteamId)
     {
-        if (!context.IsSentByPlayer || context.Sender == null)
-        {
-            return true;
-        }
-
-        if (context.Sender.SteamID == targetSteamId)
-        {
-            _core.Scheduler.NextTick(() => context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["cannot_target_self"]}"));
-            return false;
-        }
-
-        var adminImm = await _adminDbManager.GetEffectiveImmunityAsync(context.Sender.SteamID);
-        var targetImm = await _adminDbManager.GetEffectiveImmunityAsync(targetSteamId);
-        if (targetImm >= adminImm && targetImm > 0)
-        {
-            _core.Scheduler.NextTick(() => context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["cannot_target_immunity"]}"));
-            return false;
-        }
-
-        return true;
+        return await PlayerUtils.CanAdminTargetAsync(_core, _adminDbManager, context, targetSteamId);
     }
 
     private bool RejectGroupTargets(ICommandContext context, string[] args)
@@ -649,6 +669,17 @@ public class MuteCommands
             return true;
         }
 
+        return false;
+    }
+
+    private bool EnsureSinglePunishTarget(ICommandContext context, IReadOnlyCollection<IPlayer> targets, string rawTarget)
+    {
+        if (targets.Count <= 1)
+        {
+            return true;
+        }
+
+        context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 Target '{rawTarget}' matched multiple players. Use `#userid` or full name.");
         return false;
     }
 
@@ -677,7 +708,7 @@ public class MuteCommands
         return isAdminViewer ? adminName : "Admin";
     }
 
-    private readonly record struct PunishTargetSnapshot(ulong SteamId, string Name, string? IpAddress);
+    private readonly record struct PunishTargetSnapshot(int PlayerId, ulong SteamId, string Name, string? IpAddress);
 }
 
 

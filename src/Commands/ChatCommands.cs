@@ -15,7 +15,7 @@ public class ChatCommands
 {
     private readonly ISwiftlyCore _core;
     private readonly AdminLogManager _adminLogManager;
-    private readonly DiscordWebhook _discord;
+    private readonly DiscordBotService _discord;
     private readonly PermissionsConfig _permissions;
     private readonly TagsConfig _tags;
     private readonly MessagesConfig _messages;
@@ -25,7 +25,7 @@ public class ChatCommands
     public ChatCommands(
         ISwiftlyCore core,
         AdminLogManager adminLogManager,
-        DiscordWebhook discord,
+        DiscordBotService discord,
         PermissionsConfig permissions,
         TagsConfig tags,
         MessagesConfig messages,

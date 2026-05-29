@@ -1,16 +1,16 @@
-﻿using Dommel;
 using CS2_Admin.Models;
 using CS2_Admin.Utils;
+using Dommel;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
+using System.Collections.Concurrent;
 
 namespace CS2_Admin.Database;
 
 public class MuteManager
 {
     private readonly ISwiftlyCore _core;
-    private readonly Dictionary<ulong, Mute> _muteCache = new();
-    private DateTime _lastCacheUpdate = DateTime.MinValue;
+    private readonly ConcurrentDictionary<ulong, CacheEntry> _muteCache = new();
     private readonly TimeSpan _cacheLifetime = TimeSpan.FromMinutes(5);
     private readonly AsyncLocal<AdminContext> _currentAdmin = new();
 
@@ -66,7 +66,7 @@ public class MuteManager
                 using var connection = _core.Database.GetConnection("mysql_detailed");
                 var id = connection.Insert(mute);
                 mute.Id = Convert.ToInt32(id);
-                _muteCache[steamId] = mute;
+                _muteCache[steamId] = new CacheEntry(mute, DateTime.UtcNow);
 
                 return true;
             }
@@ -86,9 +86,12 @@ public class MuteManager
             {
                 var admin = _currentAdmin.Value ?? new AdminContext();
                 using var connection = _core.Database.GetConnection("mysql_detailed");
-                
-                var mute = connection.FirstOrDefault<Mute>(m => m.SteamId == steamId && m.Status == MuteStatus.Active);
-                if (mute == null) return false;
+
+                var mute = connection.FirstOrDefault<Mute>(m => m.SteamId == steamId && m.StatusValue == MuteStatusNames.Active);
+                if (mute == null)
+                {
+                    return false;
+                }
 
                 mute.Status = MuteStatus.Unmuted;
                 mute.UnmuteAdminName = admin.Name;
@@ -97,7 +100,7 @@ public class MuteManager
                 mute.UnmuteDate = DateTime.UtcNow;
 
                 connection.Update(mute);
-                _muteCache.Remove(steamId);
+                _muteCache.TryRemove(steamId, out _);
 
                 return true;
             }
@@ -113,31 +116,36 @@ public class MuteManager
     {
         try
         {
-            if (_muteCache.TryGetValue(steamId, out Mute? cachedMute) &&
-                DateTime.UtcNow - _lastCacheUpdate < _cacheLifetime)
+            if (_muteCache.TryGetValue(steamId, out var cachedEntry))
             {
-                if (cachedMute.IsExpired || cachedMute.Status != MuteStatus.Active)
+                var cachedMute = cachedEntry.Mute;
+                if (DateTime.UtcNow - cachedEntry.CachedAtUtc < _cacheLifetime)
                 {
-                    _muteCache.Remove(steamId);
-                    return null;
+                    if (cachedMute.IsExpired || cachedMute.Status != MuteStatus.Active)
+                    {
+                        _muteCache.TryRemove(steamId, out _);
+                        return null;
+                    }
+
+                    return cachedMute;
                 }
-                return cachedMute;
+
+                _muteCache.TryRemove(steamId, out _);
             }
 
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            var mute = connection.FirstOrDefault<Mute>(m => 
-                m.SteamId == steamId && 
-                m.Status == MuteStatus.Active &&
+            var mute = connection.FirstOrDefault<Mute>(m =>
+                m.SteamId == steamId &&
+                m.StatusValue == MuteStatusNames.Active &&
                 (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow));
 
             if (mute != null)
             {
-                _muteCache[steamId] = mute;
-                _lastCacheUpdate = DateTime.UtcNow;
+                _muteCache[steamId] = new CacheEntry(mute, DateTime.UtcNow);
             }
             else
             {
-                _muteCache.Remove(steamId);
+                _muteCache.TryRemove(steamId, out _);
             }
 
             return mute;
@@ -151,10 +159,20 @@ public class MuteManager
 
     public Mute? GetActiveMuteFromCache(ulong steamId)
     {
-        if (_muteCache.TryGetValue(steamId, out Mute? cachedMute) && cachedMute.IsActive)
+        if (_muteCache.TryGetValue(steamId, out var cachedEntry))
         {
-            return cachedMute;
+            if (DateTime.UtcNow - cachedEntry.CachedAtUtc >= _cacheLifetime)
+            {
+                _muteCache.TryRemove(steamId, out _);
+                return null;
+            }
+
+            if (cachedEntry.Mute.IsActive)
+            {
+                return cachedEntry.Mute;
+            }
         }
+
         return null;
     }
 
@@ -183,12 +201,12 @@ public class MuteManager
             try
             {
                 using var connection = _core.Database.GetConnection("mysql_detailed");
-                var expiredMutes = connection.Select<Mute>(m => 
-                    m.Status == MuteStatus.Active && 
-                    m.ExpiresAt != null && 
+                var expiredMutes = connection.Select<Mute>(m =>
+                    m.StatusValue == MuteStatusNames.Active &&
+                    m.ExpiresAt != null &&
                     m.ExpiresAt <= DateTime.UtcNow);
 
-                int cleaned = 0;
+                var cleaned = 0;
                 foreach (var mute in expiredMutes)
                 {
                     mute.Status = MuteStatus.Expired;
@@ -213,8 +231,6 @@ public class MuteManager
     {
         _muteCache.Clear();
     }
+
+    private sealed record CacheEntry(Mute Mute, DateTime CachedAtUtc);
 }
-
-
-
-
