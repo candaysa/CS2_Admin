@@ -1,4 +1,4 @@
-﻿[🇹🇷 Türkçe Okumak Icin Tiklayin (Turkish)](README_TR.md)
+[🇹🇷 Türkçe Okumak Icin Tiklayin (Turkish)](README_TR.md)
 
 # CS2_ADMIN
 
@@ -24,233 +24,145 @@ Main config files use schema versioning with `Version: 1`:
 
 If a config file has missing/wrong version (or invalid JSON), plugin deletes and regenerates it on next load.
 
-## Console Commands
+## 🎯 Target Selection (IMPORTANT: #id Usage)
+When applying commands to players, **using the player's ID (`#id`) instead of their name** is highly recommended to prevent name confusion and accidental actions on the wrong player.
+You can view player IDs by typing `!listplayers` in chat or `status` in the server console.
 
-Use `sw_` commands in server console (without `!`).
+**Correct Usage Example:**
+If Ali's ID is 12, instead of using `!kick Ali`, you should use `!kick #12`. In this guide, targets are indicated as `<#id>`.
 
-- `sw_addgroup <name> <flags> [immunity]`
-- `sw_editgroup <name> <flags> [immunity]`
-- `sw_removegroup <name>`
-- `sw_listgroups`
-- `sw_addadmin <steamid> <name> <#group or group1,group2> [duration_days]`
-- `sw_editadmin <steamid> <name|groups|immunity|duration> <value>`
-- `sw_removeadmin <steamid>`
-- `sw_listadmins`
-- `sw_adminreload`
-- `sw_ban <target> <minutes|-1> [reason]`
-- `sw_ipban <target|ip> <minutes|-1> [reason]`
-- `sw_addban <steamid> <minutes|-1> [reason]`
-- `sw_unban <steamid|ip> [reason]`
-- `sw_warn <target> <reason>`
-- `sw_unwarn <target> [reason]`
-- `sw_mute <target> <minutes|-1> [reason]`
-- `sw_unmute <target> [reason]`
-- `sw_gag <target> <minutes|-1> [reason]`
-- `sw_ungag <target> [reason]`
-- `sw_silence <target> <minutes|-1> [reason]`
-- `sw_unsilence <target> [reason]`
-- `sw_kick <target> [reason]`
-- `sw_slap <target> [damage]`
-- `sw_slay <target>`
-- `sw_respawn <target>`
-- `sw_team <target> <t|ct|spec>`
-- `sw_noclip <target>`
-- `sw_goto <target>`
-- `sw_bring <target>`
-- `sw_freeze <target> [seconds]`
-- `sw_unfreeze <target>`
-- `sw_resize <target> <scale>`
-- `sw_drug <target> [seconds]`
-- `sw_burn <target> [seconds] [damage_per_tick]`
-- `sw_disarm <target>`
-- `sw_speed <target> <multiplier>` / `sw_setspeed <target> <multiplier>`
-- `sw_gravity <target> <multiplier>` / `sw_setgravity <target> <multiplier>`
-- `sw_rename <target> <new_name>`
-- `sw_hp <target> <health>`
-- `sw_money <target> <amount>` / `sw_setmoney <target> <amount>` / `sw_givemoney <target> <amount>`
-- `sw_give <target> <item>` / `sw_giveitem <target> <item>`
-- `sw_who <target>`
-- `sw_vote "<question>" "<answer1>" "<answer2>" ...`
-- `sw_map <mapname>`
-- `sw_wsmap <workshop_id|name>`
-- `sw_rr [seconds]` / `sw_restart [seconds]`
-- `sw_hson` / `sw_hsoff`
-- `sw_bhopon` / `sw_bhopoff`
-- `sw_respawnon` / `sw_respawnoff`
-- `sw_cvar <cvar> [value]`
-- `sw_admintime`
-- `sw_admintimesend`
+**Other Mass Targeting Options:**
+- `@all`: Everyone on the server.
+- `@t`: All Terrorists.
+- `@ct`: All Counter-Terrorists.
+- `@alive`: All alive players.
+- `@dead`: All dead players.
+*(Ex: `!slay @t` kills all terrorists.)*
 
-## Ingame Commands
+---
 
-- `!addgroup <name> <flags> [immunity]`
-- `!editgroup <name> <flags> [immunity]`
-- `!removegroup <name>`
-- `!listgroups`
-- `!addadmin <steamid> <name> <#group or group1,group2> [duration_days]`
-- `!editadmin <steamid> <name|groups|immunity|duration> <value>`
-- `!removeadmin <steamid>`
-- `!listadmins`
-- `!adminreload`
-- `!ban <target> <minutes|-1> [reason]`
-- `!ipban <target|ip> <minutes|-1> [reason]`
-- `!addban <steamid> <minutes|-1> [reason]`
-- `!unban <steamid|ip> [reason]`
-- `!warn <target> <reason>`
-- `!unwarn <target> [reason]`
-- `!mute <target> <minutes|-1> [reason]`
-- `!unmute <target> [reason]`
-- `!gag <target> <minutes|-1> [reason]`
-- `!ungag <target> [reason]`
-- `!silence <target> <minutes|-1> [reason]`
-- `!unsilence <target> [reason]`
-- `!kick <target> [reason]`
-- `!slap <target> [damage]`
-- `!slay <target>`
-- `!respawn <target>`
-- `!team <target> <t|ct|spec>`
-- `!noclip <target>`
-- `!goto <target>`
-- `!bring <target>`
-- `!freeze <target> [seconds]`
-- `!unfreeze <target>`
-- `!resize <target> <scale>`
-- `!drug <target> [seconds]`
-- `!burn <target> [seconds] [damage_per_tick]`
-- `!disarm <target>`
-- `!speed <target> <multiplier>` / `!setspeed <target> <multiplier>`
-- `!gravity <target> <multiplier>` / `!setgravity <target> <multiplier>`
-- `!rename <target> <new_name>`
-- `!hp <target> <health>`
-- `!money <target> <amount>` / `!setmoney <target> <amount>` / `!givemoney <target> <amount>`
-- `!give <target> <item>` / `!giveitem <target> <item>`
-- `!who <target>`
-- `!vote "<question>" "<answer1>" "<answer2>" ...`
-- `!map <mapname>`
-- `!wsmap <workshop_id|name>`
-- `!rr [seconds]` / `!restart [seconds]`
-- `!hson` / `!hsoff`
-- `!bunnyon` / `!bunnyoff`
-- `!respawnon` / `!respawnoff`
-- `!cvar <cvar> [value]`
-- `!admintime`
-- `!admintimesend`
+## 🗣️ General & Communication Commands
+Used for general server actions and announcements.
 
-## Ban Behavior
+* `!admin` - Opens the Admin Menu.
+* `!warn <#id> <reason>` - Warns the player with a reason.
+* `!unwarn <#id>` - Removes the warning from the player.
+* `!who <#id>` - Shows detailed information about the target player.
+* `!asay <message>` - Sends a message visible only to admins (Admin chat).
+* `!say <message>` - Sends a System/Server message to everyone.
+* `!csay <message>` - Displays a large center message (Announcement).
+* `!hsay <message>` - Displays a hint message at the top of the screen.
+* `!admintime` - Shows your total active admin time on the server.
+* `!listplayers` - Shows the player list and their IDs.
+* `!vote "<question>" "<answer1>" "<answer2>"` - Starts a vote. (Ex: `!vote "Change map?" "Yes" "No"`)
 
-- `sw_ban` / `!ban` -> SteamID ban only.
-- `sw_ipban` / `!ipban` -> IP ban only.
-- `sw_addban` / `!addban` -> offline SteamID ban only.
-- `sw_unban` / `!unban` -> unban by SteamID or IP.
+---
 
-## 4) Permissions
+## 🗺️ Map & Game Management
+Basic operations like changing maps or restarting the round.
+
+* `!map <map_name>` - Changes the map (Ex: `!map de_dust2`).
+* `!wsmap <workshop_id|name>` - Loads a Workshop map.
+* `!rr [seconds]` - Restarts the game after specified seconds.
+
+---
+
+## ⚖️ Punishment Commands (Kick, Ban, Mute)
+Used to penalize rule breakers.
+
+* `!kick <#id> [reason]` - Kicks the player from the server. (Ex: `!kick #12 Language`)
+* `!ban <#id> <minutes> [reason]` - Bans the player via SteamID. (Use `-1` for permanent).
+* `!ipban <#id> <minutes> [reason]` - Bans the player via IP.
+* `!addban <steamid> <minutes> [reason]` - Bans an offline player via SteamID. (Use SteamID instead of #id).
+* `!unban <steamid|ip> [reason]` - Removes a ban.
+* `!mute <#id> <minutes> [reason]` - Blocks the player's voice chat (microphone). (Use `-1` for permanent).
+* `!unmute <#id>` - Removes voice chat block.
+* `!gag <#id> <minutes> [reason]` - Blocks the player's text chat.
+* `!ungag <#id>` - Removes text chat block.
+* `!silence <#id> <minutes> [reason]` - Blocks both voice and text chat (Mute + Gag).
+* `!unsilence <#id>` - Removes the silence punishment.
+
+---
+
+## 🎭 Fun & Interaction Commands (Cheats)
+Commands for fun or game interactions.
+
+* `!slap <#id> [damage]` - Slaps the player (damages them if specified).
+* `!slay <#id>` - Kills the player instantly.
+* `!respawn <#id>` - Respawns the player.
+* `!team <#id> <t|ct|spec>` - Changes the player's team. (Ex: `!team #12 spec`)
+* `!noclip <#id>` - Toggles noclip (fly through walls) for the player.
+* `!goto <#id>` - Teleports you to the target player.
+* `!bring <#id>` - Teleports the target player to you.
+* `!freeze <#id> [seconds]` - Freezes the player, preventing movement.
+* `!unfreeze <#id>` - Unfreezes the player.
+* `!resize <#id> <scale>` - Enlarges or shrinks the player.
+* `!drug <#id> [seconds]` - Gives the player a drug effect (screen wobble).
+* `!burn <#id> [seconds] [damage_per_tick]` - Ignites the player.
+* `!disarm <#id>` - Drops/removes the player's weapons.
+* `!speed <#id> <multiplier>` - Changes the player's speed (Ex: `!speed #12 1.5`).
+* `!gravity <#id> <multiplier>` - Changes the player's gravity.
+* `!rename <#id> <new_name>` - Changes the player's name.
+* `!hp <#id> <health>` - Sets the player's health.
+* `!money <#id> <amount>` - Sets the player's money.
+* `!give <#id> <item>` - Gives a weapon or item to the player (Ex: `!give #12 weapon_ak47`).
+
+---
+
+## ⚙️ Server Toggles
+Enable/disable server-wide modes.
+
+* `!hson` / `!hsoff` - Toggles Only Headshot mode.
+* `!bunnyon` / `!bunnyoff` - Toggles Bunny Hop (Bhop) mode.
+* `!respawnon` / `!respawnoff` - Toggles infinite auto-respawn.
+* `!cvar <cvar> [value]` - Changes a server console variable (cvar).
+
+> **Note:** All `!` chat commands have console equivalents using the `sw_` prefix. For example, `sw_ban` in console is the same as `!ban` in chat. Administrative management commands (`sw_addadmin`, `sw_addgroup`, etc.) must be run in the server console or by players with `admin.root` permission.
+
+---
+
+## 🔐 Permissions Overview
 
 Default core permissions:
 
-- `admin.root` -> full access.
-- `admin.generic` -> general admin commands.
-- `admin.ban` -> ban/ipban/addban/unban/lastban.
-- `admin.kick` -> kick.
-- `admin.mute` -> mute/gag/silence.
-- `admin.cheats` -> slap/slay/respawn/team/noclip/goto/bring/freeze/unfreeze/resize/drug/burn/disarm/speed/gravity/rename/hp/money/give.
-- `admin.rcon` -> rcon and server toggles (`hson/hsoff`, `bhopon/bhopoff`, `respawnon/respawnoff`).
+- `admin.root` -> full access, admin/group management (`sw_addadmin`, etc.), root bypass (`admin.*`, `*`).
+- `admin.generic` -> `admin` menu, `warn`, `unwarn`, `who`, `asay/say/psay/csay/hsay`, `admintime`, `map`, `wsmap`, `rr/restart`, `calladmin`, `listplayers`, `vote`.
+- `admin.ban` -> `ban`, `ipban`, `addban`, `unban`, `lastban`.
+- `admin.kick` -> `kick`.
+- `admin.mute` -> `mute/unmute`, `gag/ungag`, `silence/unsilence`.
+- `admin.cheats` -> `slap`, `slay`, `respawn`, `team`, `noclip`, `goto`, `bring`, `freeze`, `unfreeze`, `resize`, `drug`, `burn`, `disarm`, `speed`, `gravity`, `rename`, `hp`, `money`, `give`.
+- `admin.rcon` -> server toggles (`hson/hsoff`, `bhopon/bhopoff`, `respawnon/respawnoff`).
 - `admin.cvar` -> `cvar`.
-- `Report` permission is empty by default (`""`), so `!report` is open to everyone unless changed.
 
-## 5) What Each Permission Does
+*`Report` permission is empty by default (`""`), meaning `!report` is open to everyone unless changed.*
 
-- `admin.root`:
-- Admin/group management (`addadmin/removeadmin/addgroup/...`).
-- `adminreload`.
-- Root bypass (`admin.*`, `*`).
+## ⚙️ Recommended Setup Flow (Server Console)
 
-- `admin.generic`:
-- Most moderation and communication commands.
-- `admin` menu access.
-- `warn`, `unwarn`, `who`, `asay/say/psay/csay/hsay`, `admintime`, `map`, `wsmap`, `rr/restart`, `calladmin`, `listplayers`, `vote`.
-
-- `admin.ban`:
-- `ban`, `ipban`, `addban`, `unban`, `lastban`.
-
-- `admin.kick`:
-- `kick`.
-
-- `admin.mute`:
-- `mute/unmute`, `gag/ungag`, `silence/unsilence`.
-
-- `admin.cheats`:
-- `slap`, `slay`, `respawn`, `team`, `noclip`, `goto`, `bring`, `freeze`, `unfreeze`, `resize`, `drug`, `burn`, `disarm`, `speed`, `gravity`, `rename`, `hp`, `money`, `give`.
-
-- `admin.rcon`:
-- `hson/hsoff`, `bhopon/bhopoff`, `respawnon/respawnoff`.
-
-- `admin.cvar`:
-- `cvar`.
-
-## 6) Recommended Setup Flow (Group First, Then Admin)
-
-### 6.1 Create group
-
-Create group first:
-
+**1. Create a group first:**
 ```text
 sw_addgroup Owner admin.root 100
-```
-
-Example moderator group:
-
-```text
 sw_addgroup Moderator admin.generic,admin.kick,admin.mute 50
 ```
 
-### 6.2 Add admin
-
-After group creation, assign admin:
-
+**2. Assign an admin to the group:**
 ```text
 sw_addadmin 76561198255550637 SSonic @Owner
-```
-
-or multi-group:
-
-```text
 sw_addadmin 7656119XXXXXXXXXX PlayerX Moderator,Helper 30
 ```
+*(Optional last value is the duration in days).*
 
-Notes:
-- Optional last value is `[duration_days]`.
-- Example: `sw_addadmin 7656119... PlayerX Moderator 30`
-
-### 6.3 Verify
-
+**3. Verify:**
 ```text
 sw_listgroups
 sw_listadmins
 sw_adminreload
 ```
+*Online target players receive their permissions and tags immediately.*
 
-Online target player gets permissions and tag immediately.
+## 📁 File Notes
 
-Note: Tag refresh now runs on join + delayed refresh + periodic refresh. In rare client-tab cache cases, reconnect may still be needed.
-
-## 7) Target Formats
-
-- Name: `PlayerName`
-- `#userid`: `#12`
-- SteamID64: `7656119...`
-- SteamID64 with @: `@7656119...`
-- Group targets (for supported commands): `@all`, `@t`, `@ct`, `@alive`, `@dead`
-
-## 8) File Notes
-
-- `config.json` -> general settings.
-- `config.json` includes `Version` and language settings.
-- `commands.json` -> editable aliases.
-- `commands.json` includes `Version`.
-- `commands.json` `Ban` alias maps to `sw_ban` (console) and `!ban` (ingame), SteamID ban only.
-- `commands.json` `IpBan` alias maps to `sw_ipban` (console) and `!ipban` (ingame), IP ban only.
+- `config.json` -> general settings & language.
+- `commands.json` -> editable chat aliases.
 - `permissions.json` -> permission mapping.
-- `permissions.json` includes `Version`.
-- `maps.json` includes `Version` and both normal/workshop map lists.
+- `maps.json` -> normal & workshop map lists.
 - `resources/translations/*.jsonc` -> localization files (`en`, `tr`, `de`, `fr`, `it`, `el`, `ru`, `bg`, `hu`).
-

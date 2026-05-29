@@ -1,4 +1,4 @@
-﻿[🇬🇧 Read in English](README.md)
+[🇬🇧 Read in English](README.md)
 
 # CS2_ADMIN
 
@@ -24,233 +24,145 @@ Ana config dosyalari `Version: 1` ile surumlenir:
 
 Bir dosyada surum eksik/yanlis ise (veya JSON bozuksa), eklenti dosyayi silip bir sonraki yuklemede yeniden olusturur.
 
-## Console Commands
+## 🎯 Hedef Belirme (ÖNEMLİ: #id Kullanımı)
+Komutları oyuncular üzerinde uygularken **isim yerine oyuncunun ID'sini (#id) kullanmanız** isim karışıklıklarını ve yanlış işlem yapılmasını önlemek adına çok daha güvenlidir.
+Oyuncuların ID numaralarını `!listplayers` yazarak veya konsola `status` yazarak görebilirsiniz.
 
-Use `sw_` commands in server console (without `!`).
+**Örnek doğru kullanım:**
+Eğer Ali'nin ID'si 12 ise, Ali'ye işlem yaparken `!kick Ali` yerine doğrudan `!kick #12` komutunu kullanmalısınız. Tüm komut rehberinde hedef belirtilen yerler `<#id>` olarak gösterilmiştir.
 
-- `sw_addgroup <name> <flags> [immunity]`
-- `sw_editgroup <name> <flags> [immunity]`
-- `sw_removegroup <name>`
-- `sw_listgroups`
-- `sw_addadmin <steamid> <name> <#group or group1,group2> [duration_days]`
-- `sw_editadmin <steamid> <name|groups|immunity|duration> <value>`
-- `sw_removeadmin <steamid>`
-- `sw_listadmins`
-- `sw_adminreload`
-- `sw_ban <target> <minutes|-1> [reason]`
-- `sw_ipban <target|ip> <minutes|-1> [reason]`
-- `sw_addban <steamid> <minutes|-1> [reason]`
-- `sw_unban <steamid|ip> [reason]`
-- `sw_warn <target> <reason>`
-- `sw_unwarn <target> [reason]`
-- `sw_mute <target> <minutes|-1> [reason]`
-- `sw_unmute <target> [reason]`
-- `sw_gag <target> <minutes|-1> [reason]`
-- `sw_ungag <target> [reason]`
-- `sw_silence <target> <minutes|-1> [reason]`
-- `sw_unsilence <target> [reason]`
-- `sw_kick <target> [reason]`
-- `sw_slap <target> [damage]`
-- `sw_slay <target>`
-- `sw_respawn <target>`
-- `sw_team <target> <t|ct|spec>`
-- `sw_noclip <target>`
-- `sw_goto <target>`
-- `sw_bring <target>`
-- `sw_freeze <target> [seconds]`
-- `sw_unfreeze <target>`
-- `sw_resize <target> <scale>`
-- `sw_drug <target> [seconds]`
-- `sw_burn <target> [seconds] [damage_per_tick]`
-- `sw_disarm <target>`
-- `sw_speed <target> <multiplier>` / `sw_setspeed <target> <multiplier>`
-- `sw_gravity <target> <multiplier>` / `sw_setgravity <target> <multiplier>`
-- `sw_rename <target> <new_name>`
-- `sw_hp <target> <health>`
-- `sw_money <target> <amount>` / `sw_setmoney <target> <amount>` / `sw_givemoney <target> <amount>`
-- `sw_give <target> <item>` / `sw_giveitem <target> <item>`
-- `sw_who <target>`
-- `sw_vote "<soru>" "<cevap1>" "<cevap2>" ...`
-- `sw_map <mapname>`
-- `sw_wsmap <workshop_id|name>`
-- `sw_rr [seconds]` / `sw_restart [seconds]`
-- `sw_hson` / `sw_hsoff`
-- `sw_bhopon` / `sw_bhopoff`
-- `sw_respawnon` / `sw_respawnoff`
-- `sw_cvar <cvar> [value]`
-- `sw_admintime`
-- `sw_admintimesend`
+**Diğer Toplu Hedef Seçenekleri:**
+- `@all`: Sunucudaki herkes.
+- `@t`: Tüm Terörist (T) oyuncular.
+- `@ct`: Tüm Anti-Terörist (CT) oyuncular.
+- `@alive`: Yaşayan tüm oyuncular.
+- `@dead`: Ölü olan tüm oyuncular.
+*(Örn: `!slay @t` tüm teröristleri öldürür.)*
 
-## Ingame Commands
+---
 
-- `!addgroup <name> <flags> [immunity]`
-- `!editgroup <name> <flags> [immunity]`
-- `!removegroup <name>`
-- `!listgroups`
-- `!addadmin <steamid> <name> <#group or group1,group2> [duration_days]`
-- `!editadmin <steamid> <name|groups|immunity|duration> <value>`
-- `!removeadmin <steamid>`
-- `!listadmins`
-- `!adminreload`
-- `!ban <target> <minutes|-1> [reason]`
-- `!ipban <target|ip> <minutes|-1> [reason]`
-- `!addban <steamid> <minutes|-1> [reason]`
-- `!unban <steamid|ip> [reason]`
-- `!warn <target> <reason>`
-- `!unwarn <target> [reason]`
-- `!mute <target> <minutes|-1> [reason]`
-- `!unmute <target> [reason]`
-- `!gag <target> <minutes|-1> [reason]`
-- `!ungag <target> [reason]`
-- `!silence <target> <minutes|-1> [reason]`
-- `!unsilence <target> [reason]`
-- `!kick <target> [reason]`
-- `!slap <target> [damage]`
-- `!slay <target>`
-- `!respawn <target>`
-- `!team <target> <t|ct|spec>`
-- `!noclip <target>`
-- `!goto <target>`
-- `!bring <target>`
-- `!freeze <target> [seconds]`
-- `!unfreeze <target>`
-- `!resize <target> <scale>`
-- `!drug <target> [seconds]`
-- `!burn <target> [seconds] [damage_per_tick]`
-- `!disarm <target>`
-- `!speed <target> <multiplier>` / `!setspeed <target> <multiplier>`
-- `!gravity <target> <multiplier>` / `!setgravity <target> <multiplier>`
-- `!rename <target> <new_name>`
-- `!hp <target> <health>`
-- `!money <target> <amount>` / `!setmoney <target> <amount>` / `!givemoney <target> <amount>`
-- `!give <target> <item>` / `!giveitem <target> <item>`
-- `!who <target>`
-- `!vote "<soru>" "<cevap1>" "<cevap2>" ...`
-- `!map <mapname>`
-- `!wsmap <workshop_id|name>`
-- `!rr [seconds]` / `!restart [seconds]`
-- `!hson` / `!hsoff`
-- `!bunnyon` / `!bunnyoff`
-- `!respawnon` / `!respawnoff`
-- `!cvar <cvar> [value]`
-- `!admintime`
-- `!admintimesend`
+## 🗣️ Genel ve İletişim Komutları
+Sunucu içi genel işlemler ve duyurular için kullanılır.
 
-## Ban Davranisi
+* `!admin` - Admin menüsünü açar.
+* `!warn <#id> <sebep>` - Oyuncuyu belirttiğiniz sebeple uyarır.
+* `!unwarn <#id>` - Oyuncunun üzerindeki uyarıyı kaldırır.
+* `!who <#id>` - Hedef oyuncu hakkında detaylı bilgi gösterir.
+* `!asay <mesaj>` - Sadece adminlerin görebileceği şekilde mesaj gönderir (Admin sohbeti).
+* `!say <mesaj>` - Sistem/Sunucu mesajı olarak herkese gönderir.
+* `!csay <mesaj>` - Ekranın ortasına büyük harflerle mesaj yazar (Duyuru).
+* `!hsay <mesaj>` - Ekranın üst tarafında bilgi mesajı (hint) olarak yazar.
+* `!admintime` - Sunucudaki toplam aktif adminlik sürenizi gösterir.
+* `!listplayers` - Oyuncu listesi ve oyuncu ID'lerini gösterir.
+* `!vote "<soru>" "<cevap1>" "<cevap2>"` - Oylama başlatır. (Örn: `!vote "Harita değişsin mi?" "Evet" "Hayır"`)
 
-- `sw_ban` / `!ban` -> yalnizca SteamID ban atar.
-- `sw_ipban` / `!ipban` -> yalnizca IP ban atar.
-- `sw_addban` / `!addban` -> yalnizca cevrimdisi SteamID ban atar.
-- `sw_unban` / `!unban` -> SteamID veya IP ile ban kaldirir.
+---
 
-## 4) Permissions
+## 🗺️ Harita ve Oyun Yönetimi
+Harita değiştirme veya raunt yenileme gibi temel işlemler.
 
-Default core permissions:
+* `!map <harita_adi>` - Haritayı değiştirir (Örn: `!map de_dust2`).
+* `!wsmap <workshop_id|isim>` - Atölye (Workshop) haritasını açar.
+* `!rr [saniye]` - Oyunu belirtilen saniye sonra yeniden başlatır.
 
-- `admin.root` -> full access.
-- `admin.generic` -> general admin commands.
-- `admin.ban` -> ban/ipban/addban/unban/lastban.
-- `admin.kick` -> kick.
-- `admin.mute` -> mute/gag/silence.
-- `admin.cheats` -> slap/slay/respawn/team/noclip/goto/bring/freeze/unfreeze/resize/drug/burn/disarm/speed/gravity/rename/hp/money/give.
-- `admin.rcon` -> rcon ve sunucu toggle komutlari (`hson/hsoff`, `bhopon/bhopoff`, `respawnon/respawnoff`).
+---
+
+## ⚖️ Ceza Komutları (Kick, Ban, Mute)
+Kurallara uymayan oyuncuları cezalandırmak için kullanılır.
+
+* `!kick <#id> [sebep]` - Oyuncuyu sunucudan atar. (Örn: `!kick #12 Küfür`)
+* `!ban <#id> <dakika> [sebep]` - Oyuncuya SteamID üzerinden ban atar. (Sınırsız için dakika yerine `-1` yazın).
+* `!ipban <#id> <dakika> [sebep]` - Oyuncuya IP üzerinden ban atar.
+* `!addban <steamid> <dakika> [sebep]` - Sunucuda aktif olmayan (çevrimdışı) bir oyuncuya SteamID üzerinden ban atar. (Bu komutta ID yerine SteamID kullanılır).
+* `!unban <steamid|ip> [sebep]` - Ban cezasını kaldırır.
+* `!mute <#id> <dakika> [sebep]` - Oyuncunun sesli sohbetini (mikrofonunu) engeller. (Sınırsız için `-1`).
+* `!unmute <#id>` - Sesli sohbet engelini kaldırır.
+* `!gag <#id> <dakika> [sebep]` - Oyuncunun yazılı sohbetini (yazışmasını) engeller.
+* `!ungag <#id>` - Yazılı sohbet engelini kaldırır.
+* `!silence <#id> <dakika> [sebep]` - Oyuncunun hem sesli hem yazılı sohbetini engeller (Mute + Gag).
+* `!unsilence <#id>` - Silence (sessizlik) cezasını kaldırır.
+
+---
+
+## 🎭 Eğlence ve Etkileşim Komutları (Cheats)
+Oyuncular üzerinde eğlenceli veya oyun içi etkileşimler yaratan komutlardır.
+
+* `!slap <#id> [hasar]` - Oyuncuyu tokatlar (belirtirseniz canını yakar).
+* `!slay <#id>` - Oyuncuyu anında öldürür.
+* `!respawn <#id>` - Oyuncuyu yeniden canlandırır.
+* `!team <#id> <t|ct|spec>` - Oyuncunun takımını değiştirir. (Örn: `!team #12 spec`)
+* `!noclip <#id>` - Oyuncunun duvarlardan geçmesini sağlar (Açıp/Kapatmalı).
+* `!goto <#id>` - Sizi hedef oyuncunun yanına ışınlar.
+* `!bring <#id>` - Hedef oyuncuyu sizin yanınıza ışınlar.
+* `!freeze <#id> [saniye]` - Oyuncuyu dondurur, hareket etmesini engeller.
+* `!unfreeze <#id>` - Oyuncunun dondurulmasını çözer.
+* `!resize <#id> <boyut>` - Oyuncunun boyutunu büyütür veya küçültür.
+* `!drug <#id> [saniye]` - Oyuncuya uyuşturucu efekti (ekran dalgalanması) verir.
+* `!burn <#id> [saniye] [saniyedeki_hasar]` - Oyuncuyu yakar.
+* `!disarm <#id>` - Oyuncunun elindeki silahları düşürür/siler.
+* `!speed <#id> <çarpan>` - Oyuncunun hızını değiştirir (Örn: `!speed #12 1.5`).
+* `!gravity <#id> <çarpan>` - Oyuncunun yer çekimini değiştirir.
+* `!rename <#id> <yeni_isim>` - Oyuncunun ismini değiştirir.
+* `!hp <#id> <sağlık>` - Oyuncunun can değerini ayarlar.
+* `!money <#id> <miktar>` - Oyuncunun parasını ayarlar.
+* `!give <#id> <eşya>` - Oyuncuya silah veya eşya verir (Örn: `!give #12 weapon_ak47`).
+
+---
+
+## ⚙️ Sunucu Ayarları
+Sunucu geneli modları açıp kapatmaya yarar.
+
+* `!hson` / `!hsoff` - Yalnızca kafadan vuruş (Only Headshot) modunu açar/kapatır.
+* `!bunnyon` / `!bunnyoff` - Tavşan zıplamasını (Bhop) açar/kapatır.
+* `!respawnon` / `!respawnoff` - Oyuncuların öldükten sonra sürekli yeniden canlanmasını açar/kapatır.
+* `!cvar <cvar> [değer]` - Sunucu değişkenlerini (cvar) değiştirir.
+
+> **Not:** Oyundaki tüm `!` komutlarının, sunucu konsolunda `sw_` önekiyle kullanılan bir karşılığı vardır (Örneğin sohbette `!ban` yazmakla, konsola `sw_ban` yazmak aynıdır). Yönetimsel komutların (`sw_addadmin`, `sw_addgroup` vb.) sunucu konsolundan veya `admin.root` yetkisine sahip oyuncular tarafından kullanılması zorunludur.
+
+---
+
+## 🔐 Permissions (Yetkiler)
+
+Varsayilan (Default) ana yetkiler:
+
+- `admin.root` -> tam erisim, admin/grup yonetimi (`sw_addadmin` vb.), root bypass (`admin.*`, `*`).
+- `admin.generic` -> `admin` menusu, `warn`, `unwarn`, `who`, `asay/say/psay/csay/hsay`, `admintime`, `map`, `wsmap`, `rr/restart`, `calladmin`, `listplayers`, `vote`.
+- `admin.ban` -> `ban`, `ipban`, `addban`, `unban`, `lastban`.
+- `admin.kick` -> `kick`.
+- `admin.mute` -> `mute/unmute`, `gag/ungag`, `silence/unsilence`.
+- `admin.cheats` -> `slap`, `slay`, `respawn`, `team`, `noclip`, `goto`, `bring`, `freeze`, `unfreeze`, `resize`, `drug`, `burn`, `disarm`, `speed`, `gravity`, `rename`, `hp`, `money`, `give`.
+- `admin.rcon` -> sunucu modu degistirme komutlari (`hson/hsoff`, `bhopon/bhopoff`, `respawnon/respawnoff`).
 - `admin.cvar` -> `cvar`.
-- `Report` permission varsayilan olarak bos (`""`) oldugu icin `!report` herkese aciktir (degistirilmezse).
 
-## 5) What Each Permission Does
+*`Report` izni varsayilan olarak bos (`""`) oldugu icin `!report` herkese aciktir (degistirilmezse).*
 
-- `admin.root`:
-- Admin/group management (`addadmin/removeadmin/addgroup/...`).
-- `adminreload`.
-- Root bypass (`admin.*`, `*`).
+## ⚙️ Onerilen Kurulum Sirasi (Sunucu Konsolundan)
 
-- `admin.generic`:
-- Most moderation and communication commands.
-- `admin` menu erisimi.
-- `warn`, `unwarn`, `who`, `asay/say/psay/csay/hsay`, `admintime`, `map`, `wsmap`, `rr/restart`, `calladmin`, `listplayers`, `vote`.
-
-- `admin.ban`:
-- `ban`, `ipban`, `addban`, `unban`, `lastban`.
-
-- `admin.kick`:
-- `kick`.
-
-- `admin.mute`:
-- `mute/unmute`, `gag/ungag`, `silence/unsilence`.
-
-- `admin.cheats`:
-- `slap`, `slay`, `respawn`, `team`, `noclip`, `goto`, `bring`, `freeze`, `unfreeze`, `resize`, `drug`, `burn`, `disarm`, `speed`, `gravity`, `rename`, `hp`, `money`, `give`.
-
-- `admin.rcon`:
-- `hson/hsoff`, `bhopon/bhopoff`, `respawnon/respawnoff`.
-
-- `admin.cvar`:
-- `cvar`.
-
-## 6) Recommended Setup Flow (Group First, Then Admin)
-
-### 6.1 Create group
-
-Create group first:
-
+**1. Önce grupları oluşturun:**
 ```text
 sw_addgroup Owner admin.root 100
-```
-
-Example moderator group:
-
-```text
 sw_addgroup Moderator admin.generic,admin.kick,admin.mute 50
 ```
 
-### 6.2 Add admin
-
-After group creation, assign admin:
-
+**2. Grubu oluşturduktan sonra admin ekleyin:**
 ```text
 sw_addadmin 76561198255550637 SSonic @Owner
-```
-
-or multi-group:
-
-```text
 sw_addadmin 7656119XXXXXXXXXX PlayerX Moderator,Helper 30
 ```
+*(En sondaki rakam süreyi belirtir (gün).*
 
-Notes:
-- Optional last value is `[duration_days]`.
-- Example: `sw_addadmin 7656119... PlayerX Moderator 30`
-
-### 6.3 Verify
-
+**3. Doğrulama:**
 ```text
 sw_listgroups
 sw_listadmins
 sw_adminreload
 ```
+*Oyunda olan oyuncular yetkilerini ve taglarını anında alırlar.*
 
-Online target player gets permissions and tag immediately.
+## 📁 Dosya Notlari
 
-Not: Tag yenileme join + gecikmeli yenileme + periyodik yenileme ile guclendirildi. Nadir tab-cache durumunda cikis-giris yine gerekebilir.
-
-## 7) Target Formats
-
-- Name: `PlayerName`
-- `#userid`: `#12`
-- SteamID64: `7656119...`
-- SteamID64 with @: `@7656119...`
-- Group targets (for supported commands): `@all`, `@t`, `@ct`, `@alive`, `@dead`
-
-## 8) File Notes
-
-- `config.json` -> general settings.
-- `config.json` icinde `Version` ve dil ayarlari bulunur.
-- `commands.json` -> editable aliases.
-- `commands.json` icinde `Version` bulunur.
-- `commands.json` icindeki `Ban` alias'i `sw_ban` (konsol) ve `!ban` (oyun ici) icin kullanilir, sadece SteamID ban atar.
-- `commands.json` icindeki `IpBan` alias'i `sw_ipban` (konsol) ve `!ipban` (oyun ici) icin kullanilir, sadece IP ban atar.
-- `permissions.json` -> permission mapping.
-- `permissions.json` icinde `Version` bulunur.
-- `maps.json` icinde `Version` ile normal/workshop map listeleri bulunur.
+- `config.json` -> genel ayarlar ve dil ayarlari.
+- `commands.json` -> degistirilebilir chat takma adlari (alias).
+- `permissions.json` -> komutlari yetkilere baglama.
+- `maps.json` -> normal ve atolye (workshop) harita listeleri.
 - `resources/translations/*.jsonc` -> dil dosyalari (`en`, `tr`, `de`, `fr`, `it`, `el`, `ru`, `bg`, `hu`).
-
