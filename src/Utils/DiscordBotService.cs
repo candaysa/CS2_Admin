@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.WebSockets;
@@ -42,8 +42,6 @@ public class DiscordBotService
     private readonly ISwiftlyCore _core;
     private readonly string _serverName;
     private readonly string _botToken;
-    private readonly string _statusButtonLabel;
-    private readonly string _statusHubKey;
     private readonly string _defaultChannelId;
     private readonly string _chatChannelId;
     private readonly string _connectionChannelId;
@@ -52,14 +50,18 @@ public class DiscordBotService
     private readonly string _adminTimeChannelId;
     private readonly string _serverStatusChannelId;
     private readonly string _leaderboardChannelId;
-    private readonly int _serverStatusPublishSeconds;
+    private readonly string _customConnectUrl;
+
     private readonly int _serverStatusUpdateSeconds;
     private readonly int _leaderboardUpdateMinutes;
     private readonly int _leaderboardTopLimit;
+
+    private readonly SemaphoreSlim _statusMessageLock = new(1, 1);
+    private readonly string _bannerUrl;
     private readonly HttpClient _httpClient;
     private readonly string _statePath;
     private readonly object _stateLock = new();
-    private readonly ConcurrentDictionary<string, GeoLocation> _geoCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, DateTime> _configurationWarningTimestamps = new(StringComparer.Ordinal);
 
     private DiscordStateFile _state;
     private CancellationTokenSource? _gatewayCts;
@@ -70,18 +72,19 @@ public class DiscordBotService
     private DiscordServerStatusDbManager? _discordServerStatusDbManager;
     private RankLeaderboardDbManager? _rankLeaderboardDbManager;
     private DiscordMessageStateDbManager? _discordMessageStateDbManager;
+    private WarnManager? _warnManager;
+    private AdminLogManager? _adminLogManager;
     private ClientWebSocket? _gatewaySocket;
     private Task? _gatewayTask;
     private Task? _gatewayHeartbeatTask;
     private int? _gatewaySequence;
+    private string? _gatewaySessionId;
 
     public DiscordBotService(ISwiftlyCore core, DiscordFileConfig config)
     {
         _core = core;
         _serverName = config.ServerName ?? string.Empty;
         _botToken = config.BotToken ?? string.Empty;
-        _statusButtonLabel = config.StatusButtonLabel ?? string.Empty;
-        _statusHubKey = string.IsNullOrWhiteSpace(config.StatusHubKey) ? "default" : config.StatusHubKey.Trim();
         _defaultChannelId = config.AdminLogChannelId ?? string.Empty;
         _chatChannelId = config.ChatLogChannelId ?? string.Empty;
         _connectionChannelId = config.ConnectionLogChannelId ?? string.Empty;
@@ -90,13 +93,29 @@ public class DiscordBotService
         _adminTimeChannelId = config.AdminTimeChannelId ?? string.Empty;
         _serverStatusChannelId = config.ServerStatusChannelId ?? string.Empty;
         _leaderboardChannelId = config.LeaderboardChannelId ?? string.Empty;
-        _serverStatusPublishSeconds = Math.Max(10, config.ServerStatusPublishSeconds);
-        _serverStatusUpdateSeconds = Math.Max(30, config.ServerStatusUpdateSeconds);
+        _customConnectUrl = config.CustomConnectUrl ?? string.Empty;
+
+        _serverStatusUpdateSeconds = Math.Max(10, config.ServerStatusUpdateSeconds);
         _leaderboardUpdateMinutes = Math.Max(1, config.LeaderboardUpdateMinutes);
         _leaderboardTopLimit = Math.Clamp(config.LeaderboardTopLimit, 1, 25);
+        _bannerUrl = config.BannerUrl ?? string.Empty;
         _httpClient = SharedHttpClient;
         _statePath = core.Configuration.GetConfigPath("discord-state.json");
         _state = LoadState();
+
+        _core.Logger.LogInformationIfEnabled(
+            "[CS2_Admin][Debug][Discord] config botConfigured={BotConfigured} adminLogChannel={AdminLogChannel} chatChannel={ChatChannel} connectionChannel={ConnectionChannel} reportChannel={ReportChannel}",
+            HasBotConfiguration(),
+            MaskChannelId(_defaultChannelId),
+            MaskChannelId(_chatChannelId),
+            MaskChannelId(_connectionChannelId),
+            MaskChannelId(_reportChannelId));
+    }
+
+    public void SetDatabaseManagers(WarnManager warnManager, AdminLogManager adminLogManager)
+    {
+        _warnManager = warnManager;
+        _adminLogManager = adminLogManager;
     }
 
     public void StartBackgroundUpdates(
@@ -112,12 +131,9 @@ public class DiscordBotService
 
         StopBackgroundUpdates();
 
-        if (HasBotConfiguration())
-        {
-            StartGatewayConnection();
-        }
+        EnsureGatewayConnection();
 
-        _serverStatusPublishCts = _core.Scheduler.RepeatBySeconds(_serverStatusPublishSeconds, () => _ = PublishServerStatusAsync());
+        _serverStatusPublishCts = _core.Scheduler.RepeatBySeconds(_serverStatusUpdateSeconds, () => _ = PublishServerStatusAsync());
         _ = PublishServerStatusAsync();
 
         if (HasBotConfiguration() && !string.IsNullOrWhiteSpace(_serverStatusChannelId))
@@ -152,6 +168,7 @@ public class DiscordBotService
         _gatewayTask = null;
         _gatewayHeartbeatTask = null;
         _gatewaySequence = null;
+        _gatewaySessionId = null;
 
         _serverStatusPublishCts?.Cancel();
         _serverStatusPublishCts = null;
@@ -163,10 +180,29 @@ public class DiscordBotService
         _leaderboardUpdateCts = null;
     }
 
+    public void EnsureGatewayConnection()
+    {
+        if (!HasBotConfiguration())
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][Discord] gateway skipped reason=no_bot_token");
+            return;
+        }
+
+        if (_gatewayTask != null && !_gatewayTask.IsCompleted && _gatewayCts?.IsCancellationRequested == false)
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][Discord] gateway skipped reason=already_running");
+            return;
+        }
+
+        _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][Discord] gateway starting");
+        StartGatewayConnection();
+    }
+
     public async Task SendConnectNotificationAsync(IPlayer player)
     {
-        if (player == null || !player.IsValid || player.IsFakeClient || string.IsNullOrWhiteSpace(_connectionChannelId))
+        if (player == null || !player.IsValid || player.IsFakeClient)
         {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordConnect] skipped reason=invalid_or_fake");
             return;
         }
 
@@ -179,8 +215,19 @@ public class DiscordBotService
 
     public async Task SendConnectNotificationAsync(string? playerName, ulong steamId, string? ipAddress, int activePlayers)
     {
-        if (string.IsNullOrWhiteSpace(_connectionChannelId))
+        var channelId = ResolveLogChannelId(_connectionChannelId);
+        _core.Logger.LogInformationIfEnabled(
+            "[CS2_Admin][Debug][DiscordConnect] start steamid={SteamId} name={Name} ip={Ip} preferredChannel={PreferredChannel} resolvedChannel={ResolvedChannel} fallback={Fallback}",
+            steamId,
+            string.IsNullOrWhiteSpace(playerName) ? "-" : playerName,
+            string.IsNullOrWhiteSpace(ipAddress) ? "-" : ipAddress,
+            MaskChannelId(_connectionChannelId),
+            MaskChannelId(channelId),
+            string.IsNullOrWhiteSpace(_connectionChannelId));
+
+        if (string.IsNullOrWhiteSpace(channelId))
         {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordConnect] skipped steamid={SteamId} reason=no_channel", steamId);
             return;
         }
 
@@ -190,10 +237,27 @@ public class DiscordBotService
                 playerName,
                 steamId,
                 ipAddress,
-                includeGeoLookup: false);
+                includeGeoLookup: true);
 
-            var line = $":green_circle: {CountryCodeToDiscordFlag(snapshot.CountryCode)} [CONNECT] **{EscapeMarkdown(snapshot.DisplayName)}** joined `{GetServerLabel()}` | `{activePlayers}/{ServerIdentity.GetMaxPlayers(_core, _core.PlayerManager.PlayerCap)}` | `{snapshot.IpAddress}`";
-            await SendMessageToChannelAsync(_connectionChannelId, line);
+            var embed = new
+            {
+                title = $"Player {EscapeMarkdown(snapshot.DisplayName)} connected",
+                url = BuildSteamProfileUrl(snapshot.SteamId),
+                description = $"Player {EscapeMarkdown(snapshot.DisplayName)} connected from {CountryCodeToDiscordFlag(snapshot.CountryCode)} {snapshot.CountryName}\n**SteamID:** `{snapshot.SteamId}`\n**IP:** ||{snapshot.IpAddress}||",
+                color = 65280, // Green
+                footer = new
+                {
+                    text = $"Active Players: {activePlayers}/{ServerIdentity.GetMaxPlayers(_core, _core.PlayerManager.PlayerCap)} | Server: {GetServerLabel()}"
+                }
+            };
+            
+            var messageId = await SendEmbedToChannelAsync(channelId, embed);
+            _core.Logger.LogInformationIfEnabled(
+                "[CS2_Admin][Debug][DiscordConnect] result steamid={SteamId} channel={ChannelId} success={Success} messageId={MessageId}",
+                steamId,
+                MaskChannelId(channelId),
+                !string.IsNullOrWhiteSpace(messageId),
+                string.IsNullOrWhiteSpace(messageId) ? "-" : messageId);
         }
         catch (Exception ex)
         {
@@ -203,17 +267,46 @@ public class DiscordBotService
 
     public async Task SendDisconnectNotificationAsync(string? playerName, ulong steamId, string? ipAddress)
     {
-        if (string.IsNullOrWhiteSpace(_connectionChannelId))
+        var channelId = ResolveLogChannelId(_connectionChannelId);
+        _core.Logger.LogInformationIfEnabled(
+            "[CS2_Admin][Debug][DiscordDisconnect] start steamid={SteamId} name={Name} ip={Ip} preferredChannel={PreferredChannel} resolvedChannel={ResolvedChannel} fallback={Fallback}",
+            steamId,
+            string.IsNullOrWhiteSpace(playerName) ? "-" : playerName,
+            string.IsNullOrWhiteSpace(ipAddress) ? "-" : ipAddress,
+            MaskChannelId(_connectionChannelId),
+            MaskChannelId(channelId),
+            string.IsNullOrWhiteSpace(_connectionChannelId));
+
+        if (string.IsNullOrWhiteSpace(channelId))
         {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordDisconnect] skipped steamid={SteamId} reason=no_channel", steamId);
             return;
         }
 
         try
         {
-            var snapshot = await BuildPlayerSnapshotAsync(playerName, steamId, ipAddress, includeGeoLookup: false);
+            var snapshot = await BuildPlayerSnapshotAsync(playerName, steamId, ipAddress, includeGeoLookup: true);
             var activePlayers = GetActiveHumanPlayerCount();
-            var line = $":red_circle: {CountryCodeToDiscordFlag(snapshot.CountryCode)} [DISCONNECT] **{EscapeMarkdown(snapshot.DisplayName)}** left `{GetServerLabel()}` | `{activePlayers}/{ServerIdentity.GetMaxPlayers(_core, _core.PlayerManager.PlayerCap)}` | `{snapshot.IpAddress}`";
-            await SendMessageToChannelAsync(_connectionChannelId, line);
+            
+            var embed = new
+            {
+                title = $"Player {EscapeMarkdown(snapshot.DisplayName)} disconnected",
+                url = BuildSteamProfileUrl(snapshot.SteamId),
+                description = $"Player {EscapeMarkdown(snapshot.DisplayName)} disconnected from {CountryCodeToDiscordFlag(snapshot.CountryCode)} {snapshot.CountryName}\n**SteamID:** `{snapshot.SteamId}`\n**IP:** ||{snapshot.IpAddress}||",
+                color = 16711680, // Red
+                footer = new
+                {
+                    text = $"Active Players: {activePlayers}/{ServerIdentity.GetMaxPlayers(_core, _core.PlayerManager.PlayerCap)} | Server: {GetServerLabel()}"
+                }
+            };
+
+            var messageId = await SendEmbedToChannelAsync(channelId, embed);
+            _core.Logger.LogInformationIfEnabled(
+                "[CS2_Admin][Debug][DiscordDisconnect] result steamid={SteamId} channel={ChannelId} success={Success} messageId={MessageId}",
+                steamId,
+                MaskChannelId(channelId),
+                !string.IsNullOrWhiteSpace(messageId),
+                string.IsNullOrWhiteSpace(messageId) ? "-" : messageId);
         }
         catch (Exception ex)
         {
@@ -223,19 +316,39 @@ public class DiscordBotService
 
     public async Task SendChatNotificationAsync(IPlayer player, string message, bool teamOnly)
     {
-        if (player == null || !player.IsValid || player.IsFakeClient || string.IsNullOrWhiteSpace(_chatChannelId))
+        if (player == null || !player.IsValid || player.IsFakeClient)
         {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordChat] service skipped reason=invalid_or_fake");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(message))
         {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordChat] service skipped steamid={SteamId} reason=empty", player.SteamID);
             return;
         }
 
         var trimmed = message.Trim();
         if (trimmed.StartsWith("!") || trimmed.StartsWith("/"))
         {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordChat] service skipped steamid={SteamId} reason=command text={Text}", player.SteamID, trimmed);
+            return;
+        }
+
+        var channelId = ResolveLogChannelId(_chatChannelId);
+        _core.Logger.LogInformationIfEnabled(
+            "[CS2_Admin][Debug][DiscordChat] service start steamid={SteamId} name={Name} teamOnly={TeamOnly} preferredChannel={PreferredChannel} resolvedChannel={ResolvedChannel} fallback={Fallback} textLength={Length}",
+            player.SteamID,
+            player.Controller.PlayerName ?? "-",
+            teamOnly,
+            MaskChannelId(_chatChannelId),
+            MaskChannelId(channelId),
+            string.IsNullOrWhiteSpace(_chatChannelId),
+            trimmed.Length);
+
+        if (string.IsNullOrWhiteSpace(channelId))
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordChat] service skipped steamid={SteamId} reason=no_channel", player.SteamID);
             return;
         }
 
@@ -247,8 +360,14 @@ public class DiscordBotService
                 player.IPAddress);
 
             var scopePrefix = teamOnly ? "[Team] " : string.Empty;
-            var line = $"{CountryCodeToDiscordFlag(snapshot.CountryCode)} [{EscapeMarkdown(GetServerLabel())}] | {scopePrefix}**{EscapeMarkdown(snapshot.DisplayName)}**: {EscapeMarkdown(trimmed)}";
-            await SendMessageToChannelAsync(_chatChannelId, line);
+            var line = $"{CountryCodeToDiscordFlag(snapshot.CountryCode)} [{EscapeMarkdown(GetServerLabel())}] | {scopePrefix}**{EscapeMarkdown(snapshot.DisplayName)}** (`{snapshot.SteamId}`): {EscapeMarkdown(trimmed)}";
+            var messageId = await SendMessageToChannelAsync(channelId, line);
+            _core.Logger.LogInformationIfEnabled(
+                "[CS2_Admin][Debug][DiscordChat] service result steamid={SteamId} channel={ChannelId} success={Success} messageId={MessageId}",
+                player.SteamID,
+                MaskChannelId(channelId),
+                !string.IsNullOrWhiteSpace(messageId),
+                string.IsNullOrWhiteSpace(messageId) ? "-" : messageId);
         }
         catch (Exception ex)
         {
@@ -478,9 +597,7 @@ public class DiscordBotService
                 channelId,
                 embed,
                 "@everyone",
-                BuildLinkButtonComponents(
-                    ("Reporter Profile", BuildSteamProfileUrl(playerSteamId)),
-                    targetSteamId is > 0 ? ("Target Profile", BuildSteamProfileUrl(targetSteamId.Value)) : default),
+                BuildReportInteractiveComponents(serverId, targetSteamId ?? 0, playerSteamId),
                 allowEveryoneMention: true);
         }
         catch (Exception ex)
@@ -567,14 +684,21 @@ public class DiscordBotService
 
         try
         {
+            var mapName = ServerIdentity.GetCurrentMap(_core);
+            if (IsUnknownMapName(mapName))
+            {
+                _core.Logger.LogInformationIfEnabled("[CS2_Admin] Skipping Discord server status publish because current map is unknown.");
+                return;
+            }
+
             await _discordServerStatusDbManager.UpsertStatusAsync(new DiscordServerStatusSnapshot(
                 ServerIdentity.GetServerId(_core),
-                _statusHubKey,
+                "default",
                 GetServerLabel(),
-                GetStatusButtonLabel(),
+                string.Empty,
                 ServerIdentity.GetIp(_core),
                 ServerIdentity.GetPort(_core),
-                ServerIdentity.GetCurrentMap(_core),
+                mapName,
                 GetActiveHumanPlayerCount(),
                 ServerIdentity.GetMaxPlayers(_core, _core.PlayerManager.PlayerCap),
                 BuildJoinUrl(ServerIdentity.GetIp(_core), ServerIdentity.GetPort(_core))));
@@ -587,61 +711,51 @@ public class DiscordBotService
 
     private async Task UpsertServerStatusMessageAsync()
     {
-        if (_discordServerStatusDbManager == null || string.IsNullOrWhiteSpace(_serverStatusChannelId))
+        if (string.IsNullOrWhiteSpace(_serverStatusChannelId))
         {
             return;
         }
 
+        await _statusMessageLock.WaitAsync();
         try
         {
-            var statusMaxAge = TimeSpan.FromHours(2);
-            var statuses = await _discordServerStatusDbManager.GetActiveStatusesAsync(_statusHubKey, statusMaxAge);
-            statuses = NormalizeServerStatuses(
-                statuses,
-                DateTime.UtcNow,
-                TimeSpan.FromMinutes(10),
-                TimeSpan.FromHours(2));
-            if (statuses.Count == 0)
+            var status = BuildCurrentServerStatus();
+            if (IsUnknownMapName(status.MapName))
             {
-                statuses =
-                [
-                    BuildCurrentServerStatus()
-                ];
+                await RemoveServerStatusMessageAsync(status);
+                _core.Logger.LogInformationIfEnabled("[CS2_Admin] Skipping Discord server status message because current map is unknown.");
+                return;
             }
 
-            var embed = BuildSharedServerStatusEmbed(statuses);
-            var sharedMessageKey = $"serverstatus:{_statusHubKey}:{_serverStatusChannelId}";
-            var sharedMessageId = _discordMessageStateDbManager == null
+            var embed = BuildIndividualServerStatusEmbed(status, true);
+            var state = GetServerState(status.ServerId);
+            
+            var messageKey = $"serverstatus:default:{status.ServerId}:{_serverStatusChannelId}";
+            var messageId = _discordMessageStateDbManager == null
                 ? null
-                : await _discordMessageStateDbManager.GetMessageIdAsync(sharedMessageKey);
+                : await _discordMessageStateDbManager.GetMessageIdAsync(messageKey);
 
-            if (!string.IsNullOrWhiteSpace(sharedMessageId)
-                && await UpdateEmbedInChannelAsync(_serverStatusChannelId, sharedMessageId, embed, null, null))
-            {
-                return;
-            }
-
-            var state = GetHubState(_statusHubKey);
-            if (!string.IsNullOrWhiteSpace(state.ServerStatusMessageId)
-                && await UpdateEmbedInChannelAsync(_serverStatusChannelId, state.ServerStatusMessageId, embed, null, null))
-            {
-                return;
-            }
-
-            var previousMessageId = !string.IsNullOrWhiteSpace(sharedMessageId)
-                ? sharedMessageId
+            var previousMessageId = !string.IsNullOrWhiteSpace(messageId)
+                ? messageId
                 : state.ServerStatusMessageId;
-            var messageId = await SendEmbedToChannelAsync(_serverStatusChannelId, embed, null, null);
-            if (!string.IsNullOrWhiteSpace(messageId))
+
+            if (!string.IsNullOrWhiteSpace(previousMessageId)
+                && await UpdateEmbedInChannelAsync(_serverStatusChannelId, previousMessageId, embed, null, null))
             {
-                state.ServerStatusMessageId = messageId;
+                return;
+            }
+
+            var newMessageId = await SendEmbedToChannelAsync(_serverStatusChannelId, embed, null, null);
+            if (!string.IsNullOrWhiteSpace(newMessageId))
+            {
+                state.ServerStatusMessageId = newMessageId;
                 SaveState();
                 if (_discordMessageStateDbManager != null)
                 {
-                    await _discordMessageStateDbManager.UpsertMessageIdAsync(sharedMessageKey, _serverStatusChannelId, messageId);
+                    await _discordMessageStateDbManager.UpsertMessageIdAsync(messageKey, _serverStatusChannelId, newMessageId);
                 }
 
-                if (!string.IsNullOrWhiteSpace(previousMessageId) && !string.Equals(previousMessageId, messageId, StringComparison.Ordinal))
+                if (!string.IsNullOrWhiteSpace(previousMessageId) && !string.Equals(previousMessageId, newMessageId, StringComparison.Ordinal))
                 {
                     await DeleteMessageAsync(_serverStatusChannelId, previousMessageId);
                 }
@@ -651,6 +765,46 @@ public class DiscordBotService
         {
             _core.Logger.LogWarningIfEnabled("[CS2_Admin] Error updating server status message: {Message}", ex.Message);
         }
+        finally
+        {
+            _statusMessageLock.Release();
+        }
+    }
+
+    private async Task RemoveServerStatusMessageAsync(DiscordServerStatus status)
+    {
+        if (string.IsNullOrWhiteSpace(_serverStatusChannelId))
+        {
+            return;
+        }
+
+        var state = GetServerState(status.ServerId);
+        var messageKey = $"serverstatus:default:{status.ServerId}:{_serverStatusChannelId}";
+        var messageId = _discordMessageStateDbManager == null
+            ? null
+            : await _discordMessageStateDbManager.GetMessageIdAsync(messageKey);
+
+        var previousMessageId = !string.IsNullOrWhiteSpace(messageId)
+            ? messageId
+            : state.ServerStatusMessageId;
+
+        if (!string.IsNullOrWhiteSpace(previousMessageId))
+        {
+            await DeleteMessageAsync(_serverStatusChannelId, previousMessageId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(state.ServerStatusMessageId))
+        {
+            state.ServerStatusMessageId = null;
+            SaveState();
+        }
+    }
+
+    private static bool IsUnknownMapName(string? mapName)
+    {
+        return string.IsNullOrWhiteSpace(mapName)
+            || string.Equals(mapName.Trim(), "unknown", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mapName.Trim(), "-", StringComparison.OrdinalIgnoreCase);
     }
 
     private DiscordServerStatus BuildCurrentServerStatus()
@@ -660,9 +814,9 @@ public class DiscordBotService
         return new DiscordServerStatus
         {
             ServerId = ServerIdentity.GetServerId(_core),
-            HubKey = _statusHubKey,
+            HubKey = "default",
             ServerName = GetServerLabel(),
-            ButtonLabel = GetStatusButtonLabel(),
+            ButtonLabel = string.Empty,
             ServerIp = ip,
             ServerPort = port,
             MapName = ServerIdentity.GetCurrentMap(_core),
@@ -720,44 +874,36 @@ public class DiscordBotService
         }
     }
 
-    private object BuildSharedServerStatusEmbed(IReadOnlyList<DiscordServerStatus> statuses)
+    private object BuildIndividualServerStatusEmbed(DiscordServerStatus status, bool isOnline)
     {
-        var fields = new List<object>();
+        var displayName = string.IsNullOrWhiteSpace(status.ServerName)
+            ? status.ButtonLabel
+            : status.ServerName;
+            
+        var title = EscapeMarkdown(TrimLabel(displayName));
+        
+        var bannerUrl = _bannerUrl;
 
-        if (statuses.Count == 0)
-        {
-            fields.Add(new
-            {
-                name = "No active servers",
-                value = "No server heartbeat found for this hub yet.",
-                inline = false
-            });
-        }
-        else
-        {
-            foreach (var status in statuses.Take(25))
-            {
-                var displayName = string.IsNullOrWhiteSpace(status.ServerName)
-                    ? status.ButtonLabel
-                    : status.ServerName;
-                fields.Add(new
-                {
-                    name = TrimLabel(displayName),
-                    value = $"**IP**: `{status.ServerIp}:{status.ServerPort}`\n**Map**: `{status.MapName}`\n**Players**: `{status.PlayerCount}/{status.MaxPlayers}`",
-                    inline = false
-                });
-            }
-        }
+        var statusText = isOnline ? "Online 🟢" : "Offline 🔴";
+        var statusColor = isOnline ? 0x2ECC71 : 0xE74C3C;
+        var mapName = string.IsNullOrWhiteSpace(status.MapName) ? "unknown" : status.MapName;
 
         return new
         {
-            title = $":satellite: Server Status",
-            color = 0x5865F2,
-            description = statuses.Count == 0
-                ? $"No online server data for hub `{_statusHubKey}`."
-                : $"Active servers: `{statuses.Count}`",
-            fields = fields.ToArray(),
-            footer = new { text = $"Hub: {_statusHubKey}" },
+            title = title,
+            color = statusColor,
+            fields = new[]
+            {
+                new { name = "🗺️ Map", value = EscapeMarkdown(mapName), inline = true },
+                new { name = "👥 Players", value = $"{status.PlayerCount}/{status.MaxPlayers}", inline = true },
+                new { name = "\u200B", value = "\u200B", inline = true },
+                new { name = "🌐 IP Address", value = $"{status.ServerIp}:{status.ServerPort}", inline = true },
+                new { name = "📊 Status", value = statusText, inline = true },
+                new { name = "\u200B", value = "\u200B", inline = true },
+                new { name = "⌨️ Quick Connect", value = $"```\nconnect {status.ServerIp}:{status.ServerPort}\n```", inline = false }
+            },
+            image = string.IsNullOrWhiteSpace(bannerUrl) ? null : new { url = bannerUrl },
+            footer = new { text = $"Last update | {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC" },
             timestamp = DateTime.UtcNow.ToString("o")
         };
     }
@@ -902,7 +1048,7 @@ public class DiscordBotService
 
     private async Task<string?> SendEmbedToChannelAsync(string channelId, object embed, string? messageContent = null, object[]? components = null, bool allowEveryoneMention = false)
     {
-        if (!HasBotConfiguration() || string.IsNullOrWhiteSpace(channelId))
+        if (!IsDiscordChannelReady("send embed", channelId))
         {
             return null;
         }
@@ -912,7 +1058,7 @@ public class DiscordBotService
 
     private async Task<string?> SendMessageToChannelAsync(string channelId, string messageContent)
     {
-        if (!HasBotConfiguration() || string.IsNullOrWhiteSpace(channelId) || string.IsNullOrWhiteSpace(messageContent))
+        if (!IsDiscordChannelReady("send message", channelId) || string.IsNullOrWhiteSpace(messageContent))
         {
             return null;
         }
@@ -933,6 +1079,7 @@ public class DiscordBotService
     private async Task<string?> CreateMessageAsync(string channelId, object payload)
     {
         var endpoint = $"{DiscordApiBaseUrl}/channels/{channelId}/messages";
+        _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordREST] create message request channel={ChannelId}", MaskChannelId(channelId));
         using var request = BuildDiscordRequest(HttpMethod.Post, endpoint, payload);
         using var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode)
@@ -947,7 +1094,31 @@ public class DiscordBotService
             PropertyNameCaseInsensitive = true
         });
 
+        _core.Logger.LogInformationIfEnabled(
+            "[CS2_Admin][Debug][DiscordREST] create message success channel={ChannelId} messageId={MessageId}",
+            MaskChannelId(channelId),
+            string.IsNullOrWhiteSpace(data?.Id) ? "-" : data.Id);
+
         return data?.Id;
+    }
+
+    private async Task<bool> RespondToInteractionAsync(string interactionId, string interactionToken, int type, object? data = null)
+    {
+        if (!HasBotConfiguration())
+        {
+            return false;
+        }
+
+        var endpoint = $"{DiscordApiBaseUrl}/interactions/{interactionId}/{interactionToken}/callback";
+        using var request = BuildDiscordRequest(HttpMethod.Post, endpoint, new { type, data });
+        using var response = await _httpClient.SendAsync(request);
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        await LogDiscordFailureAsync("respond to interaction", response);
+        return false;
     }
 
     private async Task<bool> UpdateMessageAsync(string channelId, string messageId, object payload)
@@ -1099,6 +1270,49 @@ public class DiscordBotService
         return !string.IsNullOrWhiteSpace(_botToken);
     }
 
+    private bool IsDiscordChannelReady(string action, string channelId)
+    {
+        if (string.IsNullOrWhiteSpace(_botToken))
+        {
+            LogDiscordConfigurationWarning(action, "BotToken is empty");
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(channelId))
+        {
+            LogDiscordConfigurationWarning(action, "channel id is empty");
+            return false;
+        }
+
+        return true;
+    }
+
+    private void LogDiscordConfigurationWarning(string action, string reason)
+    {
+        var key = $"{action}:{reason}";
+        var now = DateTime.UtcNow;
+        if (_configurationWarningTimestamps.TryGetValue(key, out var lastLogged) && (now - lastLogged).TotalSeconds < 60)
+        {
+            return;
+        }
+
+        _configurationWarningTimestamps[key] = now;
+        _core.Logger.LogWarningIfEnabled("[CS2_Admin] Discord bot cannot {Action}: {Reason}.", action, reason);
+    }
+
+    private static string MaskChannelId(string? channelId)
+    {
+        if (string.IsNullOrWhiteSpace(channelId))
+        {
+            return "-";
+        }
+
+        var value = channelId.Trim();
+        return value.Length <= 8
+            ? value
+            : $"...{value[^6..]}";
+    }
+
     private void StartGatewayConnection()
     {
         _gatewayCts?.Cancel();
@@ -1115,7 +1329,6 @@ public class DiscordBotService
                 using var socket = new ClientWebSocket();
                 socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
                 _gatewaySocket = socket;
-                _gatewaySequence = null;
 
                 await socket.ConnectAsync(new Uri("wss://gateway.discord.gg/?v=10&encoding=json"), cancellationToken);
                 await ReceiveGatewayMessagesAsync(socket, cancellationToken);
@@ -1203,11 +1416,38 @@ public class DiscordBotService
         var op = root.GetProperty("op").GetInt32();
         switch (op)
         {
+            case 0:
+                {
+                    if (root.TryGetProperty("t", out var tElement) && tElement.ValueKind == JsonValueKind.String)
+                    {
+                        var eventName = tElement.GetString();
+                        if (eventName == "READY" && root.TryGetProperty("d", out var readyData))
+                        {
+                            if (readyData.TryGetProperty("session_id", out var sessionIdElement))
+                            {
+                                _gatewaySessionId = sessionIdElement.GetString();
+                            }
+                        }
+                        else if (eventName == "INTERACTION_CREATE" && root.TryGetProperty("d", out var dElement))
+                        {
+                            var interactionData = dElement.Clone();
+                            _ = Task.Run(() => HandleInteractionCreateAsync(interactionData), cancellationToken);
+                        }
+                    }
+                    break;
+                }
             case 10:
                 {
                     var heartbeatIntervalMs = root.GetProperty("d").GetProperty("heartbeat_interval").GetInt32();
                     _gatewayHeartbeatTask = Task.Run(() => RunHeartbeatLoopAsync(socket, heartbeatIntervalMs, cancellationToken), cancellationToken);
-                    await SendIdentifyAsync(socket, cancellationToken);
+                    if (!string.IsNullOrWhiteSpace(_gatewaySessionId) && _gatewaySequence.HasValue)
+                    {
+                        await SendResumeAsync(socket, cancellationToken);
+                    }
+                    else
+                    {
+                        await SendIdentifyAsync(socket, cancellationToken);
+                    }
                     break;
                 }
             case 1:
@@ -1215,6 +1455,11 @@ public class DiscordBotService
                 break;
             case 7:
             case 9:
+                if (op == 9)
+                {
+                    _gatewaySessionId = null;
+                    _gatewaySequence = null;
+                }
                 try
                 {
                     await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "reconnect", cancellationToken);
@@ -1226,6 +1471,230 @@ public class DiscordBotService
             case 11:
                 break;
         }
+    }
+
+    private async Task HandleInteractionCreateAsync(JsonElement data)
+    {
+        try
+        {
+            var id = data.TryGetProperty("id", out var idElement) ? idElement.GetString() : null;
+            var token = data.TryGetProperty("token", out var tokenElement) ? tokenElement.GetString() : null;
+            var applicationId = data.TryGetProperty("application_id", out var applicationIdElement) ? applicationIdElement.GetString() : null;
+            var type = data.TryGetProperty("type", out var typeElement) ? typeElement.GetInt32() : 0; // 3 = Message Component
+
+            if (type == 3 && id != null && token != null && data.TryGetProperty("data", out var componentData))
+            {
+                var customId = componentData.TryGetProperty("custom_id", out var customIdElement) ? customIdElement.GetString() : null;
+                if (customId != null && customId.StartsWith("report_resolve_"))
+                {
+                    await HandleReportResolveInteractionAsync(id, token, applicationId, data, customId);
+                }
+                else if (customId != null && customId.StartsWith("report_punish_"))
+                {
+                    await HandleReportPunishInteractionAsync(id, token, applicationId, data, customId);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _core.Logger.LogWarningIfEnabled("[CS2_Admin] Error handling interaction: {Message}", ex.Message);
+        }
+    }
+
+    private async Task HandleReportResolveInteractionAsync(string interactionId, string interactionToken, string? applicationId, JsonElement data, string customId)
+    {
+        try
+        {
+            if (!await RespondToInteractionAsync(interactionId, interactionToken, 6))
+            {
+                _core.Logger.LogWarningIfEnabled("[CS2_Admin] Discord resolve interaction defer failed for custom_id={CustomId}", customId);
+                return;
+            }
+
+            var member = data.GetProperty("member");
+            var user = member.GetProperty("user");
+            var userId = user.GetProperty("id").GetString();
+
+            var message = data.GetProperty("message");
+            var messageId = message.TryGetProperty("id", out var messageIdElement) ? messageIdElement.GetString() : null;
+            var channelId = message.TryGetProperty("channel_id", out var channelIdElement) ? channelIdElement.GetString() : null;
+            var embeds = message.GetProperty("embeds");
+            if (embeds.GetArrayLength() == 0)
+            {
+                await SendInteractionFollowupAsync(applicationId, interactionToken, "Report message embed could not be found.");
+                return;
+            }
+
+            var oldEmbed = embeds[0];
+
+            var newEmbed = JsonObject.Create(oldEmbed);
+            if (newEmbed == null)
+            {
+                await SendInteractionFollowupAsync(applicationId, interactionToken, "Report message embed could not be parsed.");
+                return;
+            }
+
+            if (newEmbed != null)
+            {
+                newEmbed["color"] = 65433; // Green
+
+                if (newEmbed.TryGetPropertyValue("description", out var descNode) && descNode != null)
+                {
+                    var desc = descNode.GetValue<string>();
+                    newEmbed["description"] = $"{desc}\n\n**Status:** ✅ Resolved by <@{userId}>";
+                }
+            }
+
+            var payload = new
+            {
+                embeds = new JsonObject[] { newEmbed! },
+                components = Array.Empty<object>()
+            };
+
+            if (string.IsNullOrWhiteSpace(channelId) || string.IsNullOrWhiteSpace(messageId) || !await UpdateMessageAsync(channelId, messageId, payload))
+            {
+                _core.Logger.LogWarningIfEnabled("[CS2_Admin] Discord resolve interaction message update failed for custom_id={CustomId}", customId);
+                await SendInteractionFollowupAsync(applicationId, interactionToken, "Report could not be marked as resolved.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _core.Logger.LogWarningIfEnabled("[CS2_Admin] Error in resolve interaction: {Message}", ex.Message);
+            await SendInteractionFollowupAsync(applicationId, interactionToken, "An internal error occurred while resolving the report.");
+        }
+    }
+
+    private async Task HandleReportPunishInteractionAsync(string interactionId, string interactionToken, string? applicationId, JsonElement data, string customId)
+    {
+        try
+        {
+            if (!await RespondToInteractionAsync(interactionId, interactionToken, 5, new { flags = 64 }))
+            {
+                _core.Logger.LogWarningIfEnabled("[CS2_Admin] Discord punish interaction defer failed for custom_id={CustomId}", customId);
+                return;
+            }
+
+            var parts = customId.Split('_');
+            if (parts.Length < 3 || !ulong.TryParse(parts[2], out var targetSteamId))
+            {
+                await EditInteractionOriginalResponseAsync(applicationId, interactionToken, BuildInteractionEditErrorPayload("Report target SteamID could not be parsed."));
+                return;
+            }
+
+            var warns = _warnManager != null ? await _warnManager.GetWarnHistoryAsync(targetSteamId, WarnHistoryFilter.All, 5) : [];
+            var logs = _adminLogManager != null ? await _adminLogManager.GetTargetHistoryAsync(targetSteamId, 5) : [];
+
+            var descBuilder = new System.Text.StringBuilder();
+            if (warns.Count == 0 && logs.Count == 0)
+            {
+                descBuilder.AppendLine("No recent punishments found for this player.");
+            }
+            else
+            {
+                if (warns.Count > 0)
+                {
+                    descBuilder.AppendLine("**Recent Warnings:**");
+                    foreach (var warn in warns)
+                    {
+                        descBuilder.AppendLine($"- [{warn.CreatedAt:yyyy-MM-dd}] `{warn.Reason}` by {warn.AdminName}");
+                    }
+                    descBuilder.AppendLine();
+                }
+
+                if (logs.Count > 0)
+                {
+                    descBuilder.AppendLine("**Recent Actions:**");
+                    foreach (var log in logs)
+                    {
+                        descBuilder.AppendLine($"- [{log.CreatedAt:yyyy-MM-dd}] `{log.Action}`: {log.Details}");
+                    }
+                }
+            }
+
+            var embed = new
+            {
+                title = "Player Punishments",
+                description = descBuilder.ToString(),
+                color = 16711680 // Red
+            };
+
+            var payload = new
+            {
+                content = "",
+                embeds = new[] { embed }
+            };
+
+            if (!await EditInteractionOriginalResponseAsync(applicationId, interactionToken, payload))
+            {
+                _core.Logger.LogWarningIfEnabled("[CS2_Admin] Discord punish interaction response edit failed for custom_id={CustomId}", customId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _core.Logger.LogWarningIfEnabled("[CS2_Admin] Error in punish interaction: {Message}", ex.Message);
+            await EditInteractionOriginalResponseAsync(applicationId, interactionToken, BuildInteractionEditErrorPayload("An internal error occurred while loading punishments."));
+        }
+    }
+
+    private async Task SendInteractionErrorAsync(string interactionId, string interactionToken, string message)
+    {
+        await RespondToInteractionAsync(interactionId, interactionToken, 4, BuildInteractionErrorPayload(message));
+    }
+
+    private async Task<bool> SendInteractionFollowupAsync(string? applicationId, string interactionToken, string message)
+    {
+        if (!HasBotConfiguration() || string.IsNullOrWhiteSpace(applicationId))
+        {
+            return false;
+        }
+
+        var endpoint = $"{DiscordApiBaseUrl}/webhooks/{applicationId}/{interactionToken}";
+        using var request = BuildDiscordRequest(HttpMethod.Post, endpoint, BuildInteractionErrorPayload(message));
+        using var response = await _httpClient.SendAsync(request);
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        await LogDiscordFailureAsync("send interaction followup", response);
+        return false;
+    }
+
+    private async Task<bool> EditInteractionOriginalResponseAsync(string? applicationId, string interactionToken, object payload)
+    {
+        if (!HasBotConfiguration() || string.IsNullOrWhiteSpace(applicationId))
+        {
+            return false;
+        }
+
+        var endpoint = $"{DiscordApiBaseUrl}/webhooks/{applicationId}/{interactionToken}/messages/@original";
+        using var request = BuildDiscordRequest(HttpMethod.Patch, endpoint, payload);
+        using var response = await _httpClient.SendAsync(request);
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        await LogDiscordFailureAsync("edit interaction response", response);
+        return false;
+    }
+
+    private static object BuildInteractionErrorPayload(string message)
+    {
+        return new
+        {
+            content = $"CS2_Admin: {message}",
+            flags = 64
+        };
+    }
+
+    private static object BuildInteractionEditErrorPayload(string message)
+    {
+        return new
+        {
+            content = $"CS2_Admin: {message}",
+            embeds = Array.Empty<object>()
+        };
     }
 
     private async Task RunHeartbeatLoopAsync(ClientWebSocket socket, int heartbeatIntervalMs, CancellationToken cancellationToken)
@@ -1259,7 +1728,7 @@ public class DiscordBotService
             d = new
             {
                 token = _botToken,
-                intents = 0,
+                intents = 1,
                 properties = new
                 {
                     os = Environment.OSVersion.Platform.ToString(),
@@ -1273,6 +1742,22 @@ public class DiscordBotService
                     status = "online",
                     afk = false
                 }
+            }
+        }, JsonOptions);
+
+        await SendGatewayPayloadAsync(socket, payload, cancellationToken);
+    }
+
+    private async Task SendResumeAsync(ClientWebSocket socket, CancellationToken cancellationToken)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            op = 6,
+            d = new
+            {
+                token = _botToken,
+                session_id = _gatewaySessionId,
+                seq = _gatewaySequence
             }
         }, JsonOptions);
 
@@ -1457,36 +1942,14 @@ public class DiscordBotService
         var normalizedIp = NormalizeIp(ipAddress);
         var location = includeGeoLookup
             ? await ResolveGeoLocationAsync(normalizedIp)
-            : ResolveGeoLocationFromCache(normalizedIp);
+            : GeoLocation.Unknown();
         var resolvedIp = string.IsNullOrWhiteSpace(normalizedIp) ? "Unknown" : normalizedIp;
         return new PlayerSnapshot(displayName, steamId, resolvedIp, location.CountryCode, location.CountryName);
     }
 
-    private GeoLocation ResolveGeoLocationFromCache(string ipAddress)
-    {
-        if (string.IsNullOrWhiteSpace(ipAddress))
-        {
-            return GeoLocation.Unknown();
-        }
-
-        return _geoCache.TryGetValue(ipAddress, out var cached)
-            ? cached
-            : GeoLocation.Unknown();
-    }
-
     private async Task<GeoLocation> ResolveGeoLocationAsync(string ipAddress)
     {
-        if (string.IsNullOrWhiteSpace(ipAddress))
-        {
-            return GeoLocation.Unknown();
-        }
-
-        if (_geoCache.TryGetValue(ipAddress, out var cached))
-        {
-            return cached;
-        }
-
-        if (IsPrivateOrLocalIp(ipAddress))
+        if (string.IsNullOrWhiteSpace(ipAddress) || IsPrivateOrLocalIp(ipAddress))
         {
             return GeoLocation.Unknown();
         }
@@ -1510,12 +1973,9 @@ public class DiscordBotService
                 return GeoLocation.Unknown();
             }
 
-            var location = new GeoLocation(
+            return new GeoLocation(
                 geoResponse.CountryCode.Trim().ToUpperInvariant(),
                 string.IsNullOrWhiteSpace(geoResponse.Country) ? "Unknown" : geoResponse.Country.Trim());
-
-            _geoCache[ipAddress] = location;
-            return location;
         }
         catch
         {
@@ -1572,6 +2032,21 @@ public class DiscordBotService
         return _defaultChannelId;
     }
 
+    private string ResolveLogChannelId(string preferredChannelId)
+    {
+        if (!string.IsNullOrWhiteSpace(preferredChannelId))
+        {
+            return preferredChannelId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_defaultChannelId))
+        {
+            return _defaultChannelId;
+        }
+
+        return _reportChannelId;
+    }
+
     private object[]? BuildServerStatusComponents(IReadOnlyList<DiscordServerStatus> statuses)
     {
         var buttons = statuses
@@ -1606,11 +2081,6 @@ public class DiscordBotService
 
     private string GetStatusButtonLabel()
     {
-        if (!string.IsNullOrWhiteSpace(_statusButtonLabel))
-        {
-            return TrimLabel(_statusButtonLabel);
-        }
-
         if (!string.IsNullOrWhiteSpace(_serverName))
         {
             return TrimLabel(_serverName);
@@ -1619,14 +2089,19 @@ public class DiscordBotService
         return TrimLabel(ServerIdentity.GetServerId(_core));
     }
 
-    private static string BuildJoinUrl(string ip, int port)
+    private string BuildJoinUrl(string ip, int port)
     {
         if (string.IsNullOrWhiteSpace(ip) || port <= 0)
         {
             return string.Empty;
         }
 
-        return $"steam://connect/{ip}:{port}";
+        if (!string.IsNullOrWhiteSpace(_customConnectUrl))
+        {
+            return _customConnectUrl.Replace("{IP}", ip).Replace("{PORT}", port.ToString());
+        }
+
+        return $"https://cs2browser.net/?search={Uri.EscapeDataString($"{ip}:{port}")}";
     }
 
     private string BuildSteamServerUrl()
@@ -1710,6 +2185,36 @@ public class DiscordBotService
         ];
     }
 
+    private static object[]? BuildReportInteractiveComponents(string serverId, ulong targetSteamId, ulong reporterSteamId)
+    {
+        return new object[]
+        {
+            new
+            {
+                type = 1,
+                components = new object[]
+                {
+                    new
+                    {
+                        type = 2,
+                        style = 3, // Success / Green
+                        label = "Mark as resolved",
+                        custom_id = $"report_resolve_{serverId}_{targetSteamId}_{reporterSteamId}",
+                        emoji = new { name = "✅" }
+                    },
+                    new
+                    {
+                        type = 2,
+                        style = 4, // Danger / Red
+                        label = "Player Punishments",
+                        custom_id = $"report_punish_{targetSteamId}",
+                        emoji = new { name = "🚫" }
+                    }
+                }
+            }
+        };
+    }
+
     private static string EscapeMarkdown(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -1776,9 +2281,9 @@ public class DiscordBotService
         }
     }
 
-    private DiscordServerState GetServerState()
+    private DiscordServerState GetServerState(string? serverId = null)
     {
-        var serverId = ServerIdentity.GetServerId(_core);
+        serverId ??= ServerIdentity.GetServerId(_core);
         lock (_stateLock)
         {
             if (!_state.Servers.TryGetValue(serverId, out var state))
@@ -1884,7 +2389,11 @@ public class DiscordBotService
     private sealed class GeoIpResponse
     {
         public bool Success { get; set; }
+
+        [JsonPropertyName("country_code")]
         public string? CountryCode { get; set; }
+
+        [JsonPropertyName("country")]
         public string? Country { get; set; }
     }
 

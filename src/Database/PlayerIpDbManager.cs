@@ -1,7 +1,5 @@
-﻿using CS2_Admin.Models;
-using CS2_Admin.Utils;
+﻿using CS2_Admin.Utils;
 using Dapper;
-using Dommel;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
 
@@ -40,47 +38,59 @@ public class PlayerIpDbManager
 
         try
         {
-            using var connection = _core.Database.GetConnection("mysql_detailed");
             var now = DateTime.UtcNow;
             var safeName = string.IsNullOrWhiteSpace(playerName) ? steamId.ToString() : playerName.Trim();
+            using var connection = _core.Database.GetConnection("mysql_detailed");
 
-            var existing = connection.FirstOrDefault<PlayerIpRecord>(x => x.SteamId == steamId);
-            if (existing == null)
-            {
-                connection.Insert(new PlayerIpRecord
+            await connection.ExecuteAsync(
+                """
+                INSERT INTO `admin_player_ips` (`steamid`, `player_name`, `ip_address`, `last_seen_at`)
+                VALUES (@SteamId, @PlayerName, @IpAddress, @LastSeenAt)
+                ON DUPLICATE KEY UPDATE
+                    `player_name` = VALUES(`player_name`),
+                    `ip_address` = VALUES(`ip_address`),
+                    `last_seen_at` = VALUES(`last_seen_at`)
+                """,
+                new
                 {
-                    SteamId = steamId,
+                    SteamId = Convert.ToInt64(steamId),
                     PlayerName = safeName,
                     IpAddress = normalizedIp,
                     LastSeenAt = now
                 });
-            }
-            else
-            {
-                existing.PlayerName = safeName;
-                existing.IpAddress = normalizedIp;
-                existing.LastSeenAt = now;
-                connection.Update(existing);
-            }
 
             // Keep an IP history per SteamID for stronger alt-account and unban correlation.
-            var existingHistory = connection.FirstOrDefault<PlayerIpHistoryRecord>(x => x.SteamId == steamId && x.IpAddress == normalizedIp);
-            if (existingHistory == null)
-            {
-                connection.Insert(new PlayerIpHistoryRecord
+            var updatedHistory = await connection.ExecuteAsync(
+                """
+                UPDATE `admin_player_ip_history`
+                SET `player_name` = @PlayerName,
+                    `last_seen_at` = @LastSeenAt
+                WHERE `steamid` = @SteamId
+                  AND `ip_address` = @IpAddress
+                """,
+                new
                 {
-                    SteamId = steamId,
+                    SteamId = Convert.ToInt64(steamId),
                     PlayerName = safeName,
                     IpAddress = normalizedIp,
-                    FirstSeenAt = now,
                     LastSeenAt = now
                 });
-            }
-            else
+
+            if (updatedHistory == 0)
             {
-                existingHistory.PlayerName = safeName;
-                existingHistory.LastSeenAt = now;
-                connection.Update(existingHistory);
+                await connection.ExecuteAsync(
+                    """
+                    INSERT INTO `admin_player_ip_history` (`steamid`, `player_name`, `ip_address`, `first_seen_at`, `last_seen_at`)
+                    VALUES (@SteamId, @PlayerName, @IpAddress, @FirstSeenAt, @LastSeenAt)
+                    """,
+                    new
+                    {
+                        SteamId = Convert.ToInt64(steamId),
+                        PlayerName = safeName,
+                        IpAddress = normalizedIp,
+                        FirstSeenAt = now,
+                        LastSeenAt = now
+                    });
             }
         }
         catch (Exception ex)
@@ -99,8 +109,14 @@ public class PlayerIpDbManager
         try
         {
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            var existing = connection.FirstOrDefault<PlayerIpRecord>(x => x.SteamId == steamId);
-            return existing?.IpAddress;
+            return await connection.QueryFirstOrDefaultAsync<string?>(
+                """
+                SELECT `ip_address`
+                FROM `admin_player_ips`
+                WHERE `steamid` = @SteamId
+                LIMIT 1
+                """,
+                new { SteamId = Convert.ToInt64(steamId) });
         }
         catch (Exception ex)
         {
@@ -128,7 +144,7 @@ public class PlayerIpDbManager
                   AND `ip_address` <> ''
                 ORDER BY `ip_address`
                 """,
-                new { SteamId = steamId })
+                new { SteamId = Convert.ToInt64(steamId) })
                 .Where(ip => !string.IsNullOrWhiteSpace(ip))
                 .Select(ip => NormalizeIpAddress(ip))
                 .Where(ip => !string.IsNullOrWhiteSpace(ip))

@@ -153,10 +153,8 @@ public class GagManager
             }
 
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            var gag = connection.FirstOrDefault<Gag>(g =>
-                g.SteamId == steamId &&
-                g.StatusValue == GagStatusNames.Active &&
-                (g.ExpiresAt == null || g.ExpiresAt > DateTime.UtcNow));
+            var gags = connection.Select<Gag>(g => g.SteamId == steamId && g.StatusValue == GagStatusNames.Active);
+            var gag = gags.FirstOrDefault(g => g.ExpiresAt == null || g.ExpiresAt > DateTime.UtcNow);
 
             if (gag != null)
             {
@@ -228,10 +226,8 @@ public class GagManager
             try
             {
                 using var connection = _core.Database.GetConnection("mysql_detailed");
-                var expiredGags = connection.Select<Gag>(g =>
-                    g.StatusValue == GagStatusNames.Active &&
-                    g.ExpiresAt != null &&
-                    g.ExpiresAt <= DateTime.UtcNow);
+                var activeGags = connection.Select<Gag>(g => g.StatusValue == GagStatusNames.Active);
+                var expiredGags = activeGags.Where(g => g.ExpiresAt != null && g.ExpiresAt <= DateTime.UtcNow);
 
                 var cleaned = 0;
                 foreach (var gag in expiredGags)

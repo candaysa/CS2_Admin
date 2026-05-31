@@ -297,6 +297,41 @@ public class PlayerSessionManager
         }
     }
 
+    public async Task<List<RecentPlayerInfo>> GetRecentDisconnectedPlayersAsync(int limit = 30)
+    {
+        var safeLimit = Math.Clamp(limit, 5, 100);
+        var serverId = GetServerId();
+
+        try
+        {
+            using var connection = _core.Database.GetConnection("mysql_detailed");
+            var rows = await connection.QueryAsync<PlayerSessionRecord>(
+                """
+                SELECT *
+                FROM `admin_player_sessions`
+                WHERE `server_id` = @ServerId
+                  AND `disconnected_at` IS NOT NULL
+                ORDER BY `disconnected_at` DESC, `id` DESC
+                LIMIT @Limit
+                """,
+                new { ServerId = serverId, Limit = safeLimit });
+
+            return rows
+                .Where(row => row.SteamId != 0 && row.DisconnectedAt.HasValue)
+                .Select(row => new RecentPlayerInfo(
+                    row.SteamId,
+                    SafeName(row.PlayerName, row.SteamId),
+                    row.LastIp ?? string.Empty,
+                    row.DisconnectedAt!.Value))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error getting recent disconnected players: {Message}", ex.Message);
+            return [];
+        }
+    }
+
     private async Task<PlayerSessionRecord?> GetOpenSessionAsync(System.Data.IDbConnection connection, ulong steamId, string serverId)
     {
         if (_activeSessionIds.TryGetValue(steamId, out var cachedSessionId))

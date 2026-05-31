@@ -21,6 +21,7 @@ public class BanCommands
     private readonly AdminDbManager _adminDbManager;
     private readonly AdminLogManager _adminLogManager;
     private readonly PlayerIpDbManager _playerIpDbManager;
+    private readonly PlayerSessionManager _playerSessionManager;
     private readonly RecentPlayersTracker _recentPlayersTracker;
     private readonly DiscordBotService _discord;
     private readonly PermissionsConfig _permissions;
@@ -41,6 +42,7 @@ public class BanCommands
         AdminDbManager adminDbManager,
         AdminLogManager adminLogManager,
         PlayerIpDbManager playerIpDbManager,
+        PlayerSessionManager playerSessionManager,
         RecentPlayersTracker recentPlayersTracker,
         DiscordBotService discord,
         PermissionsConfig permissions,
@@ -60,6 +62,7 @@ public class BanCommands
         _adminDbManager = adminDbManager;
         _adminLogManager = adminLogManager;
         _playerIpDbManager = playerIpDbManager;
+        _playerSessionManager = playerSessionManager;
         _recentPlayersTracker = recentPlayersTracker;
         _discord = discord;
         _permissions = permissions;
@@ -448,6 +451,21 @@ public class BanCommands
         }
 
         var recent = _recentPlayersTracker.GetRecent();
+        if (recent.Count > 0)
+        {
+            ShowLastBanTargets(context, recent);
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            var fallbackRecent = await _playerSessionManager.GetRecentDisconnectedPlayersAsync();
+            _core.Scheduler.NextTick(() => ShowLastBanTargets(context, fallbackRecent));
+        });
+    }
+
+    private void ShowLastBanTargets(ICommandContext context, IReadOnlyList<RecentPlayerInfo> recent)
+    {
         if (context.Sender == null)
         {
             if (recent.Count == 0)
@@ -461,6 +479,11 @@ public class BanCommands
             {
                 context.Reply($"- {item.Name} | {item.SteamId} | {item.IpAddress} | {item.LastSeenAt:yyyy-MM-dd HH:mm:ss}");
             }
+            return;
+        }
+
+        if (!context.Sender.IsValid)
+        {
             return;
         }
 

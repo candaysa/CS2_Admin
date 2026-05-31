@@ -1,5 +1,6 @@
 using CS2_Admin.Models;
 using CS2_Admin.Utils;
+using Dapper;
 using Dommel;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
@@ -188,5 +189,31 @@ public class AdminLogManager
 
         var trimmed = value.Trim();
         return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
+
+    public async Task<List<AdminLog>> GetTargetHistoryAsync(ulong targetSteamId, int limit = 5)
+    {
+        try
+        {
+            if (_core.Database == null)
+            {
+                return new List<AdminLog>();
+            }
+
+            using var connection = _core.Database.GetConnection("mysql_detailed");
+            if (connection == null)
+            {
+                return new List<AdminLog>();
+            }
+
+            var query = "SELECT * FROM `admin_log` WHERE `target_steamid` = @TargetSteamId ORDER BY `created_at` DESC LIMIT @Limit";
+            var result = await connection.QueryAsync<AdminLog>(query, new { TargetSteamId = targetSteamId, Limit = limit });
+            return result.ToList();
+        }
+        catch (Exception ex)
+        {
+            _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error getting target history: {Message}", ex.Message);
+            return new List<AdminLog>();
+        }
     }
 }

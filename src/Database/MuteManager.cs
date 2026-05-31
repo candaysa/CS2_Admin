@@ -134,10 +134,8 @@ public class MuteManager
             }
 
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            var mute = connection.FirstOrDefault<Mute>(m =>
-                m.SteamId == steamId &&
-                m.StatusValue == MuteStatusNames.Active &&
-                (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow));
+            var mutes = connection.Select<Mute>(m => m.SteamId == steamId && m.StatusValue == MuteStatusNames.Active);
+            var mute = mutes.FirstOrDefault(m => m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow);
 
             if (mute != null)
             {
@@ -201,10 +199,8 @@ public class MuteManager
             try
             {
                 using var connection = _core.Database.GetConnection("mysql_detailed");
-                var expiredMutes = connection.Select<Mute>(m =>
-                    m.StatusValue == MuteStatusNames.Active &&
-                    m.ExpiresAt != null &&
-                    m.ExpiresAt <= DateTime.UtcNow);
+                var activeMutes = connection.Select<Mute>(m => m.StatusValue == MuteStatusNames.Active);
+                var expiredMutes = activeMutes.Where(m => m.ExpiresAt != null && m.ExpiresAt <= DateTime.UtcNow);
 
                 var cleaned = 0;
                 foreach (var mute in expiredMutes)

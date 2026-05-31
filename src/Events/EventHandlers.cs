@@ -52,6 +52,7 @@ public class EventHandlers
     private readonly Dictionary<int, DateTime> _gagWarnTimestamps = new();
     private readonly Dictionary<int, RecentPlayerInfo> _connectedPlayerSnapshots = new();
     private readonly ConcurrentDictionary<int, byte> _connectNotificationsSent = new();
+    private readonly ConcurrentDictionary<int, byte> _disconnectNotificationsSent = new();
     private readonly Dictionary<ulong, string> _lastKnownAdminTags = new();
     
     private Guid _chatHookGuid = Guid.Empty;
@@ -105,26 +106,99 @@ public class EventHandlers
 
     public void OnClientPutInServer(IOnClientPutInServerEvent @event)
     {
-        var player = _core.PlayerManager.GetPlayer(@event.PlayerId);
-        if (player?.IsValid != true || player.IsFakeClient)
+        if (@event.Kind != ClientKind.Player)
         {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] put-in-server skipped playerId={PlayerId} reason=kind kind={Kind}", @event.PlayerId, @event.Kind);
             return;
         }
 
-        _connectedPlayerSnapshots[@event.PlayerId] = new RecentPlayerInfo(
+        var player = _core.PlayerManager.GetPlayer(@event.PlayerId);
+        if (player?.IsValid != true || player.IsFakeClient)
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] put-in-server skipped playerId={PlayerId} reason=invalid_or_fake", @event.PlayerId);
+            return;
+        }
+
+        _core.Logger.LogInformationIfEnabled(
+            "[CS2_Admin][Debug][DiscordEvents] put-in-server playerId={PlayerId} steamid={SteamId} name={Name}",
+            @event.PlayerId,
             player.SteamID,
-            player.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"],
-            player.IPAddress,
-            DateTime.UtcNow);
+            GetPlayerName(player));
+
+        _disconnectNotificationsSent.TryRemove(@event.PlayerId, out _);
+        UpdateConnectedSnapshot(@event.PlayerId, player);
         
         _core.Scheduler.DelayBySeconds(3f, () => TrySendConnectNotification(@event.PlayerId));
     }
+
+    public HookResult OnPlayerConnectFull(EventPlayerConnectFull @event)
+    {
+        if (@event == null) return HookResult.Continue;
+        var player = @event.Accessor.GetPlayer("userid");
+        if (player == null || !player.IsValid || player.IsFakeClient)
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] connect-full skipped reason=invalid_or_fake");
+            return HookResult.Continue;
+        }
+
+        _core.Logger.LogInformationIfEnabled(
+            "[CS2_Admin][Debug][DiscordEvents] connect-full playerId={PlayerId} steamid={SteamId} name={Name}",
+            player.PlayerID,
+            player.SteamID,
+            GetPlayerName(player));
+
+        _disconnectNotificationsSent.TryRemove(player.PlayerID, out _);
+        UpdateConnectedSnapshot(player.PlayerID, player);
+        TrySendConnectNotification(player.PlayerID);
+
+        return HookResult.Continue;
+    }
+
+    public HookResult OnPlayerDisconnectGameEvent(EventPlayerDisconnect @event)
+    {
+        if (@event == null) return HookResult.Continue;
+        var player = @event.Accessor.GetPlayer("userid");
+        if (player == null || !player.IsValid || player.IsFakeClient)
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] disconnect gameevent skipped reason=invalid_or_fake");
+            return HookResult.Continue;
+        }
+
+        // Skip ghost disconnect events
+        if (@event.Reason == 54 || @event.Reason == 55 || @event.Reason == 57)
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] disconnect gameevent skipped playerId={PlayerId} steamid={SteamId} reason=ghost eventReason={EventReason}", player.PlayerID, player.SteamID, @event.Reason);
+            return HookResult.Continue;
+        }
+
+        var playerId = player.PlayerID;
+        var snapshot = BuildSnapshot(player);
+        _connectedPlayerSnapshots[playerId] = snapshot;
+        _recentPlayersTracker.Add(snapshot);
+        _core.Logger.LogInformationIfEnabled(
+            "[CS2_Admin][Debug][DiscordEvents] disconnect gameevent dispatch playerId={PlayerId} steamid={SteamId} name={Name} ip={Ip} eventReason={EventReason}",
+            playerId,
+            snapshot.SteamId,
+            snapshot.Name,
+            snapshot.IpAddress ?? "-",
+            @event.Reason);
+        TrySendDisconnectNotification(playerId, snapshot);
+        _ = Task.Run(async () =>
+        {
+            await _playerSessionManager.CloseSessionAsync(snapshot.SteamId, snapshot.Name, playerId, snapshot.IpAddress);
+            await _playerNameHistoryManager.ObserveNameAsync(snapshot.SteamId, snapshot.Name, forceWrite: true);
+            await _playerIpManager.UpsertPlayerIpAsync(snapshot.SteamId, snapshot.Name, snapshot.IpAddress);
+        });
+        
+        return HookResult.Continue;
+    }
+
     
     public void RegisterHooks()
     {
         // Hook into chat to block gagged players
         _chatHookGuid = _core.Command.HookClientChat(OnClientChat);
-        _core.Logger.LogInformationIfEnabled("[CS2_Admin] Chat hook registered");
+        _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] Chat hook registered guid={Guid}", _chatHookGuid);
         
         // Start periodic expiry check (every 30 seconds)
         _expiryCheckCts = _core.Scheduler.RepeatBySeconds(30f, CheckExpiredPunishments);
@@ -229,16 +303,22 @@ public class EventHandlers
         var playerId = @event.PlayerId;
         var player = _core.PlayerManager.GetPlayer(playerId);
         if (player == null || !player.IsValid)
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] steam-authorize skipped playerId={PlayerId} reason=invalid", playerId);
             return;
+        }
 
         var steamId = player.SteamID;
-        var playerName = player.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"];
+        var playerName = GetPlayerName(player);
         var playerIp = player.IPAddress;
-        _connectedPlayerSnapshots[playerId] = new RecentPlayerInfo(
+        _disconnectNotificationsSent.TryRemove(playerId, out _);
+        UpdateConnectedSnapshot(playerId, player);
+        _core.Logger.LogInformationIfEnabled(
+            "[CS2_Admin][Debug][DiscordEvents] steam-authorize playerId={PlayerId} steamid={SteamId} name={Name} ip={Ip}",
+            playerId,
             steamId,
             playerName,
-            playerIp,
-            DateTime.UtcNow);
+            playerIp ?? "-");
         TrySendConnectNotification(playerId);
         ScheduleDeferredBanRecheck(playerId, 1.5f);
         ScheduleDeferredBanRecheck(playerId, 5f);
@@ -305,6 +385,17 @@ public class EventHandlers
 
                         mutedPlayer.VoiceFlags = VoiceFlagValue.Muted;
                         _core.Logger.LogInformationIfEnabled("[CS2_Admin] Applied mute to player {SteamId}", steamId);
+                    });
+                }
+                else
+                {
+                    _core.Scheduler.NextTick(() =>
+                    {
+                        var playerToNormalize = _core.PlayerManager.GetPlayer(playerId);
+                        if (playerToNormalize?.IsValid == true && playerToNormalize.VoiceFlags == VoiceFlagValue.Muted)
+                        {
+                            playerToNormalize.VoiceFlags = VoiceFlagValue.Normal;
+                        }
                     });
                 }
 
@@ -595,11 +686,7 @@ public class EventHandlers
         var player = _core.PlayerManager.GetPlayer(playerId);
         if (player?.IsValid == true)
         {
-            snapshot = new RecentPlayerInfo(
-                player.SteamID,
-                player.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"],
-                player.IPAddress,
-                DateTime.UtcNow);
+            snapshot = BuildSnapshot(player);
         }
         else if (_connectedPlayerSnapshots.TryGetValue(playerId, out var cached))
         {
@@ -609,7 +696,13 @@ public class EventHandlers
         if (snapshot != null)
         {
             _recentPlayersTracker.Add(snapshot);
-            _ = _discord.SendDisconnectNotificationAsync(snapshot.Name, snapshot.SteamId, snapshot.IpAddress);
+            _core.Logger.LogInformationIfEnabled(
+                "[CS2_Admin][Debug][DiscordEvents] client-disconnected dispatch playerId={PlayerId} steamid={SteamId} name={Name} ip={Ip}",
+                playerId,
+                snapshot.SteamId,
+                snapshot.Name,
+                snapshot.IpAddress ?? "-");
+            TrySendDisconnectNotification(playerId, snapshot);
             _ = Task.Run(async () =>
             {
                 await _playerSessionManager.CloseSessionAsync(snapshot.SteamId, snapshot.Name, playerId, snapshot.IpAddress);
@@ -623,26 +716,69 @@ public class EventHandlers
         OnPlayerDisconnected?.Invoke(playerId);
     }
 
+    private void UpdateConnectedSnapshot(int playerId, IPlayer player)
+    {
+        if (player.SteamID == 0)
+        {
+            return;
+        }
+        else
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] client-disconnected skipped playerId={PlayerId} reason=no_snapshot", playerId);
+        }
+
+        _connectedPlayerSnapshots[playerId] = BuildSnapshot(player);
+    }
+
+    private RecentPlayerInfo BuildSnapshot(IPlayer player)
+    {
+        return new RecentPlayerInfo(
+            player.SteamID,
+            GetPlayerName(player),
+            player.IPAddress,
+            DateTime.UtcNow);
+    }
+
+    private string GetPlayerName(IPlayer player)
+    {
+        if (player.Controller?.IsValid == true && !string.IsNullOrWhiteSpace(player.Controller.PlayerName))
+        {
+            return player.Controller.PlayerName;
+        }
+
+        return PluginLocalizer.Get(_core)["unknown"];
+    }
+
     private void TrySendConnectNotification(int playerId)
     {
         if (_connectNotificationsSent.ContainsKey(playerId))
         {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] connect notify skipped playerId={PlayerId} reason=already_sent", playerId);
             return;
         }
 
         if (!_connectedPlayerSnapshots.TryGetValue(playerId, out var snapshot))
         {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] connect notify skipped playerId={PlayerId} reason=no_snapshot", playerId);
+            return;
+        }
+
+        if (snapshot.SteamId == 0)
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] connect notify skipped playerId={PlayerId} reason=steamid_zero name={Name}", playerId, snapshot.Name);
             return;
         }
 
         var player = _core.PlayerManager.GetPlayer(playerId);
         if (player?.IsValid == true && player.IsFakeClient)
         {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] connect notify skipped playerId={PlayerId} steamid={SteamId} reason=fake_client", playerId, snapshot.SteamId);
             return;
         }
 
         if (!_connectNotificationsSent.TryAdd(playerId, 0))
         {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] connect notify skipped playerId={PlayerId} steamid={SteamId} reason=dedupe_race", playerId, snapshot.SteamId);
             return;
         }
 
@@ -650,11 +786,46 @@ public class EventHandlers
             .GetAllPlayers()
             .Count(p => p.IsValid && !p.IsFakeClient);
 
+        _core.Logger.LogInformationIfEnabled(
+            "[CS2_Admin][Debug][DiscordEvents] connect notify dispatch playerId={PlayerId} steamid={SteamId} name={Name} ip={Ip} activePlayers={ActivePlayers}",
+            playerId,
+            snapshot.SteamId,
+            snapshot.Name,
+            snapshot.IpAddress ?? "-",
+            activePlayers);
+
         _ = _discord.SendConnectNotificationAsync(
             snapshot.Name,
             snapshot.SteamId,
             snapshot.IpAddress,
             activePlayers);
+    }
+
+    private void TrySendDisconnectNotification(int playerId, RecentPlayerInfo snapshot)
+    {
+        if (snapshot.SteamId == 0)
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] disconnect notify skipped playerId={PlayerId} reason=steamid_zero name={Name}", playerId, snapshot.Name);
+            return;
+        }
+
+        if (!_disconnectNotificationsSent.TryAdd(playerId, 0))
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordEvents] disconnect notify skipped playerId={PlayerId} steamid={SteamId} reason=already_sent", playerId, snapshot.SteamId);
+            return;
+        }
+
+        _core.Logger.LogInformationIfEnabled(
+            "[CS2_Admin][Debug][DiscordEvents] disconnect notify dispatch playerId={PlayerId} steamid={SteamId} name={Name} ip={Ip}",
+            playerId,
+            snapshot.SteamId,
+            snapshot.Name,
+            snapshot.IpAddress ?? "-");
+
+        _ = _discord.SendDisconnectNotificationAsync(
+            snapshot.Name,
+            snapshot.SteamId,
+            snapshot.IpAddress);
     }
 
     public HookResult OnPlayerSpeak(int playerId)
@@ -1027,7 +1198,18 @@ public class EventHandlers
         _ = _commands;
         var player = _core.PlayerManager.GetPlayer(playerId);
         if (player == null || !player.IsValid)
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordChat] skipped playerId={PlayerId} reason=invalid text={Text}", playerId, string.IsNullOrWhiteSpace(text) ? "-" : text.Trim());
             return HookResult.Continue;
+        }
+
+        _core.Logger.LogInformationIfEnabled(
+            "[CS2_Admin][Debug][DiscordChat] received playerId={PlayerId} steamid={SteamId} name={Name} teamOnly={TeamOnly} text={Text}",
+            playerId,
+            player.SteamID,
+            GetPlayerName(player),
+            teamOnly,
+            string.IsNullOrWhiteSpace(text) ? "-" : text.Trim());
 
         if (_databaseReady)
         {
@@ -1038,6 +1220,7 @@ public class EventHandlers
         // Gagged players can still execute commands; only normal chat is restricted.
         if (!string.IsNullOrWhiteSpace(text) && (text.StartsWith("!") || text.StartsWith("/")))
         {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordChat] discord chat skipped playerId={PlayerId} steamid={SteamId} reason=command text={Text}", playerId, player.SteamID, text.Trim());
             if (TryForwardCollisionCommandFromChat(player, text))
             {
                 return HookResult.Stop;
@@ -1118,7 +1301,12 @@ public class EventHandlers
 
         if (!string.IsNullOrWhiteSpace(text))
         {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordChat] discord chat dispatch playerId={PlayerId} steamid={SteamId} textLength={Length}", playerId, player.SteamID, text.Length);
             _ = _discord.SendChatNotificationAsync(player, text, teamOnly);
+        }
+        else
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordChat] discord chat skipped playerId={PlayerId} steamid={SteamId} reason=empty", playerId, player.SteamID);
         }
 
         if (_chatTagConfigManager.Config.ChatEnabled && !string.IsNullOrWhiteSpace(text))

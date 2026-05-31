@@ -479,6 +479,11 @@ public class MuteCommands
             return;
         }
 
+        if (!EnsureSinglePunishTarget(context, targets, args[0]))
+        {
+            return;
+        }
+
         if (!SanctionDurationParser.TryParseToMinutes(args[1], out int duration))
         {
             context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["invalid_duration"]}");
@@ -581,6 +586,11 @@ public class MuteCommands
         if (targets.Count == 0)
         {
             context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["player_not_found"]}");
+            return;
+        }
+
+        if (!EnsureSinglePunishTarget(context, targets, args[0]))
+        {
             return;
         }
 
