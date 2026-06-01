@@ -561,6 +561,60 @@ public class PlayerCommands
         _core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} moved {Target} to {Team}", adminName, targetName, teamName);
     }
 
+    public void OnMixTeamCommand(ICommandContext context)
+    {
+        var args = CommandAliasUtils.NormalizeCommandArgs(context.Args, _commands.MixTeam);
+
+        if (!HasPermission(context, _permissions.MixTeam))
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_permission"]}");
+            return;
+        }
+
+        if (args.Length > 0)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["mixteam_usage"]}");
+            return;
+        }
+
+        var players = _core.PlayerManager
+            .GetAllPlayers()
+            .Where(p => p.IsValid && !p.IsFakeClient)
+            .OrderBy(_ => Random.Shared.Next())
+            .ToList();
+
+        if (players.Count == 0)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_valid_targets"]}");
+            return;
+        }
+
+        var moved = 0;
+        for (var i = 0; i < players.Count; i++)
+        {
+            var target = players[i];
+            var team = i % 2 == 0 ? Team.T : Team.CT;
+            _core.Scheduler.NextTick(() =>
+            {
+                if (target.IsValid)
+                {
+                    target.ChangeTeam(team);
+                }
+            });
+            moved++;
+        }
+
+        var adminName = context.Sender?.Controller.PlayerName ?? PluginLocalizer.Get(_core)["console_name"];
+        foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
+        {
+            var visibleAdmin = ResolveVisibleAdminName(player, adminName);
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["mixteam_notification", visibleAdmin, moved]}");
+        }
+
+        _ = _adminLogManager.AddLogAsync("mixteam", adminName, context.Sender?.SteamID ?? 0, null, null, $"players={moved}");
+        _core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} mixed teams for {Count} player(s)", adminName, moved);
+    }
+
     public void OnGotoCommand(ICommandContext context)
     {
         var args = CommandAliasUtils.NormalizeCommandArgs(context.Args, _commands.Goto);
@@ -1102,7 +1156,8 @@ public class PlayerCommands
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
             var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["resize_notification", visibleAdmin, applied, scale.ToString("0.00", CultureInfo.InvariantCulture)]} | target: {targetNames}");
+            var message = PluginLocalizer.Get(_core)["resize_notification", visibleAdmin, applied, scale.ToString("0.00", CultureInfo.InvariantCulture)];
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {WithTargetSuffix(message, targetNames)}");
         }
 
         _ = _adminLogManager.AddLogAsync("resize", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={applied};scale={scale.ToString("0.00", CultureInfo.InvariantCulture)}");
@@ -1189,7 +1244,8 @@ public class PlayerCommands
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
             var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {L("drug_notification", "{0} drugged {1} player(s) for {2} second(s).", visibleAdmin, targets.Count, durationSeconds)} | target: {targetNames}");
+            var message = L("drug_notification", "{0} drugged {1} player(s) for {2} second(s).", visibleAdmin, targets.Count, durationSeconds);
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {WithTargetSuffix(message, targetNames)}");
         }
 
         _ = _adminLogManager.AddLogAsync("drug", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={targets.Count};duration={durationSeconds}");
@@ -1267,7 +1323,8 @@ public class PlayerCommands
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
             var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {L("blind_notification", "{0} blinded {1} player(s) for {2} second(s).", visibleAdmin, targets.Count, durationSeconds)} | target: {targetNames}");
+            var message = L("blind_notification", "{0} blinded {1} player(s) for {2} second(s).", visibleAdmin, targets.Count, durationSeconds);
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {WithTargetSuffix(message, targetNames)}");
         }
 
         _ = _adminLogManager.AddLogAsync("blind", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={targets.Count};duration={durationSeconds}");
@@ -1364,7 +1421,7 @@ public class PlayerCommands
             var message = disableGlow
                 ? L("glow_off_notification", "{0} cleared glow for {1} player(s).", visibleAdmin, targets.Count)
                 : L("glow_notification", "{0} set glow for {1} player(s) to RGBA({2}, {3}, {4}, {5}).", visibleAdmin, targets.Count, r, g, b, a);
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {message} | target: {targetNames}");
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {WithTargetSuffix(message, targetNames)}");
         }
 
         var details = disableGlow
@@ -1441,7 +1498,8 @@ public class PlayerCommands
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
             var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["beacon_started", visibleAdmin, started, durationSeconds]} | target: {targetNames}");
+            var message = PluginLocalizer.Get(_core)["beacon_started", visibleAdmin, started, durationSeconds];
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {WithTargetSuffix(message, targetNames)}");
         }
 
         _ = _adminLogManager.AddLogAsync("beacon", adminName, context.Sender?.SteamID ?? 0, null, null, $"mode=on;targets={started};duration={durationSeconds}");
@@ -1518,7 +1576,7 @@ public class PlayerCommands
                 }
 
                 _burnPlayers.Add(liveTarget.PlayerID);
-                _ = liveTarget.SendCenterHTMLAsync("<font color='#ff7a3d'><b>BURNING</b></font><br><font color='#ffd2bd'>Fire damage active</font>", 900);
+                _ = liveTarget.SendCenterHTMLAsync(PluginLocalizer.Get(_core)["burn_center_html"], 900);
                 StartBurnEffect(liveTarget.SteamID, isInfiniteDuration ? null : durationSeconds, damagePerTick);
             });
         }
@@ -1531,7 +1589,8 @@ public class PlayerCommands
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
             var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["burn_notification", visibleAdmin, targets.Count, durationLabel, damagePerTick]} | target: {targetNames}");
+            var message = PluginLocalizer.Get(_core)["burn_notification", visibleAdmin, targets.Count, durationLabel, damagePerTick];
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {WithTargetSuffix(message, targetNames)}");
         }
 
         _ = _adminLogManager.AddLogAsync("burn", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={targets.Count};duration={(isInfiniteDuration ? "infinite" : durationSeconds.ToString(CultureInfo.InvariantCulture))};dmg={damagePerTick}");
@@ -1583,7 +1642,8 @@ public class PlayerCommands
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
             var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["disarm_notification", visibleAdmin, changed]} | target: {targetNames}");
+            var message = PluginLocalizer.Get(_core)["disarm_notification", visibleAdmin, changed];
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {WithTargetSuffix(message, targetNames)}");
         }
 
         _ = _adminLogManager.AddLogAsync("disarm", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={changed}");
@@ -1640,7 +1700,8 @@ public class PlayerCommands
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
             var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["speed_notification", visibleAdmin, targets.Count, speedMultiplier.ToString("0.00", CultureInfo.InvariantCulture)]} | target: {targetNames}");
+            var message = PluginLocalizer.Get(_core)["speed_notification", visibleAdmin, targets.Count, speedMultiplier.ToString("0.00", CultureInfo.InvariantCulture)];
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {WithTargetSuffix(message, targetNames)}");
         }
 
         _ = _adminLogManager.AddLogAsync("speed", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={targets.Count};speed={speedMultiplier.ToString("0.00", CultureInfo.InvariantCulture)}");
@@ -1690,7 +1751,8 @@ public class PlayerCommands
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
             var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["gravity_notification", visibleAdmin, targets.Count, gravityMultiplier.ToString("0.00", CultureInfo.InvariantCulture)]} | target: {targetNames}");
+            var message = PluginLocalizer.Get(_core)["gravity_notification", visibleAdmin, targets.Count, gravityMultiplier.ToString("0.00", CultureInfo.InvariantCulture)];
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {WithTargetSuffix(message, targetNames)}");
         }
 
         _ = _adminLogManager.AddLogAsync("gravity", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={targets.Count};gravity={gravityMultiplier.ToString("0.00", CultureInfo.InvariantCulture)}");
@@ -1784,7 +1846,8 @@ public class PlayerCommands
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
             var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["rename_notification", visibleAdmin, changed, newName]} | target: {targetNames}");
+            var message = PluginLocalizer.Get(_core)["rename_notification", visibleAdmin, changed, newName];
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {WithTargetSuffix(message, targetNames)}");
         }
 
         _ = _adminLogManager.AddLogAsync("rename", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={changed};name={newName}");
@@ -1848,7 +1911,8 @@ public class PlayerCommands
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
             var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["hp_notification", visibleAdmin, changed, hp]} | target: {targetNames}");
+            var message = PluginLocalizer.Get(_core)["hp_notification", visibleAdmin, changed, hp];
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {WithTargetSuffix(message, targetNames)}");
         }
 
         _ = _adminLogManager.AddLogAsync("hp", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={changed};hp={hp}");
@@ -1917,7 +1981,8 @@ public class PlayerCommands
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
             var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)[key, visibleAdmin, changed, amount]} | target: {targetNames}");
+            var message = PluginLocalizer.Get(_core)[key, visibleAdmin, changed, amount];
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {WithTargetSuffix(message, targetNames)}");
         }
 
         var mode = isAdditive ? "add" : "set";
@@ -1975,7 +2040,8 @@ public class PlayerCommands
         foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
         {
             var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["give_notification", visibleAdmin, changed, item]} | target: {targetNames}");
+            var message = PluginLocalizer.Get(_core)["give_notification", visibleAdmin, changed, item];
+            player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {WithTargetSuffix(message, targetNames)}");
         }
 
         _ = _adminLogManager.AddLogAsync("give", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={changed};item={item}");
@@ -2121,11 +2187,11 @@ public class PlayerCommands
         return string.IsNullOrWhiteSpace(normalized) ? "-" : normalized;
     }
 
-    private static string SanitizePlayerNameForConsole(string playerName)
+    private string SanitizePlayerNameForConsole(string playerName)
     {
         if (string.IsNullOrWhiteSpace(playerName))
         {
-            return "Unknown";
+            return PluginLocalizer.Get(_core)["unknown"];
         }
 
         var sanitized = playerName
@@ -2139,7 +2205,7 @@ public class PlayerCommands
             sanitized = sanitized.Replace("  ", " ", StringComparison.Ordinal);
         }
 
-        return string.IsNullOrWhiteSpace(sanitized) ? "Unknown" : sanitized;
+        return string.IsNullOrWhiteSpace(sanitized) ? PluginLocalizer.Get(_core)["unknown"] : sanitized;
     }
 
     public void OnWhoCommand(ICommandContext context)
@@ -2519,7 +2585,7 @@ public class PlayerCommands
                     _messagesConfig,
                     PluginLocalizer.Get(_core)["burn_personal_html", damagePerTick],
                     $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["burn_personal_chat", damagePerTick]}");
-                _ = target.SendCenterHTMLAsync("<font color='#ff7a3d'><b>BURNING</b></font><br><font color='#ffd2bd'>Fire damage active</font>", 900);
+                _ = target.SendCenterHTMLAsync(PluginLocalizer.Get(_core)["burn_center_html"], 900);
 
                 if (ticksRemaining.HasValue && ticksRemaining.Value <= 1)
                 {
@@ -2600,6 +2666,11 @@ public class PlayerCommands
 
         _drugEffectTimers[playerId] = timer;
         _core.Scheduler.StopOnMapChange(timer);
+    }
+
+    private string WithTargetSuffix(string message, string targetNames)
+    {
+        return PluginLocalizer.Get(_core)["notification_target_suffix", message, targetNames];
     }
 
     private void StopDrugEffect(int playerId, bool restoreVisuals)
@@ -2755,7 +2826,7 @@ public class PlayerCommands
             (!string.IsNullOrWhiteSpace(_permissions.AdminMenu) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.AdminMenu)) ||
             (!string.IsNullOrWhiteSpace(_permissions.ListPlayers) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.ListPlayers));
 
-        return isAdminViewer ? adminName : "Admin";
+        return isAdminViewer ? adminName : PluginLocalizer.Get(_core)["anonymous_admin"];
     }
 
     private static string FormatTargetNames(IEnumerable<IPlayer> targets, int maxNames = 5)
@@ -3050,8 +3121,10 @@ public class PlayerCommands
             return;
         }
 
-        pawn.RenderMode = RenderMode_t.kRenderTransAlpha;
-        pawn.Render = new(r, g, b, a);
+        // TransAlpha makes CS2 player models partially invisible on some runtimes.
+        // Keep the model opaque and apply a visible color tint instead.
+        pawn.RenderMode = RenderMode_t.kRenderNormal;
+        pawn.Render = new(r, g, b, 255);
         pawn.RenderUpdated();
     }
 

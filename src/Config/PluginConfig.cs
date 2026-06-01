@@ -81,7 +81,7 @@ public class TagsConfig
 
 public class ChatTagsFileConfig
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
     public int Version { get; set; } = CurrentVersion;
     public bool ScoreboardEnabled { get; set; } = true;
     public bool ChatEnabled { get; set; } = true;
@@ -244,9 +244,11 @@ public class CommandsConfig
     [JsonIgnore]
     public List<string> Slay { get; set; } = ["slay"];
     [JsonIgnore]
-    public List<string> Respawn { get; set; } = ["respawn"];
+    public List<string> Respawn { get; set; } = ["respawn", "revive"];
     [JsonIgnore]
-    public List<string> ChangeTeam { get; set; } = ["team"];
+    public List<string> ChangeTeam { get; set; } = ["team", "swap"];
+    [JsonIgnore]
+    public List<string> MixTeam { get; set; } = ["mixteam"];
     [JsonIgnore]
     public List<string> NoClip { get; set; } = ["noclip"];
     public List<string> Goto { get; set; } = ["goto"];
@@ -351,6 +353,7 @@ public class PermissionsConfig
     public string Slay { get; set; } = "admin.cheats";
     public string Respawn { get; set; } = "admin.cheats";
     public string ChangeTeam { get; set; } = "admin.cheats";
+    public string MixTeam { get; set; } = "admin.cheats";
     public string NoClip { get; set; } = "admin.cheats";
     public string Goto { get; set; } = "admin.cheats";
     public string Bring { get; set; } = "admin.cheats";

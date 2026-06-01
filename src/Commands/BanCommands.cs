@@ -91,7 +91,7 @@ public class BanCommands
         if (args.Length < 2)
         {
             context.Reply(ipMode
-                ? "Usage: ipban <player|ip> <duration> [reason]"
+                ? $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["ipban_usage"]}"
                 : $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["ban_usage"]}");
             return;
         }
@@ -869,7 +869,7 @@ public class BanCommands
             (!string.IsNullOrWhiteSpace(_permissions.AdminMenu) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.AdminMenu)) ||
             (!string.IsNullOrWhiteSpace(_permissions.ListPlayers) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.ListPlayers));
 
-        return isAdminViewer ? adminName : "Admin";
+        return isAdminViewer ? adminName : PluginLocalizer.Get(_core)["anonymous_admin"];
     }
 
     private bool HasPlayerPermission(IPlayer player, string permission)

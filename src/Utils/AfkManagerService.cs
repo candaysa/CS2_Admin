@@ -59,7 +59,7 @@ public sealed class AfkManagerService
     {
         if (!context.IsSentByPlayer || context.Sender?.IsValid != true)
         {
-            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 This command can only be used by players.");
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {L("afk_command_only_player", "This command can only be used by players.")}");
             return;
         }
 
@@ -189,11 +189,11 @@ public sealed class AfkManagerService
 
             if (notifyAll)
             {
-                BroadcastChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {name} was moved to spectator for being AFK.");
+                BroadcastChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {L("afk_move_broadcast", "{0} was moved to spectator for being AFK.", name)}");
             }
             else
             {
-                live.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 You moved yourself to spectator.");
+                live.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {L("afk_self_spec", "You moved yourself to spectator.")}");
             }
 
             _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][AFK] moved steamid={SteamId} name={Name} reason={Reason}", live.SteamID, name, reason);
@@ -223,8 +223,8 @@ public sealed class AfkManagerService
         PlayerUtils.SendNotification(
             player,
             _messagesConfig,
-            $"You will be moved to spectator in {remainingSeconds} seconds for being AFK.",
-            $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 You will be moved to spectator in {remainingSeconds} seconds for being AFK.");
+            L("afk_warning_html", "You will be moved to spectator in {0} seconds for being AFK.", remainingSeconds),
+            $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {L("afk_warning_chat", "You will be moved to spectator in {0} seconds for being AFK.", remainingSeconds)}");
     }
 
     private void BroadcastChat(string message)
@@ -243,6 +243,22 @@ public sealed class AfkManagerService
     private bool HasPermission(ulong steamId, string permission)
     {
         return !string.IsNullOrWhiteSpace(permission) && _core.Permission.PlayerHasPermission(steamId, permission);
+    }
+
+    private string L(string key, string fallback, params object[] args)
+    {
+        try
+        {
+            var localizer = PluginLocalizer.Get(_core);
+            var value = args.Length == 0 ? localizer[key] : localizer[key, args];
+            return string.Equals(value, key, StringComparison.OrdinalIgnoreCase)
+                ? (args.Length == 0 ? fallback : string.Format(System.Globalization.CultureInfo.InvariantCulture, fallback, args))
+                : value;
+        }
+        catch
+        {
+            return args.Length == 0 ? fallback : string.Format(System.Globalization.CultureInfo.InvariantCulture, fallback, args);
+        }
     }
 
     private float GetAfkSeconds()

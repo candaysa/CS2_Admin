@@ -1047,7 +1047,7 @@ public partial class CS2_Admin : BasePlugin
 
     private bool IsLikelyStaleEnglishOverride(string candidatePath, LocalizerDiagnostics diagnostics)
     {
-        var overrideTranslationsPath = GetConfigTranslationsDirectoryPath();
+        var overrideTranslationsPath = GetPluginResourcesDirectoryPath();
         string fullCandidate;
         string fullOverridePath;
         try
@@ -1073,8 +1073,8 @@ public partial class CS2_Admin : BasePlugin
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var orderedCandidates = new List<string>
         {
-            // Always prefer server-side/user override translations from plugin config.
-            GetConfigTranslationsDirectoryPath(),
+            // Keep translation files under plugins/cs2admin/resources, not the config folder.
+            GetPluginResourcesDirectoryPath(),
             Path.Combine(Core.PluginPath, "translations")
         };
 
@@ -1162,7 +1162,7 @@ public partial class CS2_Admin : BasePlugin
     {
         try
         {
-            var outputDir = GetConfigTranslationsDirectoryPath();
+            var outputDir = GetPluginResourcesDirectoryPath();
             Directory.CreateDirectory(outputDir);
 
             var asm = Assembly.GetExecutingAssembly();
@@ -1216,16 +1216,14 @@ public partial class CS2_Admin : BasePlugin
         }
     }
 
-    private string GetConfigTranslationsDirectoryPath()
+    private string GetPluginResourcesDirectoryPath()
     {
-        var configPath = Core.Configuration.GetConfigPath("config.json");
-        var configDir = Path.GetDirectoryName(configPath);
-        if (string.IsNullOrWhiteSpace(configDir))
+        if (!string.IsNullOrWhiteSpace(Core.PluginPath))
         {
-            return Path.Combine(Core.PluginDataDirectory, "translations");
+            return Path.Combine(Core.PluginPath, "resources");
         }
 
-        return Path.Combine(configDir, "translations");
+        return Path.Combine(Core.PluginDataDirectory, "resources");
     }
 
     private static Language ToSwiftLanguage(string language)
@@ -1317,6 +1315,8 @@ public partial class CS2_Admin : BasePlugin
             RegisterCommand(cmd, _playerCommands.OnRespawnCommand);
         foreach (var cmd in _config.Commands.ChangeTeam)
             RegisterCommand(cmd, _playerCommands.OnTeamCommand);
+        foreach (var cmd in _config.Commands.MixTeam)
+            RegisterCommand(cmd, _playerCommands.OnMixTeamCommand);
         foreach (var cmd in _config.Commands.NoClip)
             RegisterCommand(cmd, _playerCommands.OnNoclipCommand);
         foreach (var cmd in _config.Commands.Goto)
@@ -1471,6 +1471,10 @@ public partial class CS2_Admin : BasePlugin
             commands.ListPlayers = ["players"];
             Core.Logger.LogWarningIfEnabled("[CS2Admin] Commands.ListPlayers alias list was empty. Restored default alias: players");
         }
+
+        EnsureAlias(commands.Respawn, "revive");
+        EnsureAlias(commands.ChangeTeam, "swap");
+        EnsureAlias(commands.MixTeam, "mixteam");
     }
 
     private void EnsureInternalMenuAliases(CommandsConfig commands)
@@ -1482,6 +1486,7 @@ public partial class CS2_Admin : BasePlugin
         EnsurePreferredAlias(commands.Slay, "cs2a_slay");
         EnsurePreferredAlias(commands.Respawn, "cs2a_respawn");
         EnsurePreferredAlias(commands.ChangeTeam, "cs2a_team");
+        EnsurePreferredAlias(commands.MixTeam, "cs2a_mixteam");
         EnsurePreferredAlias(commands.NoClip, "cs2a_noclip");
         EnsurePreferredAlias(commands.Goto, "cs2a_goto");
         EnsurePreferredAlias(commands.Bring, "cs2a_bring");

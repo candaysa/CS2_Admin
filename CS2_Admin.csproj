@@ -33,6 +33,10 @@
     <Content Include="resources/gamedata/**/*;resources/templates/**/*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="resources/translations/*.jsonc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>resources/%(Filename)%(Extension)</TargetPath>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

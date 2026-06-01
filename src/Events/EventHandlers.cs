@@ -1362,7 +1362,7 @@ public class EventHandlers
         var groupTag = ResolveChatGroupTag(sender);
         var style = _chatTagConfigManager.GetStyleForGroup(groupTag);
         var senderName = sender.Controller.PlayerName ?? PluginLocalizer.Get(_core)["unknown"];
-        var scopePrefix = teamOnly ? $"{style.ChatColor}[TEAM] " : string.Empty;
+        var scopePrefix = teamOnly ? $"{style.ChatColor}{PluginLocalizer.Get(_core)["chat_team_prefix"]} " : string.Empty;
         var formatted = $"{scopePrefix}{style.ChatColor}[ {style.TagColor}{groupTag} {style.ChatColor}] {style.NameColor}{senderName}{style.ChatColor}: {text}";
         var senderTeam = sender.Controller.TeamNum;
 

@@ -2,7 +2,7 @@
 
 # CS2_ADMIN
 
-Eklenti Surumu: `1.0.9`
+Eklenti Surumu: `1.0.11`
 
 ## Ozellikler
 
@@ -21,8 +21,30 @@ Ana config dosyalari `Version: 1` ile surumlenir:
 - `commands.json`
 - `permissions.json`
 - `maps.json`
+- `discord.json`
+- `afk.json`
 
 Bir dosyada surum eksik/yanlis ise (veya JSON bozuksa), eklenti dosyayi silip bir sonraki yuklemede yeniden olusturur.
+
+## Config Dosyalari
+
+- `config.json` dil, mesaj davranisi, multi-server davranisi, ban modu, admin playtime ve sanction menu varsayilanlarini kontrol eder.
+- `commands.json` public komut aliaslarini kontrol eder. Dil Turkce olsa bile komut adlari her zaman English kalmalidir.
+- `permissions.json` komut gruplarini permission stringlerine baglar.
+- `discord.json` bot token, kanal ID'leri, server status, leaderboard ve Discord gorunum ayarlarini kontrol eder.
+- `afk.json` AFK timer, warmup davranisi, uyari sesi ve admin skip davranisini kontrol eder.
+- `maps.json` normal ve workshop harita isimlerini kontrol eder.
+- `plugins/CS2_Admin/resources/*.jsonc` dil dosyalarini icerir (`en`, `tr`, `de`, `fr`, `it`, `el`, `ru`, `bg`, `hu`).
+
+### Ban Mode
+
+`config.json` icindeki `BanMode`, `!ban` komutunun varsayilan olarak ne uygulayacagini belirler:
+
+- `steamid`: sadece SteamID ban atar.
+- `ip`: sadece IP ban atar.
+- `both`: SteamID ve IP banini birlikte atar.
+
+`!ipban` hedef/IP argumani icin her zaman IP-ban davranisini kullanir.
 
 ## 🎯 Hedef Belirme (ÖNEMLİ: #id Kullanımı)
 Komutları oyuncular üzerinde uygularken **isim yerine oyuncunun ID'sini (#id) kullanmanız** isim karışıklıklarını ve yanlış işlem yapılmasını önlemek adına çok daha güvenlidir.
@@ -89,8 +111,9 @@ Oyuncular üzerinde eğlenceli veya oyun içi etkileşimler yaratan komutlardır
 
 * `!slap <#id> [hasar]` - Oyuncuyu tokatlar (belirtirseniz canını yakar).
 * `!slay <#id>` - Oyuncuyu anında öldürür.
-* `!respawn <#id>` - Oyuncuyu yeniden canlandırır.
-* `!team <#id> <t|ct|spec>` - Oyuncunun takımını değiştirir. (Örn: `!team #12 spec`)
+* `!respawn <#id>` / `!revive <#id>` - Oyuncuyu yeniden canlandırır.
+* `!team <#id> <t|ct|spec>` / `!swap <#id> <t|ct|spec>` - Oyuncunun takımını değiştirir. (Örn: `!team #12 spec`)
+* `!mixteam` - Oyundaki tum oyunculari T/CT takimlarina rastgele karistirir.
 * `!noclip <#id>` - Oyuncunun duvarlardan geçmesini sağlar (Açıp/Kapatmalı).
 * `!goto <#id>` - Sizi hedef oyuncunun yanına ışınlar.
 * `!bring <#id>` - Hedef oyuncuyu sizin yanınıza ışınlar.
@@ -130,7 +153,7 @@ Varsayilan (Default) ana yetkiler:
 - `admin.ban` -> `ban`, `ipban`, `addban`, `unban`, `lastban`.
 - `admin.kick` -> `kick`.
 - `admin.mute` -> `mute/unmute`, `gag/ungag`, `silence/unsilence`.
-- `admin.cheats` -> `slap`, `slay`, `respawn`, `team`, `noclip`, `goto`, `bring`, `freeze`, `unfreeze`, `resize`, `drug`, `burn`, `disarm`, `speed`, `gravity`, `rename`, `hp`, `money`, `give`.
+- `admin.cheats` -> `slap`, `slay`, `respawn/revive`, `team/swap`, `mixteam`, `noclip`, `goto`, `bring`, `freeze`, `unfreeze`, `resize`, `drug`, `burn`, `disarm`, `speed`, `gravity`, `rename`, `hp`, `money`, `give`.
 - `admin.rcon` -> sunucu modu degistirme komutlari (`hson/hsoff`, `bhopon/bhopoff`, `respawnon/respawnoff`).
 - `admin.cvar` -> `cvar`.
 
@@ -165,4 +188,4 @@ sw_adminreload
 - `commands.json` -> degistirilebilir chat takma adlari (alias).
 - `permissions.json` -> komutlari yetkilere baglama.
 - `maps.json` -> normal ve atolye (workshop) harita listeleri.
-- `resources/translations/*.jsonc` -> dil dosyalari (`en`, `tr`, `de`, `fr`, `it`, `el`, `ru`, `bg`, `hu`).
+- `plugins/CS2_Admin/resources/*.jsonc` -> dil dosyalari (`en`, `tr`, `de`, `fr`, `it`, `el`, `ru`, `bg`, `hu`).

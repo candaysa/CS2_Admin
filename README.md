@@ -2,7 +2,7 @@
 
 # CS2_ADMIN
 
-Plugin Version: `1.0.9`
+Plugin Version: `1.0.11`
 
 ## Features
 
@@ -21,8 +21,30 @@ Main config files use schema versioning with `Version: 1`:
 - `commands.json`
 - `permissions.json`
 - `maps.json`
+- `discord.json`
+- `afk.json`
 
 If a config file has missing/wrong version (or invalid JSON), plugin deletes and regenerates it on next load.
+
+## Configuration Files
+
+- `config.json` controls language, message behavior, multi-server behavior, ban mode, admin playtime and sanction menu defaults.
+- `commands.json` controls public command aliases. Command names should stay English even when translations are not English.
+- `permissions.json` maps every command group to a permission string.
+- `discord.json` controls bot token, channel IDs, server status updates, leaderboard updates and Discord display options.
+- `afk.json` controls AFK detection timer, warmup behavior, warning sound and whether admins are skipped.
+- `maps.json` controls regular and workshop map names.
+- `plugins/CS2_Admin/resources/*.jsonc` contains translation files (`en`, `tr`, `de`, `fr`, `it`, `el`, `ru`, `bg`, `hu`).
+
+### Ban Mode
+
+`config.json` has `BanMode`. It decides what `!ban` applies by default:
+
+- `steamid`: bans by SteamID only.
+- `ip`: bans by IP only.
+- `both`: bans by SteamID and IP together.
+
+`!ipban` always uses IP-ban behavior for the target/IP argument.
 
 ## 🎯 Target Selection (IMPORTANT: #id Usage)
 When applying commands to players, **using the player's ID (`#id`) instead of their name** is highly recommended to prevent name confusion and accidental actions on the wrong player.
@@ -89,8 +111,9 @@ Commands for fun or game interactions.
 
 * `!slap <#id> [damage]` - Slaps the player (damages them if specified).
 * `!slay <#id>` - Kills the player instantly.
-* `!respawn <#id>` - Respawns the player.
-* `!team <#id> <t|ct|spec>` - Changes the player's team. (Ex: `!team #12 spec`)
+* `!respawn <#id>` / `!revive <#id>` - Respawns the player.
+* `!team <#id> <t|ct|spec>` / `!swap <#id> <t|ct|spec>` - Changes the player's team. (Ex: `!team #12 spec`)
+* `!mixteam` - Randomly shuffles all online players into T/CT teams.
 * `!noclip <#id>` - Toggles noclip (fly through walls) for the player.
 * `!goto <#id>` - Teleports you to the target player.
 * `!bring <#id>` - Teleports the target player to you.
@@ -130,7 +153,7 @@ Default core permissions:
 - `admin.ban` -> `ban`, `ipban`, `addban`, `unban`, `lastban`.
 - `admin.kick` -> `kick`.
 - `admin.mute` -> `mute/unmute`, `gag/ungag`, `silence/unsilence`.
-- `admin.cheats` -> `slap`, `slay`, `respawn`, `team`, `noclip`, `goto`, `bring`, `freeze`, `unfreeze`, `resize`, `drug`, `burn`, `disarm`, `speed`, `gravity`, `rename`, `hp`, `money`, `give`.
+- `admin.cheats` -> `slap`, `slay`, `respawn/revive`, `team/swap`, `mixteam`, `noclip`, `goto`, `bring`, `freeze`, `unfreeze`, `resize`, `drug`, `burn`, `disarm`, `speed`, `gravity`, `rename`, `hp`, `money`, `give`.
 - `admin.rcon` -> server toggles (`hson/hsoff`, `bhopon/bhopoff`, `respawnon/respawnoff`).
 - `admin.cvar` -> `cvar`.
 
@@ -165,4 +188,4 @@ sw_adminreload
 - `commands.json` -> editable chat aliases.
 - `permissions.json` -> permission mapping.
 - `maps.json` -> normal & workshop map lists.
-- `resources/translations/*.jsonc` -> localization files (`en`, `tr`, `de`, `fr`, `it`, `el`, `ru`, `bg`, `hu`).
+- `plugins/CS2_Admin/resources/*.jsonc` -> localization files (`en`, `tr`, `de`, `fr`, `it`, `el`, `ru`, `bg`, `hu`).
