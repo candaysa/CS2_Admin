@@ -22,10 +22,11 @@ using System.Threading;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text;
+using System.Text.Encodings.Web;
 
 namespace CS2_Admin;
 
-[PluginMetadata(Id = "CS2_Admin", Version = "1.0.9", Name = "CS2_Admin", Author = "CanDaysa", Description = "Comprehensive admin plugin for CS2.")]
+[PluginMetadata(Id = "CS2_Admin", Version = "1.0.11", Name = "CS2_Admin", Author = "CanDaysa", Description = "Comprehensive admin plugin for CS2.")]
 public partial class CS2_Admin : BasePlugin
 {
     private PluginConfig _config = null!;
@@ -64,6 +65,7 @@ public partial class CS2_Admin : BasePlugin
 
     // Utils
     private DiscordBotService _discord = null!;
+    private AfkManagerService _afkManager = null!;
     private PlayerSanctionStateService _sanctionStateService = null!;
     private RecentPlayersTracker _recentPlayersTracker = null!;
     private ChatTagConfigManager _chatTagConfigManager = null!;
@@ -110,14 +112,16 @@ public partial class CS2_Admin : BasePlugin
 
         Core.Logger.LogInformationIfEnabled("[CS2Admin] Loading plugin...");
 
+        // Initialize utilities
+        _discord = new DiscordBotService(Core, Config.Discord);
+
         // Initialize database managers
         InitializeDatabaseManagers();
+        _discord.EnsureGatewayConnection();
 
         // Initialize Admin Menu Manager
         AdminMenuManager = new AdminMenuManager(Core, Config, _warnManager, _adminDbManager, _groupDbManager, _adminLogManager, _adminPlaytimeDbManager);
 
-        // Initialize utilities
-        _discord = new DiscordBotService(Core, Config.Discord);
         _adminLogManager.SetDiscordBotService(_discord);
 
         // Initialize command handlers
@@ -131,6 +135,7 @@ public partial class CS2_Admin : BasePlugin
 
         // Register events
         RegisterEvents();
+        _afkManager.Start();
 
         // Initialize databases
         _ = InitializeDatabasesAsync();
@@ -142,6 +147,7 @@ public partial class CS2_Admin : BasePlugin
     {
         Core.Logger.LogInformationIfEnabled("[CS2Admin] Unloading plugin...");
         _eventHandlers?.UnregisterHooks();
+        _afkManager?.Stop();
         _adminPlaytimeTimer?.Dispose();
         _discord?.StopBackgroundUpdates();
     }
@@ -151,10 +157,12 @@ public partial class CS2_Admin : BasePlugin
         _config = new PluginConfig();
         _chatTagConfigManager ??= new ChatTagConfigManager(Core);
 
-        EnsureVersionedConfigFile("config.json", "CS2Admin", PluginConfig.CurrentVersion);
-        EnsureVersionedConfigFile("commands.json", "CS2AdminCommands", CommandsConfig.CurrentVersion);
-        EnsureVersionedConfigFile("permissions.json", "CS2AdminPermissions", PermissionsConfig.CurrentVersion);
-        EnsureVersionedConfigFile("maps.json", "CS2AdminMaps", MapsFileConfig.CurrentVersion);
+        EnsureVersionedConfigFile<PluginConfig>("config.json", "CS2Admin", PluginConfig.CurrentVersion);
+        EnsureVersionedConfigFile<CommandsConfig>("commands.json", "CS2AdminCommands", CommandsConfig.CurrentVersion);
+        EnsureVersionedConfigFile<PermissionsConfig>("permissions.json", "CS2AdminPermissions", PermissionsConfig.CurrentVersion);
+        EnsureVersionedConfigFile<MapsFileConfig>("maps.json", "CS2AdminMaps", MapsFileConfig.CurrentVersion);
+        EnsureVersionedConfigFile<DiscordFileConfig>("discord.json", "CS2_Discord", DiscordFileConfig.CurrentVersion);
+        EnsureVersionedConfigFile<AfkFileConfig>("afk.json", "CS2AdminAfk", AfkFileConfig.CurrentVersion);
 
         try
         {
@@ -176,7 +184,7 @@ public partial class CS2_Admin : BasePlugin
                 Core.Configuration.Manager.Bind(_config);
             }
 
-            _config.BanMode = PluginConfig.NormalizeBanMode(_config.BanMode, _config.BanType);
+            _config.BanMode = PluginConfig.NormalizeBanMode(_config.BanMode);
 
             // Resolve language defensively from multiple config layouts.
             // Priority: root Language > CS2_Admin.Language > CS2Admin.Language > bound value.
@@ -296,9 +304,24 @@ public partial class CS2_Admin : BasePlugin
         {
             Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to load tags.json, using defaults: {Message}", ex.Message);
         }
+
+        try
+        {
+            Core.Configuration
+                .InitializeJsonWithModel<AfkFileConfig>("afk.json", "CS2AdminAfk")
+                .Configure(builder => builder.AddJsonFile(Core.Configuration.GetConfigPath("afk.json"), optional: false, reloadOnChange: true));
+            var afkConfig = new AfkFileConfig();
+            Core.Configuration.Manager.GetSection("CS2AdminAfk").Bind(afkConfig);
+            _config.Afk = afkConfig;
+            Core.Logger.LogInformationIfEnabled("[CS2Admin] AFK configuration loaded from {Path}", Core.Configuration.GetConfigPath("afk.json"));
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to load afk.json, using defaults: {Message}", ex.Message);
+        }
     }
 
-    private void EnsureVersionedConfigFile(string fileName, string sectionName, int expectedVersion)
+    private void EnsureVersionedConfigFile<T>(string fileName, string sectionName, int expectedVersion) where T : class, new()
     {
         var filePath = Core.Configuration.GetConfigPath(fileName);
         if (!File.Exists(filePath))
@@ -318,10 +341,51 @@ public partial class CS2_Admin : BasePlugin
 
             if (!TryReadVersionFromNode(root, sectionName, out var currentVersion) || currentVersion != expectedVersion)
             {
-                var currentText = TryReadVersionFromNode(root, sectionName, out var parsedVersion)
-                    ? parsedVersion.ToString(CultureInfo.InvariantCulture)
-                    : "missing";
-                RecreateConfigFile(filePath, fileName, expectedVersion, $"found {currentText}");
+                T? migratedObj = null;
+                try
+                {
+                    var sectionNode = string.IsNullOrWhiteSpace(sectionName) ? root : (root[sectionName] as JsonObject ?? root);
+                    var sectionJson = sectionNode.ToJsonString();
+                    
+                    var options = new JsonSerializerOptions 
+                    { 
+                        ReadCommentHandling = JsonCommentHandling.Skip,
+                        AllowTrailingCommas = true,
+                        PropertyNameCaseInsensitive = true 
+                    };
+                    migratedObj = JsonSerializer.Deserialize<T>(sectionJson, options);
+                }
+                catch
+                {
+                }
+
+                migratedObj ??= new T();
+
+                var versionProperty = typeof(T).GetProperty("Version");
+                if (versionProperty != null && versionProperty.CanWrite)
+                {
+                    versionProperty.SetValue(migratedObj, expectedVersion);
+                }
+
+                var writeOptions = new JsonSerializerOptions 
+                { 
+                    WriteIndented = true, 
+                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping 
+                };
+
+                string outJson;
+                if (!string.IsNullOrWhiteSpace(sectionName))
+                {
+                    var outRoot = new Dictionary<string, T> { { sectionName, migratedObj } };
+                    outJson = JsonSerializer.Serialize(outRoot, writeOptions);
+                }
+                else
+                {
+                    outJson = JsonSerializer.Serialize(migratedObj, writeOptions);
+                }
+
+                File.WriteAllText(filePath, outJson);
+                Core.Logger.LogInformationIfEnabled("[CS2Admin] Migrated {File} to version {Version}.", fileName, expectedVersion);
             }
         }
         catch (Exception ex)
@@ -403,6 +467,7 @@ public partial class CS2_Admin : BasePlugin
         _warnManager = new WarnManager(Core);
         _adminDbManager = new AdminDbManager(Core, _groupDbManager);
         _adminLogManager = new AdminLogManager(Core);
+        _discord.SetDatabaseManagers(_warnManager, _adminLogManager);
         _serverInfoDbManager = new ServerInfoDbManager(Core);
         _discordServerStatusDbManager = new DiscordServerStatusDbManager(Core);
         _discordMessageStateDbManager = new DiscordMessageStateDbManager(Core);
@@ -413,6 +478,7 @@ public partial class CS2_Admin : BasePlugin
         _playerNameHistoryManager = new PlayerNameHistoryManager(Core);
         _recentPlayersTracker = new RecentPlayersTracker();
         _sanctionStateService = new PlayerSanctionStateService(_banManager, _muteManager, _gagManager, _warnManager, _config.MultiServer);
+        _afkManager = new AfkManagerService(Core, _config.Afk, _config.Permissions, _config.Messages);
     }
 
     private void InitializeCommandHandlers()
@@ -426,6 +492,7 @@ public partial class CS2_Admin : BasePlugin
             _adminDbManager,
             _adminLogManager,
             _playerIpDbManager,
+            _playerSessionManager,
             _recentPlayersTracker,
             _discord,
             _config.Permissions,
@@ -980,7 +1047,7 @@ public partial class CS2_Admin : BasePlugin
 
     private bool IsLikelyStaleEnglishOverride(string candidatePath, LocalizerDiagnostics diagnostics)
     {
-        var overrideTranslationsPath = GetConfigTranslationsDirectoryPath();
+        var overrideTranslationsPath = GetPluginResourcesDirectoryPath();
         string fullCandidate;
         string fullOverridePath;
         try
@@ -1006,8 +1073,8 @@ public partial class CS2_Admin : BasePlugin
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var orderedCandidates = new List<string>
         {
-            // Always prefer server-side/user override translations from plugin config.
-            GetConfigTranslationsDirectoryPath(),
+            // Keep translation files under plugins/cs2admin/resources, not the config folder.
+            GetPluginResourcesDirectoryPath(),
             Path.Combine(Core.PluginPath, "translations")
         };
 
@@ -1095,7 +1162,7 @@ public partial class CS2_Admin : BasePlugin
     {
         try
         {
-            var outputDir = GetConfigTranslationsDirectoryPath();
+            var outputDir = GetPluginResourcesDirectoryPath();
             Directory.CreateDirectory(outputDir);
 
             var asm = Assembly.GetExecutingAssembly();
@@ -1149,16 +1216,14 @@ public partial class CS2_Admin : BasePlugin
         }
     }
 
-    private string GetConfigTranslationsDirectoryPath()
+    private string GetPluginResourcesDirectoryPath()
     {
-        var configPath = Core.Configuration.GetConfigPath("config.json");
-        var configDir = Path.GetDirectoryName(configPath);
-        if (string.IsNullOrWhiteSpace(configDir))
+        if (!string.IsNullOrWhiteSpace(Core.PluginPath))
         {
-            return Path.Combine(Core.PluginDataDirectory, "translations");
+            return Path.Combine(Core.PluginPath, "resources");
         }
 
-        return Path.Combine(configDir, "translations");
+        return Path.Combine(Core.PluginDataDirectory, "resources");
     }
 
     private static Language ToSwiftLanguage(string language)
@@ -1204,6 +1269,8 @@ public partial class CS2_Admin : BasePlugin
             RegisterCommand(cmd, _adminPlaytimeCommands.OnAdminTimeCommand);
         foreach (var cmd in _config.Commands.AdminTimeSend)
             RegisterCommand(cmd, _adminPlaytimeCommands.OnAdminTimeSendCommand);
+        foreach (var cmd in _config.Commands.Afk)
+            RegisterCommand(cmd, _afkManager.OnAfkCommand);
 
         // Ban commands
         foreach (var cmd in _config.Commands.Ban)
@@ -1248,6 +1315,8 @@ public partial class CS2_Admin : BasePlugin
             RegisterCommand(cmd, _playerCommands.OnRespawnCommand);
         foreach (var cmd in _config.Commands.ChangeTeam)
             RegisterCommand(cmd, _playerCommands.OnTeamCommand);
+        foreach (var cmd in _config.Commands.MixTeam)
+            RegisterCommand(cmd, _playerCommands.OnMixTeamCommand);
         foreach (var cmd in _config.Commands.NoClip)
             RegisterCommand(cmd, _playerCommands.OnNoclipCommand);
         foreach (var cmd in _config.Commands.Goto)
@@ -1402,6 +1471,10 @@ public partial class CS2_Admin : BasePlugin
             commands.ListPlayers = ["players"];
             Core.Logger.LogWarningIfEnabled("[CS2Admin] Commands.ListPlayers alias list was empty. Restored default alias: players");
         }
+
+        EnsureAlias(commands.Respawn, "revive");
+        EnsureAlias(commands.ChangeTeam, "swap");
+        EnsureAlias(commands.MixTeam, "mixteam");
     }
 
     private void EnsureInternalMenuAliases(CommandsConfig commands)
@@ -1413,6 +1486,7 @@ public partial class CS2_Admin : BasePlugin
         EnsurePreferredAlias(commands.Slay, "cs2a_slay");
         EnsurePreferredAlias(commands.Respawn, "cs2a_respawn");
         EnsurePreferredAlias(commands.ChangeTeam, "cs2a_team");
+        EnsurePreferredAlias(commands.MixTeam, "cs2a_mixteam");
         EnsurePreferredAlias(commands.NoClip, "cs2a_noclip");
         EnsurePreferredAlias(commands.Goto, "cs2a_goto");
         EnsurePreferredAlias(commands.Bring, "cs2a_bring");
@@ -1618,8 +1692,10 @@ public partial class CS2_Admin : BasePlugin
             }
 
             var desiredBanMode = PluginConfig.NormalizeBanMode(
-                targetSection["BanMode"]?.GetValue<string>(),
-                targetSection["BanType"]?.GetValue<int>() ?? _config.BanType);
+                targetSection["BanMode"]?.GetValue<string>());
+
+            targetSection.Remove("BanType");
+            targetSection.Remove("BanType_Info_Comment");
 
             var currentBanMode = targetSection["BanMode"]?.GetValue<string>();
             if (string.Equals(currentBanMode, desiredBanMode, StringComparison.OrdinalIgnoreCase))
@@ -1646,6 +1722,9 @@ public partial class CS2_Admin : BasePlugin
 
         Core.GameEvent.HookPost<EventRoundStart>(_eventHandlers.OnRoundStart);
         Core.GameEvent.HookPost<EventRoundStart>(OnRoundStartEnsureCommands);
+        
+        Core.GameEvent.HookPost<EventPlayerConnectFull>(_eventHandlers.OnPlayerConnectFull);
+        Core.GameEvent.HookPost<EventPlayerDisconnect>(_eventHandlers.OnPlayerDisconnectGameEvent);
     }
 
     private HookResult OnRoundStartEnsureCommands(EventRoundStart @event)

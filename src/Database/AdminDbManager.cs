@@ -9,6 +9,18 @@ namespace CS2_Admin.Database;
 
 public class AdminDbManager
 {
+    private const string AdminSelectColumns = @"
+        `id` AS `Id`,
+        `steamid` AS `SteamId`,
+        `name` AS `Name`,
+        `flags` AS `Flags`,
+        `groups` AS `Groups`,
+        `immunity` AS `Immunity`,
+        `created_at` AS `CreatedAt`,
+        `expires_at` AS `ExpiresAt`,
+        `added_by` AS `AddedBy`,
+        `added_by_steamid` AS `AddedBySteamId`";
+
     private readonly ISwiftlyCore _core;
     private readonly GroupDbManager _groupManager;
     private readonly Dictionary<ulong, Admin> _adminCache = new();
@@ -208,12 +220,7 @@ public class AdminDbManager
             using var connection = _core.Database.GetConnection("mysql_detailed");
             var now = DateTime.UtcNow;
 
-            // Dommel's LINQ-to-SQL cannot reliably translate ulong predicates,
-            // which can cause WHERE clauses to be dropped and return wrong rows.
-            // Always use GetAll + in-memory filtering for correctness.
-            var admin = connection
-                .GetAll<Admin>()
-                .FirstOrDefault(a => a.SteamId == steamId && (a.ExpiresAt == null || a.ExpiresAt > now));
+            var admin = FindActiveAdminRecordBySteamId(connection, steamId, now);
 
             if (admin != null)
             {
@@ -241,12 +248,7 @@ public class AdminDbManager
             using var connection = _core.Database.GetConnection("mysql_detailed");
             var now = DateTime.UtcNow;
 
-            // Use GetAll + in-memory filtering to avoid Dommel ulong predicate issues.
-            var admins = connection.GetAll<Admin>()
-                .Where(a => a.ExpiresAt == null || a.ExpiresAt > now)
-                .OrderByDescending(a => a.Immunity)
-                .ThenBy(a => a.Name)
-                .ToList();
+            var admins = QueryActiveAdminRecords(connection, now);
 
             foreach (var admin in admins)
             {
@@ -334,16 +336,11 @@ public class AdminDbManager
         try
         {
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            var now = DateTime.UtcNow;
-            var expiredAdmins = connection.GetAll<Admin>()
-                .Where(a => a.ExpiresAt != null && a.ExpiresAt <= now);
-
-            var cleaned = 0;
-            foreach (var admin in expiredAdmins)
-            {
-                connection.Delete(admin);
-                cleaned++;
-            }
+            EnsureOpen(connection);
+            using var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM `admin_admins` WHERE `expires_at` IS NOT NULL AND `expires_at` <= @Now";
+            AddParameter(command, "@Now", DateTime.UtcNow);
+            var cleaned = command.ExecuteNonQuery();
 
             if (cleaned > 0)
             {
@@ -423,9 +420,106 @@ public class AdminDbManager
 
     private static Admin? FindAdminRecordBySteamId(IDbConnection connection, ulong steamId)
     {
-        // Dommel's LINQ-to-SQL cannot reliably translate ulong predicates.
-        // Always use GetAll + in-memory filtering to prevent returning wrong admin rows.
-        return connection.GetAll<Admin>().FirstOrDefault(a => a.SteamId == steamId);
+        EnsureOpen(connection);
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT {AdminSelectColumns} FROM `admin_admins` WHERE `steamid` = @SteamId LIMIT 1";
+        AddParameter(command, "@SteamId", Convert.ToInt64(steamId));
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? MapAdmin(reader) : null;
+    }
+
+    private static Admin? FindActiveAdminRecordBySteamId(IDbConnection connection, ulong steamId, DateTime now)
+    {
+        EnsureOpen(connection);
+        using var command = connection.CreateCommand();
+        command.CommandText = $@"
+            SELECT {AdminSelectColumns}
+            FROM `admin_admins`
+            WHERE `steamid` = @SteamId
+              AND (`expires_at` IS NULL OR `expires_at` > @Now)
+            LIMIT 1";
+        AddParameter(command, "@SteamId", Convert.ToInt64(steamId));
+        AddParameter(command, "@Now", now);
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? MapAdmin(reader) : null;
+    }
+
+    private static List<Admin> QueryActiveAdminRecords(IDbConnection connection, DateTime now)
+    {
+        EnsureOpen(connection);
+        using var command = connection.CreateCommand();
+        command.CommandText = $@"
+            SELECT {AdminSelectColumns}
+            FROM `admin_admins`
+            WHERE `expires_at` IS NULL OR `expires_at` > @Now
+            ORDER BY `immunity` DESC, `name` ASC";
+        AddParameter(command, "@Now", now);
+        using var reader = command.ExecuteReader();
+
+        var admins = new List<Admin>();
+        while (reader.Read())
+        {
+            admins.Add(MapAdmin(reader));
+        }
+
+        return admins;
+    }
+
+    private static Admin MapAdmin(IDataRecord record)
+    {
+        return new Admin
+        {
+            Id = Convert.ToInt32(record["Id"]),
+            SteamId = Convert.ToUInt64(record["SteamId"]),
+            Name = ReadString(record, "Name"),
+            Flags = ReadString(record, "Flags"),
+            Groups = ReadString(record, "Groups"),
+            Immunity = Convert.ToInt32(record["Immunity"]),
+            CreatedAt = ReadDateTime(record, "CreatedAt") ?? DateTime.UtcNow,
+            ExpiresAt = ReadDateTime(record, "ExpiresAt"),
+            AddedBy = ReadNullableString(record, "AddedBy"),
+            AddedBySteamId = ReadNullableUInt64(record, "AddedBySteamId")
+        };
+    }
+
+    private static string ReadString(IDataRecord record, string name)
+    {
+        var value = record[name];
+        return value == DBNull.Value ? string.Empty : Convert.ToString(value) ?? string.Empty;
+    }
+
+    private static string? ReadNullableString(IDataRecord record, string name)
+    {
+        var value = record[name];
+        return value == DBNull.Value ? null : Convert.ToString(value);
+    }
+
+    private static DateTime? ReadDateTime(IDataRecord record, string name)
+    {
+        var value = record[name];
+        return value == DBNull.Value ? null : Convert.ToDateTime(value);
+    }
+
+    private static ulong? ReadNullableUInt64(IDataRecord record, string name)
+    {
+        var value = record[name];
+        return value == DBNull.Value ? null : Convert.ToUInt64(value);
+    }
+
+    private static void AddParameter(IDbCommand command, string name, object value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
+    }
+
+    private static void EnsureOpen(IDbConnection connection)
+    {
+        if (connection.State != ConnectionState.Open)
+        {
+            connection.Open();
+        }
     }
 }
 

@@ -299,7 +299,11 @@ public class WarnCommands
 
         if (reasons.Count == 0)
         {
-            reasons = ["Hacking", "Other"];
+            reasons =
+            [
+                PluginLocalizer.Get(_core)["warn_reason_hacking"],
+                PluginLocalizer.Get(_core)["warn_reason_other"]
+            ];
         }
 
         foreach (var reason in reasons)

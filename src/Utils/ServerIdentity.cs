@@ -144,7 +144,7 @@ public static class ServerIdentity
 
     public static int GetMaxPlayers(ISwiftlyCore core, int fallback = 64)
     {
-        foreach (var cvarName in new[] { "sv_visiblemaxplayers", "maxplayers", "sv_maxplayers" })
+        foreach (var cvarName in new[] { "sv_visiblemaxplayers" })
         {
             var cvarValue = TryGetIntCvar(core, cvarName);
             if (cvarValue.HasValue && IsUsableMaxPlayers(cvarValue.Value))
@@ -152,6 +152,13 @@ public static class ServerIdentity
                 _cachedMaxPlayers = cvarValue.Value;
                 return cvarValue.Value;
             }
+        }
+
+        var engineMaxClients = TryGetMaxClientsFromEngine(core);
+        if (engineMaxClients.HasValue && IsUsableMaxPlayers(engineMaxClients.Value))
+        {
+            _cachedMaxPlayers = engineMaxClients.Value;
+            return engineMaxClients.Value;
         }
 
         if (_cachedMaxPlayers.HasValue && IsUsableMaxPlayers(_cachedMaxPlayers.Value))
@@ -198,31 +205,27 @@ public static class ServerIdentity
     {
         try
         {
-            var coreType = core.GetType();
-            var engineObject =
-                coreType.GetProperty("Engine")?.GetValue(core) ??
-                coreType.GetProperty("EngineService")?.GetValue(core);
-
-            if (engineObject == null)
+            var mapName = core.Engine.GlobalVars.MapName;
+            var normalized = NormalizeMapName(mapName);
+            if (!string.IsNullOrWhiteSpace(normalized))
             {
-                return null;
+                return normalized;
             }
+            
+            // Fallback for some CS2 engine versions if needed
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
-            var engineType = engineObject.GetType();
-            var globalVars = engineType.GetProperty("GlobalVars")?.GetValue(engineObject);
-            if (globalVars != null)
-            {
-                var mapName = globalVars.GetType().GetProperty("MapName")?.GetValue(globalVars) as string;
-                var normalized = NormalizeMapName(mapName);
-                if (!string.IsNullOrWhiteSpace(normalized))
-                {
-                    return normalized;
-                }
-            }
-
-            var map = engineType.GetProperty("Map")?.GetValue(engineObject) as string;
-            var fallback = NormalizeMapName(map);
-            return string.IsNullOrWhiteSpace(fallback) ? null : fallback;
+    private static int? TryGetMaxClientsFromEngine(ISwiftlyCore core)
+    {
+        try
+        {
+            return core.Engine.GlobalVars.MaxClients;
         }
         catch
         {

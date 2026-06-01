@@ -4,16 +4,19 @@ namespace CS2_Admin.Config;
 
 public class PluginConfig
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
     public int Version { get; set; } = CurrentVersion;
     public bool Debug { get; set; } = false;
     public string Language { get; set; } = "en";
     public List<string> LanguageOptions { get; set; } = ["en", "tr", "de", "fr", "it", "el", "ru", "bg", "hu"];
     [JsonIgnore]
     public DiscordFileConfig Discord { get; set; } = new();
+    [JsonIgnore]
+    public AfkFileConfig Afk { get; set; } = new();
     public MessagesConfig Messages { get; set; } = new();
     public MultiServerConfig MultiServer { get; set; } = new();
-    public int BanType { get; set; } = 1; // 1=SteamID, 2=IP, 3=SteamID+IP
+    [JsonPropertyName("BanMode_Info_Comment")]
+    public string BanModeInfo { get; set; } = "steamid, ip, both";
     public string BanMode { get; set; } = "steamid"; // steamid, ip, both
     [JsonIgnore]
     public TagsConfig Tags { get; set; } = new();
@@ -33,9 +36,9 @@ public class PluginConfig
     public SanctionMenuConfig Sanctions { get; set; } = new();
 
     [JsonIgnore]
-    public int EffectiveBanType => ParseBanType(BanMode, BanType);
+    public int EffectiveBanType => ParseBanMode(BanMode);
 
-    public static int ParseBanType(string? mode, int fallback)
+    public static int ParseBanMode(string? mode)
     {
         if (!string.IsNullOrWhiteSpace(mode))
         {
@@ -55,12 +58,12 @@ public class PluginConfig
             }
         }
 
-        return fallback is >= 1 and <= 3 ? fallback : 1;
+        return 1;
     }
 
-    public static string NormalizeBanMode(string? mode, int fallback)
+    public static string NormalizeBanMode(string? mode)
     {
-        return ParseBanType(mode, fallback) switch
+        return ParseBanMode(mode) switch
         {
             2 => "ip",
             3 => "both",
@@ -78,7 +81,7 @@ public class TagsConfig
 
 public class ChatTagsFileConfig
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 3;
     public int Version { get; set; } = CurrentVersion;
     public bool ScoreboardEnabled { get; set; } = true;
     public bool ChatEnabled { get; set; } = true;
@@ -143,11 +146,13 @@ public class MessagesConfig
 
 public class DiscordFileConfig
 {
+    public const int CurrentVersion = 3;
+    public int Version { get; set; } = CurrentVersion;
     public string ServerName { get; set; } = "";
     public string BotToken { get; set; } = "";
     public string ServerPublicIp { get; set; } = "";
-    public string StatusButtonLabel { get; set; } = "";
-    public string StatusHubKey { get; set; } = "default";
+    public string BannerUrl { get; set; } = "";
+    public string CustomConnectUrl { get; set; } = "https://cs2browser.net/?search={IP}:{PORT}";
     public string AdminLogChannelId { get; set; } = "";
     public string ChatLogChannelId { get; set; } = "";
     public string ConnectionLogChannelId { get; set; } = "";
@@ -156,15 +161,24 @@ public class DiscordFileConfig
     public string AdminTimeChannelId { get; set; } = "";
     public string ServerStatusChannelId { get; set; } = "";
     public string LeaderboardChannelId { get; set; } = "";
-    public int ServerStatusPublishSeconds { get; set; } = 30;
-    public int ServerStatusUpdateSeconds { get; set; } = 60;
+    public int ServerStatusUpdateSeconds { get; set; } = 30;
     public int LeaderboardUpdateMinutes { get; set; } = 10;
     public int LeaderboardTopLimit { get; set; } = 10;
 }
 
-public class CommandsConfig
+public class AfkFileConfig
 {
     public const int CurrentVersion = 1;
+    public int Version { get; set; } = CurrentVersion;
+    public float Timer { get; set; } = 30f;
+    public bool SkipWarmup { get; set; } = true;
+    public string WarningSound { get; set; } = "UIPanorama.ui_custom_lobby_dialog_slide";
+    public bool AfkSkipAdmin { get; set; } = false;
+}
+
+public class CommandsConfig
+{
+    public const int CurrentVersion = 2;
     public int Version { get; set; } = CurrentVersion;
     [JsonIgnore]
     public List<string> AdminMenu { get; set; } = ["admin"];
@@ -184,6 +198,7 @@ public class CommandsConfig
     public List<string> Report { get; set; } = ["report"];
     public List<string> AdminTime { get; set; } = ["admintime"];
     public List<string> AdminTimeSend { get; set; } = ["admintimesend"];
+    public List<string> Afk { get; set; } = ["afk"];
     [JsonIgnore]
     public List<string> AdminReload { get; set; } = ["adminreload"];
     [JsonIgnore]
@@ -229,9 +244,11 @@ public class CommandsConfig
     [JsonIgnore]
     public List<string> Slay { get; set; } = ["slay"];
     [JsonIgnore]
-    public List<string> Respawn { get; set; } = ["respawn"];
+    public List<string> Respawn { get; set; } = ["respawn", "revive"];
     [JsonIgnore]
-    public List<string> ChangeTeam { get; set; } = ["team"];
+    public List<string> ChangeTeam { get; set; } = ["team", "swap"];
+    [JsonIgnore]
+    public List<string> MixTeam { get; set; } = ["mixteam"];
     [JsonIgnore]
     public List<string> NoClip { get; set; } = ["noclip"];
     public List<string> Goto { get; set; } = ["goto"];
@@ -294,7 +311,7 @@ public class CommandsConfig
 
 public class PermissionsConfig
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
     public int Version { get; set; } = CurrentVersion;
     public string AdminMenu { get; set; } = "admin.generic";
     public string AdminRoot { get; set; } = "admin.root";
@@ -336,6 +353,7 @@ public class PermissionsConfig
     public string Slay { get; set; } = "admin.cheats";
     public string Respawn { get; set; } = "admin.cheats";
     public string ChangeTeam { get; set; } = "admin.cheats";
+    public string MixTeam { get; set; } = "admin.cheats";
     public string NoClip { get; set; } = "admin.cheats";
     public string Goto { get; set; } = "admin.cheats";
     public string Bring { get; set; } = "admin.cheats";
@@ -387,7 +405,7 @@ public class GameMapsConfig
 
 public class MapsFileConfig
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
     public int Version { get; set; } = CurrentVersion;
     public Dictionary<string, string> Maps { get; set; } = new()
     {

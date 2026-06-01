@@ -479,6 +479,11 @@ public class MuteCommands
             return;
         }
 
+        if (!EnsureSinglePunishTarget(context, targets, args[0]))
+        {
+            return;
+        }
+
         if (!SanctionDurationParser.TryParseToMinutes(args[1], out int duration))
         {
             context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["invalid_duration"]}");
@@ -581,6 +586,11 @@ public class MuteCommands
         if (targets.Count == 0)
         {
             context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["player_not_found"]}");
+            return;
+        }
+
+        if (!EnsureSinglePunishTarget(context, targets, args[0]))
+        {
             return;
         }
 
@@ -705,7 +715,7 @@ public class MuteCommands
             (!string.IsNullOrWhiteSpace(_permissions.AdminMenu) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.AdminMenu)) ||
             (!string.IsNullOrWhiteSpace(_permissions.ListPlayers) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.ListPlayers));
 
-        return isAdminViewer ? adminName : "Admin";
+        return isAdminViewer ? adminName : PluginLocalizer.Get(_core)["anonymous_admin"];
     }
 
     private readonly record struct PunishTargetSnapshot(int PlayerId, ulong SteamId, string Name, string? IpAddress);

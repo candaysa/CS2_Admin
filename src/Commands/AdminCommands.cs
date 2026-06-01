@@ -833,54 +833,37 @@ public class AdminCommands
 
     private string GetAdminRootUsage(ICommandContext context)
     {
-        if (context.IsSentByPlayer)
-        {
-            return PluginLocalizer.Get(_core)["admin_root_usage"];
-        }
-
-        return "Use: sw_addadmin | sw_editadmin | sw_removeadmin | sw_listadmins | sw_addgroup | sw_editgroup | sw_removegroup | sw_listgroups | sw_adminreload";
+        return PluginLocalizer.Get(_core)["admin_root_usage"];
     }
 
     private string GetAddAdminUsage(ICommandContext context)
     {
-        return context.IsSentByPlayer
-            ? PluginLocalizer.Get(_core)["addadmin_usage"]
-            : "Usage: sw_addadmin <steamid> <name> <#group or group1,group2> [duration_days]";
+        return PluginLocalizer.Get(_core)["addadmin_usage"];
     }
 
     private string GetEditAdminUsage(ICommandContext context)
     {
-        return context.IsSentByPlayer
-            ? PluginLocalizer.Get(_core)["editadmin_usage"]
-            : "Usage: sw_editadmin <steamid> <name|groups|immunity|duration> <value>";
+        return PluginLocalizer.Get(_core)["editadmin_usage"];
     }
 
     private string GetRemoveAdminUsage(ICommandContext context)
     {
-        return context.IsSentByPlayer
-            ? PluginLocalizer.Get(_core)["removeadmin_usage"]
-            : "Usage: sw_removeadmin <steamid>";
+        return PluginLocalizer.Get(_core)["removeadmin_usage"];
     }
 
     private string GetAddGroupUsage(ICommandContext context)
     {
-        return context.IsSentByPlayer
-            ? PluginLocalizer.Get(_core)["addgroup_usage"]
-            : "Usage: sw_addgroup <name> <flags> [immunity]";
+        return PluginLocalizer.Get(_core)["addgroup_usage"];
     }
 
     private string GetEditGroupUsage(ICommandContext context)
     {
-        return context.IsSentByPlayer
-            ? PluginLocalizer.Get(_core)["editgroup_usage"]
-            : "Usage: sw_editgroup <name> <flags> [immunity]";
+        return PluginLocalizer.Get(_core)["editgroup_usage"];
     }
 
     private string GetRemoveGroupUsage(ICommandContext context)
     {
-        return context.IsSentByPlayer
-            ? PluginLocalizer.Get(_core)["removegroup_usage"]
-            : "Usage: sw_removegroup <name>";
+        return PluginLocalizer.Get(_core)["removegroup_usage"];
     }
 
     private bool IsAdminAlias(string raw)

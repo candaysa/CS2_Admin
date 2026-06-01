@@ -1,4 +1,4 @@
-﻿using CS2_Admin.Models;
+using CS2_Admin.Models;
 using CS2_Admin.Utils;
 using Dommel;
 using Microsoft.Extensions.Logging;
@@ -85,11 +85,9 @@ public class WarnManager
                 var admin = _currentAdmin.Value ?? new AdminContext();
                 using var connection = _core.Database.GetConnection("mysql_detailed");
 
-                var warn = connection
-                    .Select<Warn>(w =>
-                        w.SteamId == steamId &&
-                        w.Status == WarnStatus.Active &&
-                        (w.ExpiresAt == null || w.ExpiresAt > DateTime.UtcNow))
+                var warns = connection.Select<Warn>(w => w.SteamId == steamId && w.Status == WarnStatus.Active);
+                var warn = warns
+                    .Where(w => w.ExpiresAt == null || w.ExpiresAt > DateTime.UtcNow)
                     .OrderByDescending(w => w.CreatedAt)
                     .FirstOrDefault();
 
@@ -140,11 +138,9 @@ public class WarnManager
             }
 
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            var warn = connection
-                .Select<Warn>(w =>
-                    w.SteamId == steamId &&
-                    w.Status == WarnStatus.Active &&
-                    (w.ExpiresAt == null || w.ExpiresAt > DateTime.UtcNow))
+            var warns = connection.Select<Warn>(w => w.SteamId == steamId && w.Status == WarnStatus.Active);
+            var warn = warns
+                .Where(w => w.ExpiresAt == null || w.ExpiresAt > DateTime.UtcNow)
                 .OrderByDescending(w => w.CreatedAt)
                 .FirstOrDefault();
 
@@ -191,11 +187,8 @@ public class WarnManager
             try
             {
                 using var connection = _core.Database.GetConnection("mysql_detailed");
-                var warns = connection.Select<Warn>(w =>
-                    w.SteamId == steamId &&
-                    w.Status == WarnStatus.Active &&
-                    (w.ExpiresAt == null || w.ExpiresAt > DateTime.UtcNow));
-                return warns.Count();
+                var warns = connection.Select<Warn>(w => w.SteamId == steamId && w.Status == WarnStatus.Active);
+                return warns.Count(w => w.ExpiresAt == null || w.ExpiresAt > DateTime.UtcNow);
             }
             catch (Exception ex)
             {
@@ -243,10 +236,8 @@ public class WarnManager
             try
             {
                 using var connection = _core.Database.GetConnection("mysql_detailed");
-                var expiredWarns = connection.Select<Warn>(w =>
-                    w.Status == WarnStatus.Active &&
-                    w.ExpiresAt != null &&
-                    w.ExpiresAt <= DateTime.UtcNow);
+                var activeWarns = connection.Select<Warn>(w => w.Status == WarnStatus.Active);
+                var expiredWarns = activeWarns.Where(w => w.ExpiresAt != null && w.ExpiresAt <= DateTime.UtcNow);
 
                 int cleaned = 0;
                 foreach (var warn in expiredWarns)

@@ -21,6 +21,7 @@ public class BanCommands
     private readonly AdminDbManager _adminDbManager;
     private readonly AdminLogManager _adminLogManager;
     private readonly PlayerIpDbManager _playerIpDbManager;
+    private readonly PlayerSessionManager _playerSessionManager;
     private readonly RecentPlayersTracker _recentPlayersTracker;
     private readonly DiscordBotService _discord;
     private readonly PermissionsConfig _permissions;
@@ -41,6 +42,7 @@ public class BanCommands
         AdminDbManager adminDbManager,
         AdminLogManager adminLogManager,
         PlayerIpDbManager playerIpDbManager,
+        PlayerSessionManager playerSessionManager,
         RecentPlayersTracker recentPlayersTracker,
         DiscordBotService discord,
         PermissionsConfig permissions,
@@ -60,6 +62,7 @@ public class BanCommands
         _adminDbManager = adminDbManager;
         _adminLogManager = adminLogManager;
         _playerIpDbManager = playerIpDbManager;
+        _playerSessionManager = playerSessionManager;
         _recentPlayersTracker = recentPlayersTracker;
         _discord = discord;
         _permissions = permissions;
@@ -88,7 +91,7 @@ public class BanCommands
         if (args.Length < 2)
         {
             context.Reply(ipMode
-                ? "Usage: ipban <player|ip> <duration> [reason]"
+                ? $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["ipban_usage"]}"
                 : $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["ban_usage"]}");
             return;
         }
@@ -215,7 +218,7 @@ public class BanCommands
                 {
                     _core.Scheduler.NextTick(() =>
                     {
-                        context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {T("ban_type_requires_ip_target", "BanType is IP-only. Use target IP with !ban/!ipban.")}");
+                        context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {T("ban_type_requires_ip_target", "BanMode is IP-only. Use target IP with !ban/!ipban.")}");
                     });
                     return;
                 }
@@ -448,6 +451,21 @@ public class BanCommands
         }
 
         var recent = _recentPlayersTracker.GetRecent();
+        if (recent.Count > 0)
+        {
+            ShowLastBanTargets(context, recent);
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            var fallbackRecent = await _playerSessionManager.GetRecentDisconnectedPlayersAsync();
+            _core.Scheduler.NextTick(() => ShowLastBanTargets(context, fallbackRecent));
+        });
+    }
+
+    private void ShowLastBanTargets(ICommandContext context, IReadOnlyList<RecentPlayerInfo> recent)
+    {
         if (context.Sender == null)
         {
             if (recent.Count == 0)
@@ -461,6 +479,11 @@ public class BanCommands
             {
                 context.Reply($"- {item.Name} | {item.SteamId} | {item.IpAddress} | {item.LastSeenAt:yyyy-MM-dd HH:mm:ss}");
             }
+            return;
+        }
+
+        if (!context.Sender.IsValid)
+        {
             return;
         }
 
@@ -846,7 +869,7 @@ public class BanCommands
             (!string.IsNullOrWhiteSpace(_permissions.AdminMenu) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.AdminMenu)) ||
             (!string.IsNullOrWhiteSpace(_permissions.ListPlayers) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.ListPlayers));
 
-        return isAdminViewer ? adminName : "Admin";
+        return isAdminViewer ? adminName : PluginLocalizer.Get(_core)["anonymous_admin"];
     }
 
     private bool HasPlayerPermission(IPlayer player, string permission)

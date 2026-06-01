@@ -377,14 +377,14 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
 
         var presets = new (string Label, string Args)[]
         {
-            ("Red", "255 64 64 180"),
-            ("Green", "64 255 64 180"),
-            ("Blue", "64 160 255 180"),
-            ("Yellow", "255 220 64 180"),
-            ("Purple", "180 64 255 180"),
-            ("Cyan", "64 255 255 180"),
-            ("White", "255 255 255 180"),
-            ("Off", "off")
+            (T("glow_color_red"), "255 64 64 180"),
+            (T("glow_color_green"), "64 255 64 180"),
+            (T("glow_color_blue"), "64 160 255 180"),
+            (T("glow_color_yellow"), "255 220 64 180"),
+            (T("glow_color_purple"), "180 64 255 180"),
+            (T("glow_color_cyan"), "64 255 255 180"),
+            (T("glow_color_white"), "255 255 255 180"),
+            (T("menu_off"), "off")
         };
 
         foreach (var preset in presets)

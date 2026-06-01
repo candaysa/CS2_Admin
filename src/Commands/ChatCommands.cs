@@ -343,7 +343,12 @@ public class ChatCommands
 
         if (reasons.Count == 0)
         {
-            reasons = ["Cheating", "Toxic behavior", "Griefing"];
+            reasons =
+            [
+                PluginLocalizer.Get(_core)["report_reason_cheating"],
+                PluginLocalizer.Get(_core)["report_reason_toxic"],
+                PluginLocalizer.Get(_core)["report_reason_griefing"]
+            ];
         }
 
         foreach (var reason in reasons)
@@ -408,7 +413,7 @@ public class ChatCommands
             (!string.IsNullOrWhiteSpace(_permissions.AdminMenu) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.AdminMenu)) ||
             (!string.IsNullOrWhiteSpace(_permissions.ListPlayers) && _core.Permission.PlayerHasPermission(viewer.SteamID, _permissions.ListPlayers));
 
-        return isAdminViewer ? adminName : "Admin";
+        return isAdminViewer ? adminName : PluginLocalizer.Get(_core)["anonymous_admin"];
     }
 
     private readonly record struct ReportTarget(ulong SteamId, string Name);
