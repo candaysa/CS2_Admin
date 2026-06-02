@@ -40,6 +40,13 @@ public sealed class AfkManagerService
 
     public void Start()
     {
+        if (!_config.Enabled)
+        {
+            Stop();
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][AFK] manager disabled by config");
+            return;
+        }
+
         RegisterEventsOnce();
         Stop();
         _states.Clear();
@@ -57,6 +64,11 @@ public sealed class AfkManagerService
 
     public void OnAfkCommand(ICommandContext context)
     {
+        if (!_config.Enabled)
+        {
+            return;
+        }
+
         if (!context.IsSentByPlayer || context.Sender?.IsValid != true)
         {
             context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {L("afk_command_only_player", "This command can only be used by players.")}");
@@ -122,8 +134,37 @@ public sealed class AfkManagerService
             }
 
             var pawn = player.PlayerPawn;
-            var pos = pawn?.AbsOrigin;
-            if (pawn?.IsValid != true || pos == null)
+            var isAlive = pawn?.IsValid == true && pawn.Health > 0;
+            if (pawn?.IsValid != true)
+            {
+                continue;
+            }
+
+            if (!isAlive)
+            {
+                if (_states.TryGetValue(player.SteamID, out var deadState) && deadState.AllowDeadCountdown)
+                {
+                    seen.Add(player.SteamID);
+                    var deadIdleSeconds = (now - deadState.LastActivityAt).TotalSeconds;
+                    var deadAfkSeconds = GetAfkSeconds();
+                    if (!deadState.Warned && deadIdleSeconds >= Math.Max(1, deadAfkSeconds - 10))
+                    {
+                        deadState.Warned = true;
+                        WarnPlayer(player, Math.Max(1, (int)Math.Ceiling(deadAfkSeconds - deadIdleSeconds)));
+                    }
+
+                    if (deadIdleSeconds >= deadAfkSeconds)
+                    {
+                        MoveToSpectator(player, notifyAll: true, reason: "dead_idle");
+                        _states.Remove(player.SteamID);
+                    }
+                }
+
+                continue;
+            }
+
+            var pos = pawn.AbsOrigin;
+            if (pos == null)
             {
                 continue;
             }
@@ -132,7 +173,7 @@ public sealed class AfkManagerService
             var angle = pawn.AbsRotation ?? new QAngle(0, 0, 0);
             if (!_states.TryGetValue(player.SteamID, out var state))
             {
-                _states[player.SteamID] = new AfkState(pos.Value, angle, now);
+                _states[player.SteamID] = new AfkState(pos.Value, angle, now) { WasAlive = true };
                 continue;
             }
 
@@ -142,10 +183,14 @@ public sealed class AfkManagerService
                 state.LastAngle = angle;
                 state.LastActivityAt = now;
                 state.Warned = false;
+                state.AllowDeadCountdown = false;
+                state.WasAlive = true;
                 continue;
             }
 
             var idleSeconds = (now - state.LastActivityAt).TotalSeconds;
+            state.WasAlive = true;
+            state.AllowDeadCountdown = idleSeconds >= 10;
             var afkSeconds = GetAfkSeconds();
             if (!state.Warned && idleSeconds >= Math.Max(1, afkSeconds - 10))
             {
@@ -288,5 +333,7 @@ public sealed class AfkManagerService
         public QAngle LastAngle { get; set; }
         public DateTime LastActivityAt { get; set; }
         public bool Warned { get; set; }
+        public bool AllowDeadCountdown { get; set; }
+        public bool WasAlive { get; set; }
     }
 }

@@ -2655,6 +2655,14 @@ public class PlayerCommands
             var b = (byte)Random.Shared.Next(0, 256);
             ColorScreen(new[] { target }, System.Drawing.Color.FromArgb(100, r, g, b), 0.5f, 0.5f);
             ApplyShake(new[] { target });
+            var distortedFov = Random.Shared.Next(48, 96);
+            TrySetViewmodelFov(target, distortedFov);
+            ApplyCameraJolt(
+                target,
+                (float)(Random.Shared.NextDouble() * 8.0 - 4.0),
+                (float)(Random.Shared.NextDouble() * 14.0 - 7.0),
+                (float)(Random.Shared.NextDouble() * 34.0 - 17.0));
+            _ = TryApplyFlashOverlay(target, 0.45f, 90f);
             _ = target.SendCenterHTMLAsync("<font color='#c49cff'><b>DRUGGED</b></font><br><font color='#eadbff'>Vision distorted</font>", 900);
 
             ticksLeft--;
@@ -2705,6 +2713,8 @@ public class PlayerCommands
                     }
                 }
 
+                ResetCameraRoll(target);
+                ClearFlashOverlay(target);
                 ColorScreen(new[] { target }, System.Drawing.Color.FromArgb(0, 0, 0, 0), 0.0f, 0.0f);
             }
         }
@@ -3829,11 +3839,11 @@ public class PlayerCommands
 
     private const int BeaconSegments = 16;
     private const int BeaconLayers = 2;
-    private const float BeaconBaseRadius = 20.0f;
-    private const float BeaconRadiusStep = 14.0f;
+    private const float BeaconBaseRadius = 42.0f;
+    private const float BeaconRadiusStep = 28.0f;
     private const float BeaconBeamLife = 0.95f;
     private const float BeaconLayerLifeStep = 0.15f;
-    private const float BeaconBeamWidth = 2.0f;
+    private const float BeaconBeamWidth = 3.5f;
     private const float BeaconHeightOffset = 6.0f;
     private const string BeaconSound = "UIPanorama.popup_accept_match_beep";
 

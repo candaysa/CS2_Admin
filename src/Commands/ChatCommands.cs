@@ -294,6 +294,11 @@ public class ChatCommands
 
     private void OpenReportTargetMenu(IPlayer reporter)
     {
+        _core.MenusAPI.OpenMenuForPlayer(reporter, BuildReportTargetMenu(reporter));
+    }
+
+    private SwiftlyS2.Shared.Menus.IMenuAPI BuildReportTargetMenu(IPlayer reporter)
+    {
         var builder = _core.MenusAPI.CreateBuilder();
         builder.Design.SetMenuTitle(T("menu_select_player_report", "Select Player To Report"));
 
@@ -308,8 +313,7 @@ public class ChatCommands
             var emptyButton = new ButtonMenuOption(T("menu_no_players", "No players found")) { CloseAfterClick = true };
             emptyButton.Click += (_, _) => ValueTask.CompletedTask;
             builder.AddOption(emptyButton);
-            _core.MenusAPI.OpenMenuForPlayer(reporter, builder.Build());
-            return;
+            return builder.Build();
         }
 
         foreach (var target in onlinePlayers)
@@ -327,12 +331,13 @@ public class ChatCommands
             builder.AddOption(option);
         }
 
-        _core.MenusAPI.OpenMenuForPlayer(reporter, builder.Build());
+        return builder.Build();
     }
 
     private void OpenReportReasonMenu(IPlayer reporter, ReportTarget target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildReportTargetMenu(reporter));
         builder.Design.SetMenuTitle(T("menu_select_reason", "Select Reason"));
 
         var reasons = _sanctions.Reasons

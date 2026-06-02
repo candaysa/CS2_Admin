@@ -4,7 +4,7 @@ namespace CS2_Admin.Config;
 
 public class PluginConfig
 {
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
     public int Version { get; set; } = CurrentVersion;
     public bool Debug { get; set; } = false;
     public string Language { get; set; } = "en";
@@ -81,7 +81,7 @@ public class TagsConfig
 
 public class ChatTagsFileConfig
 {
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
     public int Version { get; set; } = CurrentVersion;
     public bool ScoreboardEnabled { get; set; } = true;
     public bool ChatEnabled { get; set; } = true;
@@ -146,7 +146,7 @@ public class MessagesConfig
 
 public class DiscordFileConfig
 {
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
     public int Version { get; set; } = CurrentVersion;
     public string ServerName { get; set; } = "";
     public string BotToken { get; set; } = "";
@@ -168,8 +168,9 @@ public class DiscordFileConfig
 
 public class AfkFileConfig
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
     public int Version { get; set; } = CurrentVersion;
+    public bool Enabled { get; set; } = true;
     public float Timer { get; set; } = 30f;
     public bool SkipWarmup { get; set; } = true;
     public string WarningSound { get; set; } = "UIPanorama.ui_custom_lobby_dialog_slide";
@@ -178,7 +179,7 @@ public class AfkFileConfig
 
 public class CommandsConfig
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
     public int Version { get; set; } = CurrentVersion;
     [JsonIgnore]
     public List<string> AdminMenu { get; set; } = ["admin"];
@@ -311,7 +312,7 @@ public class CommandsConfig
 
 public class PermissionsConfig
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
     public int Version { get; set; } = CurrentVersion;
     public string AdminMenu { get; set; } = "admin.generic";
     public string AdminRoot { get; set; } = "admin.root";
@@ -405,7 +406,7 @@ public class GameMapsConfig
 
 public class MapsFileConfig
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
     public int Version { get; set; } = CurrentVersion;
     public Dictionary<string, string> Maps { get; set; } = new()
     {

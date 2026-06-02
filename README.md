@@ -2,7 +2,7 @@
 
 # CS2_ADMIN
 
-Plugin Version: `1.0.11`
+Plugin Version: `1.0.12`
 
 ## Features
 
@@ -32,7 +32,7 @@ If a config file has missing/wrong version (or invalid JSON), plugin deletes and
 - `commands.json` controls public command aliases. Command names should stay English even when translations are not English.
 - `permissions.json` maps every command group to a permission string.
 - `discord.json` controls bot token, channel IDs, server status updates, leaderboard updates and Discord display options.
-- `afk.json` controls AFK detection timer, warmup behavior, warning sound and whether admins are skipped.
+- `afk.json` controls whether the built-in AFK system is enabled at all, AFK detection timer, warmup behavior, warning sound and whether admins are skipped.
 - `maps.json` controls regular and workshop map names.
 - `plugins/CS2_Admin/resources/*.jsonc` contains translation files (`en`, `tr`, `de`, `fr`, `it`, `el`, `ru`, `bg`, `hu`).
 
@@ -45,6 +45,16 @@ If a config file has missing/wrong version (or invalid JSON), plugin deletes and
 - `both`: bans by SteamID and IP together.
 
 `!ipban` always uses IP-ban behavior for the target/IP argument.
+
+### AFK Settings
+
+`afk.json` now supports:
+
+- `Enabled`: fully enables/disables the built-in AFK manager for servers that already run another AFK plugin.
+- `Timer`: AFK timeout in seconds.
+- `SkipWarmup`: skips AFK checks during warmup.
+- `WarningSound`: sound played before the player is moved.
+- `AfkSkipAdmin`: if `true`, admins are ignored by the AFK checker.
 
 ## 🎯 Target Selection (IMPORTANT: #id Usage)
 When applying commands to players, **using the player's ID (`#id`) instead of their name** is highly recommended to prevent name confusion and accidental actions on the wrong player.

@@ -47,20 +47,20 @@ public class AdminMenuManager
 
     public void OpenAdminMenu(IPlayer player)
     {
-        // Create a menu builder
+        _core.MenusAPI.OpenMenuForPlayer(player, BuildAdminMenu(player));
+    }
+
+    private IMenuAPI BuildAdminMenu(IPlayer player)
+    {
         var builder = _core.MenusAPI.CreateBuilder();
 
-        // Set Title using the Design API
         var title = T("menu_admin_title");
-
-        // Match Swiftly Admins navigation styling using configurable color
         builder.Design
             .SetMenuTitle(title)
             .Design.SetMenuFooterColor("#00FEED")
             .Design.SetVisualGuideLineColor("#00FEED")
             .Design.SetNavigationMarkerColor("#00FEED");
 
-        // Add Options for each handler
         AddHandlerOption(player, builder, "server_management", "menu_server_management");
         AddHandlerOption(player, builder, "player_management", "menu_player_management");
         AddHandlerOption(player, builder, "fun_commands", "menu_fun_commands");
@@ -79,9 +79,7 @@ public class AdminMenuManager
             AddHandlerOption(player, builder, "admin_management", "menu_admin_management");
         }
 
-        // Build and Open
-        var menu = builder.Build();
-        _core.MenusAPI.OpenMenuForPlayer(player, menu);
+        return builder.Build();
     }
 
     private void AddHandlerOption(IPlayer player, IMenuBuilderAPI builder, string key, string translationKey)
@@ -116,6 +114,7 @@ public class AdminMenuManager
         }
 
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildAdminMenu(player));
         builder.Design.SetMenuTitle(T("menu_admin_playtime"));
 
         if (entries.Count == 0)
