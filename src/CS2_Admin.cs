@@ -26,7 +26,7 @@ using System.Text.Encodings.Web;
 
 namespace CS2_Admin;
 
-[PluginMetadata(Id = "CS2_Admin", Version = "1.0.11", Name = "CS2_Admin", Author = "CanDaysa", Description = "Comprehensive admin plugin for CS2.")]
+[PluginMetadata(Id = "CS2_Admin", Version = "1.0.12", Name = "CS2_Admin", Author = "CanDaysa", Description = "Comprehensive admin plugin for CS2.")]
 public partial class CS2_Admin : BasePlugin
 {
     private PluginConfig _config = null!;
@@ -1347,6 +1347,8 @@ public partial class CS2_Admin : BasePlugin
             RegisterCommand(cmd, _playerCommands.OnGravityCommand);
         foreach (var cmd in _config.Commands.Rename)
             RegisterCommand(cmd, _playerCommands.OnRenameCommand);
+        foreach (var cmd in _config.Commands.Unrename)
+            RegisterCommand(cmd, _playerCommands.OnUnrenameCommand);
         foreach (var cmd in _config.Commands.Hp)
             RegisterCommand(cmd, _playerCommands.OnHpCommand);
         foreach (var cmd in _config.Commands.Money)

@@ -123,12 +123,7 @@ public class WarnCommands
 
             _core.Scheduler.NextTick(() =>
             {
-                var warnedLine = GetLocalizedSafe(
-                    "warned_notification",
-                    "Warned {0}. Reason: {1}",
-                    targetName,
-                    reason);
-                context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {warnedLine}");
+                context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {SafeLocalize("warn_sent_admin", "Warning sent successfully.")}");
 
                 var onlineTarget = _core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSteamId);
                 if (onlineTarget != null)
@@ -250,6 +245,11 @@ public class WarnCommands
 
     private void OpenWarnTargetMenu(IPlayer reporter)
     {
+        _core.MenusAPI.OpenMenuForPlayer(reporter, BuildWarnTargetMenu(reporter));
+    }
+
+    private SwiftlyS2.Shared.Menus.IMenuAPI BuildWarnTargetMenu(IPlayer reporter)
+    {
         var builder = _core.MenusAPI.CreateBuilder();
         builder.Design.SetMenuTitle(SafeLocalize("menu_select_player", "Select Player"));
 
@@ -264,8 +264,7 @@ public class WarnCommands
             var emptyButton = new ButtonMenuOption(SafeLocalize("menu_no_players", "No players found")) { CloseAfterClick = true };
             emptyButton.Click += (_, _) => ValueTask.CompletedTask;
             builder.AddOption(emptyButton);
-            _core.MenusAPI.OpenMenuForPlayer(reporter, builder.Build());
-            return;
+            return builder.Build();
         }
 
         foreach (var target in onlinePlayers)
@@ -283,12 +282,13 @@ public class WarnCommands
             builder.AddOption(option);
         }
 
-        _core.MenusAPI.OpenMenuForPlayer(reporter, builder.Build());
+        return builder.Build();
     }
 
     private void OpenWarnReasonMenu(IPlayer reporter, WarnTarget target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildWarnTargetMenu(reporter));
         builder.Design.SetMenuTitle(SafeLocalize("menu_select_reason", "Select Reason"));
 
         var reasons = _sanctions.Reasons
@@ -337,7 +337,7 @@ public class WarnCommands
         }
 
         _core.Scheduler.NextTick(() =>
-            admin.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {SafeLocalize("warn_sent", "Warn sent.")}"));
+            admin.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {SafeLocalize("warn_sent_admin", "Warning sent successfully.")}"));
     }
 
     private async Task<bool> TryApplyWarnFromMenuAsync(WarnExecutionContext execution, int duration, string reason)

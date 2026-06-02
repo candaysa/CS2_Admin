@@ -182,6 +182,46 @@ public class PlayerNameHistoryManager
         }
     }
 
+    public async Task DeleteCustomNameAsync(ulong steamId)
+    {
+        if (steamId == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            using var connection = _core.Database.GetConnection("mysql_detailed");
+            await connection.ExecuteAsync("DELETE FROM `admin_player_custom_names` WHERE `steamid` = @SteamId", new { SteamId = steamId });
+            _customNames.TryRemove(steamId, out _);
+        }
+        catch (Exception ex)
+        {
+            _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error deleting custom player name: {Message}", ex.Message);
+        }
+    }
+
+    public async Task<string?> GetOriginalNameAsync(ulong steamId)
+    {
+        if (steamId == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var connection = _core.Database.GetConnection("mysql_detailed");
+            return await connection.QueryFirstOrDefaultAsync<string?>(
+                "SELECT `player_name` FROM `admin_player_names_history` WHERE `steamid` = @SteamId ORDER BY `id` ASC LIMIT 1",
+                new { SteamId = steamId });
+        }
+        catch (Exception ex)
+        {
+            _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error getting original name: {Message}", ex.Message);
+            return null;
+        }
+    }
+
     private static string SafeName(string? playerName, ulong steamId)
     {
         var safe = string.IsNullOrWhiteSpace(playerName) ? steamId.ToString() : playerName.Trim();

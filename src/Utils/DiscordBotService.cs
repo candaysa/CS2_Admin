@@ -241,13 +241,25 @@ public class DiscordBotService
 
             var embed = new
             {
-                title = $"Player {EscapeMarkdown(snapshot.DisplayName)} connected",
+                title = T("discord_connect_title", "Player {0} connected", EscapeMarkdown(snapshot.DisplayName)),
                 url = BuildSteamProfileUrl(snapshot.SteamId),
-                description = $"Player {EscapeMarkdown(snapshot.DisplayName)} connected from {CountryCodeToDiscordFlag(snapshot.CountryCode)} {snapshot.CountryName}\n**SteamID:** `{snapshot.SteamId}`\n**IP:** ||{snapshot.IpAddress}||",
+                description = T(
+                    "discord_connect_description",
+                    "{0} connected from {1} {2}\n**SteamID:** `{3}`\n**IP:** ||{4}||",
+                    EscapeMarkdown(snapshot.DisplayName),
+                    CountryCodeToDiscordFlag(snapshot.CountryCode),
+                    snapshot.CountryName,
+                    snapshot.SteamId,
+                    snapshot.IpAddress),
                 color = 65280, // Green
                 footer = new
                 {
-                    text = $"Active Players: {activePlayers}/{ServerIdentity.GetMaxPlayers(_core, _core.PlayerManager.PlayerCap)} | Server: {GetServerLabel()}"
+                    text = T(
+                        "discord_active_players_footer",
+                        "Active Players: {0}/{1} | Server: {2}",
+                        activePlayers,
+                        ServerIdentity.GetMaxPlayers(_core, _core.PlayerManager.PlayerCap),
+                        GetServerLabel())
                 }
             };
             
@@ -290,13 +302,25 @@ public class DiscordBotService
             
             var embed = new
             {
-                title = $"Player {EscapeMarkdown(snapshot.DisplayName)} disconnected",
+                title = T("discord_disconnect_title", "Player {0} disconnected", EscapeMarkdown(snapshot.DisplayName)),
                 url = BuildSteamProfileUrl(snapshot.SteamId),
-                description = $"Player {EscapeMarkdown(snapshot.DisplayName)} disconnected from {CountryCodeToDiscordFlag(snapshot.CountryCode)} {snapshot.CountryName}\n**SteamID:** `{snapshot.SteamId}`\n**IP:** ||{snapshot.IpAddress}||",
+                description = T(
+                    "discord_disconnect_description",
+                    "{0} disconnected from {1} {2}\n**SteamID:** `{3}`\n**IP:** ||{4}||",
+                    EscapeMarkdown(snapshot.DisplayName),
+                    CountryCodeToDiscordFlag(snapshot.CountryCode),
+                    snapshot.CountryName,
+                    snapshot.SteamId,
+                    snapshot.IpAddress),
                 color = 16711680, // Red
                 footer = new
                 {
-                    text = $"Active Players: {activePlayers}/{ServerIdentity.GetMaxPlayers(_core, _core.PlayerManager.PlayerCap)} | Server: {GetServerLabel()}"
+                    text = T(
+                        "discord_active_players_footer",
+                        "Active Players: {0}/{1} | Server: {2}",
+                        activePlayers,
+                        ServerIdentity.GetMaxPlayers(_core, _core.PlayerManager.PlayerCap),
+                        GetServerLabel())
                 }
             };
 
@@ -517,17 +541,21 @@ public class DiscordBotService
             var reporterValue = $"[{EscapeMarkdown(playerName)}]({BuildSteamProfileUrl(playerSteamId)})";
             var embed = new
             {
-                title = $":rotating_light: {GetServerLabel()} CallAdmin",
-                description = $"**Reporter:** {reporterValue}\n**Server:** `{(string.IsNullOrWhiteSpace(serverId) ? GetServerLabel() : serverId)}`",
+                title = T("discord_calladmin_title_embed", ":rotating_light: {0} CallAdmin", GetServerLabel()),
+                description = T(
+                    "discord_calladmin_description",
+                    "**Reporter:** {0}\n**Server:** `{1}`",
+                    reporterValue,
+                    string.IsNullOrWhiteSpace(serverId) ? GetServerLabel() : serverId),
                 color = 10181046,
                 fields = new[]
                 {
-                    new { name = "Player", value = EscapeMarkdown(playerName), inline = true },
-                    new { name = "SteamID", value = $"`{playerSteamId}`", inline = true },
+                    new { name = T("discord_player", "Player"), value = EscapeMarkdown(playerName), inline = true },
+                    new { name = T("discord_steamid", "SteamID"), value = $"`{playerSteamId}`", inline = true },
                     new { name = "\u200B", value = "\u200B", inline = true },
-                    new { name = "Message", value = string.IsNullOrWhiteSpace(message) ? "-" : EscapeMarkdown(message), inline = false }
+                    new { name = T("discord_calladmin_message", "Message"), value = string.IsNullOrWhiteSpace(message) ? "-" : EscapeMarkdown(message), inline = false }
                 },
-                footer = new { text = $"CS2_Admin | CallAdmin | {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC" },
+                footer = new { text = T("discord_calladmin_footer", "CS2_Admin | CallAdmin | {0} UTC", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss")) },
                 timestamp = DateTime.UtcNow.ToString("o")
             };
 
@@ -536,8 +564,8 @@ public class DiscordBotService
                 embed,
                 "@everyone",
                 BuildLinkButtonComponents(
-                    ("Reporter Profile", BuildSteamProfileUrl(playerSteamId)),
-                    ("Server Status", BuildSteamServerUrl())),
+                    (T("discord_reporter_profile_button", "Reporter Profile"), BuildSteamProfileUrl(playerSteamId)),
+                    (T("discord_server_status_button", "Server Status"), BuildSteamServerUrl())),
                 allowEveryoneMention: true);
         }
         catch (Exception ex)
@@ -579,17 +607,17 @@ public class DiscordBotService
                 : EscapeMarkdown(targetName);
             var embed = new
             {
-                title = $":triangular_flag_on_post: {GetServerLabel()} Player Report",
-                description = $"**Reporter:** {reporterValue}\n**Target:** {targetDisplayValue}",
+                title = T("discord_report_title_embed", ":triangular_flag_on_post: {0} Player Report", GetServerLabel()),
+                description = T("discord_report_description", "**Reporter:** {0}\n**Target:** {1}", reporterValue, targetDisplayValue),
                 color = 16763904,
                 fields = new[]
                 {
-                    new { name = "Server", value = $"`{(string.IsNullOrWhiteSpace(serverId) ? GetServerLabel() : serverId)}`", inline = true },
-                    new { name = "Reporter SteamID", value = $"`{playerSteamId}`", inline = true },
-                    new { name = "Target SteamID", value = targetSteamId is > 0 ? $"`{targetSteamId.Value}`" : "-", inline = true },
-                    new { name = "Reason", value = string.IsNullOrWhiteSpace(displayMessage) ? "-" : EscapeMarkdown(displayMessage), inline = false }
+                    new { name = T("discord_server", "Server"), value = $"`{(string.IsNullOrWhiteSpace(serverId) ? GetServerLabel() : serverId)}`", inline = true },
+                    new { name = T("discord_reporter_steamid", "Reporter SteamID"), value = $"`{playerSteamId}`", inline = true },
+                    new { name = T("discord_target_steamid", "Target SteamID"), value = targetSteamId is > 0 ? $"`{targetSteamId.Value}`" : "-", inline = true },
+                    new { name = T("discord_reason", "Reason"), value = string.IsNullOrWhiteSpace(displayMessage) ? "-" : EscapeMarkdown(displayMessage), inline = false }
                 },
-                footer = new { text = $"CS2_Admin | Report System | {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC" },
+                footer = new { text = T("discord_report_footer", "CS2_Admin | Report System | {0} UTC", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss")) },
                 timestamp = DateTime.UtcNow.ToString("o")
             };
 
@@ -884,9 +912,11 @@ public class DiscordBotService
         
         var bannerUrl = _bannerUrl;
 
-        var statusText = isOnline ? "Online 🟢" : "Offline 🔴";
+        var statusText = isOnline
+            ? T("discord_server_status_online", "Online 🟢")
+            : T("discord_server_status_offline", "Offline 🔴");
         var statusColor = isOnline ? 0x2ECC71 : 0xE74C3C;
-        var mapName = string.IsNullOrWhiteSpace(status.MapName) ? "unknown" : status.MapName;
+        var mapName = string.IsNullOrWhiteSpace(status.MapName) ? T("discord_server_status_unknown_map", "unknown") : status.MapName;
 
         return new
         {
@@ -894,18 +924,34 @@ public class DiscordBotService
             color = statusColor,
             fields = new[]
             {
-                new { name = "🗺️ Map", value = EscapeMarkdown(mapName), inline = true },
-                new { name = "👥 Players", value = $"{status.PlayerCount}/{status.MaxPlayers}", inline = true },
+                new { name = T("discord_server_status_map_field", "🗺️ Map"), value = EscapeMarkdown(mapName), inline = true },
+                new { name = T("discord_server_status_players_field", "👥 Players"), value = $"{status.PlayerCount}/{status.MaxPlayers}", inline = true },
                 new { name = "\u200B", value = "\u200B", inline = true },
-                new { name = "🌐 IP Address", value = $"{status.ServerIp}:{status.ServerPort}", inline = true },
-                new { name = "📊 Status", value = statusText, inline = true },
+                new { name = T("discord_server_status_ip_field", "🌐 IP Address"), value = $"{status.ServerIp}:{status.ServerPort}", inline = true },
+                new { name = T("discord_server_status_status_field", "📊 Status"), value = statusText, inline = true },
                 new { name = "\u200B", value = "\u200B", inline = true },
-                new { name = "⌨️ Quick Connect", value = $"```\nconnect {status.ServerIp}:{status.ServerPort}\n```", inline = false }
+                new { name = T("discord_server_status_connect_field", "⌨️ Quick Connect"), value = $"```\nconnect {status.ServerIp}:{status.ServerPort}\n```", inline = false }
             },
             image = string.IsNullOrWhiteSpace(bannerUrl) ? null : new { url = bannerUrl },
-            footer = new { text = $"Last update | {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC" },
+            footer = new { text = T("discord_last_update_footer", "Last update | {0} UTC", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss")) },
             timestamp = DateTime.UtcNow.ToString("o")
         };
+    }
+
+    private string T(string key, string fallback, params object[] args)
+    {
+        try
+        {
+            var localizer = PluginLocalizer.Get(_core);
+            var value = args.Length == 0 ? localizer[key] : localizer[key, args];
+            return string.Equals(value, key, StringComparison.OrdinalIgnoreCase)
+                ? (args.Length == 0 ? fallback : string.Format(System.Globalization.CultureInfo.InvariantCulture, fallback, args))
+                : value;
+        }
+        catch
+        {
+            return args.Length == 0 ? fallback : string.Format(System.Globalization.CultureInfo.InvariantCulture, fallback, args);
+        }
     }
 
     private static List<DiscordServerStatus> NormalizeServerStatuses(
@@ -1521,7 +1567,7 @@ public class DiscordBotService
             var embeds = message.GetProperty("embeds");
             if (embeds.GetArrayLength() == 0)
             {
-                await SendInteractionFollowupAsync(applicationId, interactionToken, "Report message embed could not be found.");
+                await SendInteractionFollowupAsync(applicationId, interactionToken, T("discord_report_resolve_followup_missing_embed", "Report message embed could not be found."));
                 return;
             }
 
@@ -1530,7 +1576,7 @@ public class DiscordBotService
             var newEmbed = JsonObject.Create(oldEmbed);
             if (newEmbed == null)
             {
-                await SendInteractionFollowupAsync(applicationId, interactionToken, "Report message embed could not be parsed.");
+                await SendInteractionFollowupAsync(applicationId, interactionToken, T("discord_report_resolve_followup_parse_failed", "Report message embed could not be parsed."));
                 return;
             }
 
@@ -1541,7 +1587,7 @@ public class DiscordBotService
                 if (newEmbed.TryGetPropertyValue("description", out var descNode) && descNode != null)
                 {
                     var desc = descNode.GetValue<string>();
-                    newEmbed["description"] = $"{desc}\n\n**Status:** ✅ Resolved by <@{userId}>";
+                    newEmbed["description"] = $"{desc}\n\n{T("discord_report_resolved_status", "**Status:** ✅ Resolved by <@{0}>", userId ?? "0")}";
                 }
             }
 
@@ -1554,13 +1600,13 @@ public class DiscordBotService
             if (string.IsNullOrWhiteSpace(channelId) || string.IsNullOrWhiteSpace(messageId) || !await UpdateMessageAsync(channelId, messageId, payload))
             {
                 _core.Logger.LogWarningIfEnabled("[CS2_Admin] Discord resolve interaction message update failed for custom_id={CustomId}", customId);
-                await SendInteractionFollowupAsync(applicationId, interactionToken, "Report could not be marked as resolved.");
+                await SendInteractionFollowupAsync(applicationId, interactionToken, T("discord_report_resolve_followup_failed", "Report could not be marked as resolved."));
             }
         }
         catch (Exception ex)
         {
             _core.Logger.LogWarningIfEnabled("[CS2_Admin] Error in resolve interaction: {Message}", ex.Message);
-            await SendInteractionFollowupAsync(applicationId, interactionToken, "An internal error occurred while resolving the report.");
+            await SendInteractionFollowupAsync(applicationId, interactionToken, T("discord_report_resolve_internal_error", "An internal error occurred while resolving the report."));
         }
     }
 
@@ -1577,7 +1623,7 @@ public class DiscordBotService
             var parts = customId.Split('_');
             if (parts.Length < 3 || !ulong.TryParse(parts[2], out var targetSteamId))
             {
-                await EditInteractionOriginalResponseAsync(applicationId, interactionToken, BuildInteractionEditErrorPayload("Report target SteamID could not be parsed."));
+                await EditInteractionOriginalResponseAsync(applicationId, interactionToken, BuildInteractionEditErrorPayload(T("discord_report_target_parse_failed", "Report target SteamID could not be parsed.")));
                 return;
             }
 
@@ -1587,13 +1633,13 @@ public class DiscordBotService
             var descBuilder = new System.Text.StringBuilder();
             if (warns.Count == 0 && logs.Count == 0)
             {
-                descBuilder.AppendLine("No recent punishments found for this player.");
+                descBuilder.AppendLine(T("discord_report_no_punishments", "No recent punishments found for this player."));
             }
             else
             {
                 if (warns.Count > 0)
                 {
-                    descBuilder.AppendLine("**Recent Warnings:**");
+                    descBuilder.AppendLine(T("discord_report_recent_warnings", "**Recent Warnings:**"));
                     foreach (var warn in warns)
                     {
                         descBuilder.AppendLine($"- [{warn.CreatedAt:yyyy-MM-dd}] `{warn.Reason}` by {warn.AdminName}");
@@ -1603,7 +1649,7 @@ public class DiscordBotService
 
                 if (logs.Count > 0)
                 {
-                    descBuilder.AppendLine("**Recent Actions:**");
+                    descBuilder.AppendLine(T("discord_report_recent_actions", "**Recent Actions:**"));
                     foreach (var log in logs)
                     {
                         descBuilder.AppendLine($"- [{log.CreatedAt:yyyy-MM-dd}] `{log.Action}`: {log.Details}");
@@ -1613,7 +1659,7 @@ public class DiscordBotService
 
             var embed = new
             {
-                title = "Player Punishments",
+                title = T("discord_report_punishments_title", "Player Punishments"),
                 description = descBuilder.ToString(),
                 color = 16711680 // Red
             };
@@ -1632,7 +1678,7 @@ public class DiscordBotService
         catch (Exception ex)
         {
             _core.Logger.LogWarningIfEnabled("[CS2_Admin] Error in punish interaction: {Message}", ex.Message);
-            await EditInteractionOriginalResponseAsync(applicationId, interactionToken, BuildInteractionEditErrorPayload("An internal error occurred while loading punishments."));
+            await EditInteractionOriginalResponseAsync(applicationId, interactionToken, BuildInteractionEditErrorPayload(T("discord_report_punishments_internal_error", "An internal error occurred while loading punishments.")));
         }
     }
 
@@ -2185,7 +2231,7 @@ public class DiscordBotService
         ];
     }
 
-    private static object[]? BuildReportInteractiveComponents(string serverId, ulong targetSteamId, ulong reporterSteamId)
+    private object[]? BuildReportInteractiveComponents(string serverId, ulong targetSteamId, ulong reporterSteamId)
     {
         return new object[]
         {
@@ -2198,7 +2244,7 @@ public class DiscordBotService
                     {
                         type = 2,
                         style = 3, // Success / Green
-                        label = "Mark as resolved",
+                        label = T("discord_report_mark_resolved_button", "Mark as resolved"),
                         custom_id = $"report_resolve_{serverId}_{targetSteamId}_{reporterSteamId}",
                         emoji = new { name = "✅" }
                     },
@@ -2206,7 +2252,7 @@ public class DiscordBotService
                     {
                         type = 2,
                         style = 4, // Danger / Red
-                        label = "Player Punishments",
+                        label = T("discord_report_player_punishments_button", "Player Punishments"),
                         custom_id = $"report_punish_{targetSteamId}",
                         emoji = new { name = "🚫" }
                     }

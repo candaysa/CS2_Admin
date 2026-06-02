@@ -1853,6 +1853,90 @@ public class PlayerCommands
         _ = _adminLogManager.AddLogAsync("rename", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={changed};name={newName}");
     }
 
+    public void OnUnrenameCommand(ICommandContext context)
+    {
+        var args = CommandAliasUtils.NormalizeCommandArgs(context.Args, _commands.Unrename);
+
+        if (!HasPermission(context, _permissions.Unrename))
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_permission"]}");
+            return;
+        }
+
+        if (args.Length < 1)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["unrename_usage"]}");
+            return;
+        }
+
+        var targets = PlayerUtils.FindPlayersByTarget(_core, args[0], includeDeadPlayers: true);
+        if (targets.Count == 0)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_valid_targets"]}");
+            return;
+        }
+
+        targets = FilterTargetsByCanTarget(context, targets, allowSelf: true);
+        if (targets.Count == 0)
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["no_valid_targets"]}");
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            var originalNames = new Dictionary<ulong, string>();
+            foreach (var target in targets)
+            {
+                await _playerNameHistoryManager.DeleteCustomNameAsync(target.SteamID);
+                var orig = await _playerNameHistoryManager.GetOriginalNameAsync(target.SteamID);
+                if (!string.IsNullOrWhiteSpace(orig))
+                {
+                    originalNames[target.SteamID] = orig;
+                }
+            }
+
+            _core.Scheduler.NextTick(() =>
+            {
+                var changed = 0;
+                var restoredNames = new List<string>();
+                foreach (var target in targets)
+                {
+                    if (target.Controller == null || !target.Controller.IsValid)
+                    {
+                        continue;
+                    }
+
+                    if (originalNames.TryGetValue(target.SteamID, out var origName))
+                    {
+                        target.Controller.PlayerName = origName;
+                        target.Controller.PlayerNameUpdated();
+                        restoredNames.Add(origName);
+                        changed++;
+                    }
+                    else
+                    {
+                        // Fallback: If no original name was recorded in history, don't rename, or reset to current name (no change)
+                    }
+                }
+
+                var adminName = context.Sender?.Controller.PlayerName ?? PluginLocalizer.Get(_core)["console_name"];
+                var targetNames = restoredNames.Count > 0
+                    ? string.Join(", ", restoredNames.Distinct(StringComparer.OrdinalIgnoreCase))
+                    : FormatTargetNames(targets);
+
+                foreach (var player in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
+                {
+                    var visibleAdmin = ResolveVisibleAdminName(player, adminName);
+                    var msg = PluginLocalizer.Get(_core)["unrename_notification", visibleAdmin, changed];
+                    player.SendChat($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {WithTargetSuffix(msg, targetNames)}");
+                }
+
+                _ = _adminLogManager.AddLogAsync("unrename", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={changed}");
+            });
+        });
+    }
+
     public void OnHpCommand(ICommandContext context)
     {
         var args = CommandAliasUtils.NormalizeCommandArgs(context.Args, _commands.Hp);
@@ -2655,6 +2739,14 @@ public class PlayerCommands
             var b = (byte)Random.Shared.Next(0, 256);
             ColorScreen(new[] { target }, System.Drawing.Color.FromArgb(100, r, g, b), 0.5f, 0.5f);
             ApplyShake(new[] { target });
+            var distortedFov = Random.Shared.Next(48, 96);
+            TrySetViewmodelFov(target, distortedFov);
+            ApplyCameraJolt(
+                target,
+                (float)(Random.Shared.NextDouble() * 8.0 - 4.0),
+                (float)(Random.Shared.NextDouble() * 14.0 - 7.0),
+                (float)(Random.Shared.NextDouble() * 34.0 - 17.0));
+            _ = TryApplyFlashOverlay(target, 0.45f, 90f);
             _ = target.SendCenterHTMLAsync("<font color='#c49cff'><b>DRUGGED</b></font><br><font color='#eadbff'>Vision distorted</font>", 900);
 
             ticksLeft--;
@@ -2705,6 +2797,8 @@ public class PlayerCommands
                     }
                 }
 
+                ResetCameraRoll(target);
+                ClearFlashOverlay(target);
                 ColorScreen(new[] { target }, System.Drawing.Color.FromArgb(0, 0, 0, 0), 0.0f, 0.0f);
             }
         }
@@ -3829,11 +3923,11 @@ public class PlayerCommands
 
     private const int BeaconSegments = 16;
     private const int BeaconLayers = 2;
-    private const float BeaconBaseRadius = 20.0f;
-    private const float BeaconRadiusStep = 14.0f;
+    private const float BeaconBaseRadius = 42.0f;
+    private const float BeaconRadiusStep = 28.0f;
     private const float BeaconBeamLife = 0.95f;
     private const float BeaconLayerLifeStep = 0.15f;
-    private const float BeaconBeamWidth = 2.0f;
+    private const float BeaconBeamWidth = 3.5f;
     private const float BeaconHeightOffset = 6.0f;
     private const string BeaconSound = "UIPanorama.popup_accept_match_beep";
 

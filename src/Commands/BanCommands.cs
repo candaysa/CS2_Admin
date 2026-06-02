@@ -578,6 +578,7 @@ public class BanCommands
     private void OpenLastReasonMenu(IPlayer admin, RecentPlayerInfo target, LastSanctionAction action, int duration)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildLastDurationMenu(admin, target, action));
         builder.Design.SetMenuTitle(T("menu_select_reason", "Select Reason"));
 
         foreach (var reason in GetReasonsForLastAction(action))

@@ -94,6 +94,13 @@ public class ServerCommands
             return;
         }
 
+        if (!_core.Engine.IsMapValid(matchedMap))
+        {
+            context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {PluginLocalizer.Get(_core)["map_not_found", matchedMap]}");
+            _core.Logger.LogWarningIfEnabled("[CS2_Admin] Refused map change because engine rejected map {Map}", matchedMap);
+            return;
+        }
+
         var adminName = context.Sender?.Controller.PlayerName ?? PluginLocalizer.Get(_core)["console_name"];
         var mapDisplayName = _gameMaps.Maps[matchedMap];
         const float changeDelaySeconds = 3f;

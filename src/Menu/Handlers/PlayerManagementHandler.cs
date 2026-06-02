@@ -184,6 +184,7 @@ public class PlayerManagementHandler : IAdminMenuHandler
     private void OpenReasonMenu(IPlayer admin, IPlayer target, string action)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildSelectPlayerMenu(admin, action));
         builder.Design.SetMenuTitle(T("menu_select_reason"));
 
         var reasons = GetReasonsForAction(action);
@@ -219,6 +220,7 @@ public class PlayerManagementHandler : IAdminMenuHandler
     private void OpenDurationMenu(IPlayer admin, IPlayer target, string action, string reason)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildReasonMenu(admin, target, action));
         builder.Design.SetMenuTitle(T("menu_select_duration"));
 
         foreach (var item in _config.Sanctions.Durations)
@@ -241,6 +243,41 @@ public class PlayerManagementHandler : IAdminMenuHandler
     private IReadOnlyList<string> GetReasonsForAction(string action)
     {
         return _config.Sanctions.Reasons;
+    }
+
+    private IMenuAPI BuildReasonMenu(IPlayer admin, IPlayer target, string action)
+    {
+        var builder = _core.MenusAPI.CreateBuilder();
+        builder.Design.SetMenuTitle(T("menu_select_reason"));
+
+        var reasons = GetReasonsForAction(action);
+        foreach (var reason in reasons)
+        {
+            var option = new ButtonMenuOption(reason) { CloseAfterClick = false };
+            option.Click += (_, args) =>
+            {
+                var adminPlayer = admin;
+                _core.Scheduler.NextTick(() =>
+                {
+                    if (action == "kick")
+                    {
+                        ExecuteKick(adminPlayer, target, reason);
+                    }
+                    else if (action == "warn")
+                    {
+                        ExecuteWarn(adminPlayer, target, reason);
+                    }
+                    else
+                    {
+                        OpenDurationMenu(adminPlayer, target, action, reason);
+                    }
+                });
+                return ValueTask.CompletedTask;
+            };
+            builder.AddOption(option);
+        }
+
+        return builder.Build();
     }
 
     private void ExecuteKick(IPlayer admin, IPlayer target, string reason)

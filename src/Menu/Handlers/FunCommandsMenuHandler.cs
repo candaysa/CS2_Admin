@@ -226,6 +226,7 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     private void OpenTeamSelectMenu(IPlayer admin, IPlayer target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildPlayerSelectMenu(admin, FunAction.Team));
         builder.Design.SetMenuTitle(T("menu_select_team", "Select Team"));
         AddBackButton(builder, player => OpenPlayerSelectMenu(player, FunAction.Team));
 
@@ -253,6 +254,7 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     private void OpenSlapDamageMenu(IPlayer admin, IPlayer target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildPlayerSelectMenu(admin, FunAction.Slap));
         builder.Design.SetMenuTitle(T("menu_select_duration", "Select Duration"));
         AddBackButton(builder, player => OpenPlayerSelectMenu(player, FunAction.Slap));
 
@@ -278,6 +280,7 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     private void OpenValueMenu(IPlayer admin, IPlayer target, FunAction action, IReadOnlyList<float> values)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildPlayerSelectMenu(admin, action));
         builder.Design.SetMenuTitle(T("menu_select_value", "Select Value"));
         AddBackButton(builder, player => OpenPlayerSelectMenu(player, action));
 
@@ -324,6 +327,7 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     private void OpenDrugDurationMenu(IPlayer admin, IPlayer target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildPlayerSelectMenu(admin, FunAction.Drug));
         builder.Design.SetMenuTitle(T("menu_select_duration", "Select Duration"));
         AddBackButton(builder, player => OpenPlayerSelectMenu(player, FunAction.Drug));
 
@@ -348,6 +352,7 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     private void OpenBlindDurationMenu(IPlayer admin, IPlayer target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildPlayerSelectMenu(admin, FunAction.Blind));
         builder.Design.SetMenuTitle(T("menu_select_duration", "Select Duration"));
         AddBackButton(builder, player => OpenPlayerSelectMenu(player, FunAction.Blind));
 
@@ -372,6 +377,7 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     private void OpenGlowColorMenu(IPlayer admin, IPlayer target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildPlayerSelectMenu(admin, FunAction.Glow));
         builder.Design.SetMenuTitle(T("menu_select_value", "Select Value"));
         AddBackButton(builder, player => OpenPlayerSelectMenu(player, FunAction.Glow));
 
@@ -407,6 +413,7 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     private void OpenBeaconDurationMenu(IPlayer admin, IPlayer target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildPlayerSelectMenu(admin, FunAction.Beacon));
         builder.Design.SetMenuTitle(T("menu_select_duration", "Select Duration"));
         AddBackButton(builder, player => OpenPlayerSelectMenu(player, FunAction.Beacon));
 
@@ -441,6 +448,7 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     private void OpenTimedActionDurationMenu(IPlayer admin, IPlayer target, FunAction action)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildPlayerSelectMenu(admin, action));
         builder.Design.SetMenuTitle(T("menu_select_duration", "Select Duration"));
         AddBackButton(builder, player => OpenPlayerSelectMenu(player, action));
 
@@ -493,6 +501,7 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
     private void OpenGiveItemMenu(IPlayer admin, IPlayer target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildPlayerSelectMenu(admin, FunAction.Give));
         builder.Design.SetMenuTitle(T("menu_select_item", "Select Item"));
         AddBackButton(builder, player => OpenPlayerSelectMenu(player, FunAction.Give));
 

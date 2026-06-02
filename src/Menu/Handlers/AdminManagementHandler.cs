@@ -84,6 +84,7 @@ public class AdminManagementHandler : IAdminMenuHandler
     private void OpenAddAdminGroupMenu(IPlayer admin, IPlayer target)
     {
         var builder = _core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildAddAdminMenu(admin));
         builder.Design.SetMenuTitle(T("menu_select_group"));
 
         var groups = _groupManager.GetAllGroupsAsync().GetAwaiter().GetResult();
@@ -115,15 +116,22 @@ public class AdminManagementHandler : IAdminMenuHandler
         var title = T("menu_select_admin_remove");
         builder.Design.SetMenuTitle(title);
 
-        var players = _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid).ToList();
-        foreach (var target in players)
+        var admins = _adminManager.GetAllAdminsAsync().GetAwaiter().GetResult();
+        if (admins.Count == 0)
         {
-            var fallbackName = T("player_fallback_name", target.PlayerID);
-            var btn = new ButtonMenuOption(target.Controller.PlayerName ?? fallbackName) { CloseAfterClick = true };
+            var empty = new ButtonMenuOption(T("menu_no_admins")) { CloseAfterClick = true };
+            empty.Click += (_, _) => ValueTask.CompletedTask;
+            builder.AddOption(empty);
+            return builder.Build();
+        }
+
+        foreach (var target in admins)
+        {
+            var btn = new ButtonMenuOption(T("menu_admin_list_entry", target.Name, target.Id, target.SteamId)) { CloseAfterClick = true };
             btn.Click += (_, args) =>
             {
                 var adminPlayer = args.Player;
-                _core.Scheduler.NextTick(() => ExecuteRemoveAdmin(adminPlayer, target));
+                _core.Scheduler.NextTick(() => ExecuteRemoveAdmin(adminPlayer, target.SteamId));
                 return ValueTask.CompletedTask;
             };
             builder.AddOption(btn);
@@ -191,7 +199,7 @@ public class AdminManagementHandler : IAdminMenuHandler
         });
     }
 
-    private void ExecuteRemoveAdmin(IPlayer admin, IPlayer target)
+    private void ExecuteRemoveAdmin(IPlayer admin, ulong steamId)
     {
         if (!IsRoot(admin))
         {
@@ -199,7 +207,6 @@ public class AdminManagementHandler : IAdminMenuHandler
             return;
         }
 
-        var steamId = target.SteamID;
         var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.RemoveAdmin, "removeadmin");
         _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {steamId}"));
     }

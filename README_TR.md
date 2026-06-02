@@ -2,7 +2,7 @@
 
 # CS2_ADMIN
 
-Eklenti Surumu: `1.0.11`
+Eklenti Surumu: `1.0.12`
 
 ## Ozellikler
 
@@ -32,7 +32,7 @@ Bir dosyada surum eksik/yanlis ise (veya JSON bozuksa), eklenti dosyayi silip bi
 - `commands.json` public komut aliaslarini kontrol eder. Dil Turkce olsa bile komut adlari her zaman English kalmalidir.
 - `permissions.json` komut gruplarini permission stringlerine baglar.
 - `discord.json` bot token, kanal ID'leri, server status, leaderboard ve Discord gorunum ayarlarini kontrol eder.
-- `afk.json` AFK timer, warmup davranisi, uyari sesi ve admin skip davranisini kontrol eder.
+- `afk.json` dahili AFK sisteminin tamamen acik/kapali olmasini, AFK timer, warmup davranisi, uyari sesi ve admin skip davranisini kontrol eder.
 - `maps.json` normal ve workshop harita isimlerini kontrol eder.
 - `plugins/CS2_Admin/resources/*.jsonc` dil dosyalarini icerir (`en`, `tr`, `de`, `fr`, `it`, `el`, `ru`, `bg`, `hu`).
 
@@ -45,6 +45,16 @@ Bir dosyada surum eksik/yanlis ise (veya JSON bozuksa), eklenti dosyayi silip bi
 - `both`: SteamID ve IP banini birlikte atar.
 
 `!ipban` hedef/IP argumani icin her zaman IP-ban davranisini kullanir.
+
+### AFK Ayarlari
+
+`afk.json` artik su alanlari destekler:
+
+- `Enabled`: sunucuda baska bir AFK eklentisi kullaniliyorsa dahili AFK sistemini tamamen kapatir/acar.
+- `Timer`: saniye cinsinden AFK suresi.
+- `SkipWarmup`: warmup sirasinda AFK kontrolunu atlar.
+- `WarningSound`: oyuncu spectate alinmadan once calacak uyari sesi.
+- `AfkSkipAdmin`: `true` ise adminler AFK kontrolunden muaf olur.
 
 ## 🎯 Hedef Belirme (ÖNEMLİ: #id Kullanımı)
 Komutları oyuncular üzerinde uygularken **isim yerine oyuncunun ID'sini (#id) kullanmanız** isim karışıklıklarını ve yanlış işlem yapılmasını önlemek adına çok daha güvenlidir.
