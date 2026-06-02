@@ -1347,6 +1347,8 @@ public partial class CS2_Admin : BasePlugin
             RegisterCommand(cmd, _playerCommands.OnGravityCommand);
         foreach (var cmd in _config.Commands.Rename)
             RegisterCommand(cmd, _playerCommands.OnRenameCommand);
+        foreach (var cmd in _config.Commands.Unrename)
+            RegisterCommand(cmd, _playerCommands.OnUnrenameCommand);
         foreach (var cmd in _config.Commands.Hp)
             RegisterCommand(cmd, _playerCommands.OnHpCommand);
         foreach (var cmd in _config.Commands.Money)

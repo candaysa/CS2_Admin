@@ -279,6 +279,8 @@ public class CommandsConfig
     [JsonIgnore]
     public List<string> Rename { get; set; } = ["rename"];
     [JsonIgnore]
+    public List<string> Unrename { get; set; } = ["unrename"];
+    [JsonIgnore]
     public List<string> Hp { get; set; } = ["hp"];
     [JsonIgnore]
     public List<string> Money { get; set; } = ["money", "setmoney", "givemoney"];
@@ -370,6 +372,7 @@ public class PermissionsConfig
     public string Speed { get; set; } = "admin.cheats";
     public string Gravity { get; set; } = "admin.cheats";
     public string Rename { get; set; } = "admin.cheats";
+    public string Unrename { get; set; } = "admin.cheats";
     public string Hp { get; set; } = "admin.cheats";
     public string Money { get; set; } = "admin.cheats";
     public string Give { get; set; } = "admin.cheats";

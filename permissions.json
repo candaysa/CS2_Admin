@@ -53,6 +53,7 @@
     "Speed": "admin.cheats",
     "Gravity": "admin.cheats",
     "Rename": "admin.cheats",
+    "Unrename": "admin.cheats",
     "Hp": "admin.cheats",
     "Money": "admin.cheats",
     "Give": "admin.cheats",
