@@ -53,7 +53,15 @@ public static class AutoUpdater
             var latestVer = release.TagName.TrimStart('v', 'V');
             var currVer = currentVersion.TrimStart('v', 'V');
 
-            if (latestVer == currVer)
+            if (Version.TryParse(latestVer, out var vLatest) && Version.TryParse(currVer, out var vCurrent))
+            {
+                if (vLatest <= vCurrent)
+                {
+                    core.Logger.LogInformationIfEnabled("[CS2Admin] You are running the latest version: {Version}", currVer);
+                    return;
+                }
+            }
+            else if (latestVer == currVer)
             {
                 core.Logger.LogInformationIfEnabled("[CS2Admin] You are running the latest version: {Version}", currVer);
                 return;
