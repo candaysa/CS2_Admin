@@ -9,3 +9,6 @@ bin/
 *.suo
 *.userosscache
 *.sln.docstates
+
+# Pull Request scripts
+create-pr-request.bat
