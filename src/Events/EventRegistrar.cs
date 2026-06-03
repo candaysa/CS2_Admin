@@ -198,7 +198,7 @@ public class EventRegistrar
         if (_chatTagConfigManager.Config.ChatEnabled && !string.IsNullOrWhiteSpace(text))
         {
             BroadcastFormattedChat(player, text, teamOnly);
-            return HookResult.Stop;
+            return HookResult.Handled;
         }
 
         return HookResult.Continue;

@@ -137,11 +137,11 @@ public class ChatTagConfigManager
         config.Version = ChatTagsFileConfig.CurrentVersion;
         config.PlayerTag = string.IsNullOrWhiteSpace(config.PlayerTag) ? "PLAYER" : config.PlayerTag.Trim();
         // Keep legacy "Enabled" and new "ChatEnabled" in sync.
-        if (!config.Enabled && config.ChatEnabled)
+        if (config.Enabled.HasValue)
         {
-            config.ChatEnabled = false;
+            config.ChatEnabled = config.Enabled.Value;
+            config.Enabled = null;
         }
-        config.Enabled = config.ChatEnabled;
 
         var defaultSupportedColors = new ChatTagsFileConfig().SupportedColors;
         config.SupportedColors = defaultSupportedColors;
@@ -231,10 +231,7 @@ public class ChatTagConfigManager
             return true;
         }
 
-        if (config.ChatEnabled != config.Enabled)
-        {
-            return true;
-        }
+
 
         if (config.SupportedColors == null || config.SupportedColors.Count == 0)
         {
