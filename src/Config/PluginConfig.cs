@@ -4,7 +4,7 @@ namespace CS2_Admin.Config;
 
 public class PluginConfig
 {
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 4;
     public int Version { get; set; } = CurrentVersion;
     public bool Debug { get; set; } = false;
     public string Language { get; set; } = "en";
@@ -81,7 +81,7 @@ public class TagsConfig
 
 public class ChatTagsFileConfig
 {
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 4;
     public int Version { get; set; } = CurrentVersion;
     public bool ScoreboardEnabled { get; set; } = true;
     public bool ChatEnabled { get; set; } = true;
@@ -148,7 +148,7 @@ public class MessagesConfig
 
 public class DiscordFileConfig
 {
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 4;
     public int Version { get; set; } = CurrentVersion;
     public string ServerName { get; set; } = "";
     public string BotToken { get; set; } = "";
@@ -170,7 +170,7 @@ public class DiscordFileConfig
 
 public class AfkFileConfig
 {
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 2;
     public int Version { get; set; } = CurrentVersion;
     public bool Enabled { get; set; } = false;
     public float Timer { get; set; } = 30f;
@@ -181,7 +181,7 @@ public class AfkFileConfig
 
 public class CommandsConfig
 {
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 3;
     public int Version { get; set; } = CurrentVersion;
     [JsonIgnore]
     public List<string> AdminMenu { get; set; } = ["admin"];
@@ -262,6 +262,7 @@ public class CommandsConfig
     public List<string> Unfreeze { get; set; } = ["unfreeze"];
     [JsonIgnore]
     public List<string> Resize { get; set; } = ["resize"];
+
     [JsonIgnore]
     public List<string> Blind { get; set; } = ["blind"];
     [JsonIgnore]
@@ -315,12 +316,12 @@ public class CommandsConfig
     [JsonIgnore]
     public List<string> Cvar { get; set; } = ["cvar"];
     public List<string> ListPlayers { get; set; } = ["players"];
-
+    public List<string> Who { get; set; } = ["who"];
 }
 
 public class PermissionsConfig
 {
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 3;
     public int Version { get; set; } = CurrentVersion;
     public string AdminMenu { get; set; } = "admin.generic";
     public string AdminRoot { get; set; } = "admin.root";
@@ -392,7 +393,7 @@ public class PermissionsConfig
     public string Rcon { get; set; } = "admin.rcon";
     public string Cvar { get; set; } = "admin.cvar";
     public string ListPlayers { get; set; } = "admin.generic";
-
+    public string Who { get; set; } = "admin.generic";
     [JsonIgnore]
     public List<string> RootBypassPermissions { get; set; } = ["admin.*", "*"];
 }
@@ -415,7 +416,7 @@ public class GameMapsConfig
 
 public class MapsFileConfig
 {
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 3;
     public int Version { get; set; } = CurrentVersion;
     public Dictionary<string, string> Maps { get; set; } = new()
     {
@@ -472,3 +473,4 @@ public class SanctionMenuConfig
         new() { Name = "Permanent", Minutes = -1 }
     };
 }
+
