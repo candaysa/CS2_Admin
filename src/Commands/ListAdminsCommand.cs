@@ -26,32 +26,29 @@ public class ListAdminsCommand : CommandBase
 
     public override void Execute(ICommandContext context)
     {
-        if (!HasPerm(context, Permissions.ListAdmins))
+        // No permission check — everyone can see online admins.
+
+        var onlineAdmins = Core.PlayerManager.GetAllPlayers()
+            .Where(p => p.IsValid && !p.IsFakeClient)
+            .Select(p => new { Player = p, Admin = _adminDbManager.GetAdminFromCache(p.SteamID) })
+            .Where(x => x.Admin != null && x.Admin.IsActive)
+            .ToList();
+
+        if (onlineAdmins.Count == 0)
         {
-            Reply(context, "no_permission");
+            Reply(context, "listadmins_none");
             return;
         }
 
-        _ = Task.Run(async () =>
+        Reply(context, "listadmins_header", onlineAdmins.Count);
+        foreach (var info in onlineAdmins)
         {
-            var admins = await _adminDbManager.GetAllAdminsAsync();
-            Core.Scheduler.NextTick(() =>
-            {
-                if (admins.Count == 0)
-                {
-                    Reply(context, "listadmins_none");
-                    return;
-                }
+            var admin = info.Admin!;
+            var player = info.Player;
+            var groupLabel = string.IsNullOrWhiteSpace(admin.Groups) ? "-" : admin.Groups;
 
-                Reply(context, "listadmins_header", admins.Count);
-                foreach (var admin in admins)
-                {
-                    var expiry = admin.IsPermanent
-                        ? L("permanent")
-                        : L("admin_expires", admin.ExpiresAt?.ToString("yyyy-MM-dd") ?? L("unknown"));
-                    ReplyRaw(context, L("listadmins_entry", admin.Name, admin.SteamId, admin.Groups, admin.Immunity, expiry));
-                }
-            });
-        });
+            // Show: Name - Group (no SteamID or immunity for regular players)
+            ReplyRaw(context, $" \x04{player.Controller.PlayerName}\x01 - \x0B{groupLabel}");
+        }
     }
 }

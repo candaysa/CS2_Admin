@@ -144,8 +144,11 @@ public class EventRegistrar
             _ = _playerSessionManager.TouchSessionAsync(player.SteamID, player.Controller.PlayerName, playerId, player.IPAddress);
         }
 
+        if (!string.IsNullOrWhiteSpace(text))
+            _ = _discord?.SendChatNotificationAsync(player, text, teamOnly);
+
         if (!string.IsNullOrWhiteSpace(text) && (text.StartsWith("!") || text.StartsWith("/")))
-            return HookResult.Continue;
+            return HookResult.Handled;
 
         var steamId = player.SteamID;
 
@@ -190,10 +193,73 @@ public class EventRegistrar
             var loadedGag = await _gagManager.GetActiveGagAsync(steamId);
         });
 
-        if (!string.IsNullOrWhiteSpace(text))
-            _ = _discord?.SendChatNotificationAsync(player, text, teamOnly);
+
+        if (_chatTagConfigManager.Config.ChatEnabled)
+        {
+            var admin = _adminDbManager.GetAdminFromCache(steamId);
+            string groupName = string.Empty;
+            if (admin != null && admin.GroupList.Count > 0)
+                groupName = _groupDbManager.GetPrimaryGroupNameSync(admin.GroupList) ?? admin.GroupList[0];
+            else if (admin != null && admin.Flags.Length > 0)
+                groupName = "ADMIN";
+
+            var style = _chatTagConfigManager.GetStyleForGroup(groupName);
+            var tagText = string.IsNullOrWhiteSpace(groupName) ? _chatTagConfigManager.Config.PlayerTag : groupName;
+
+            var cColor = FormatColors(string.IsNullOrWhiteSpace(style.ChatColor) ? "[default]" : style.ChatColor);
+            var tColor = FormatColors(string.IsNullOrWhiteSpace(style.TagColor) ? "[green]" : style.TagColor);
+            var nColor = FormatColors(string.IsNullOrWhiteSpace(style.NameColor) ? "[lightpurple]" : style.NameColor);
+
+            var teamPrefix = teamOnly ? "\x08[TAKIM] " : "";
+            string formattedMessage = $" \x01{teamPrefix}{tColor}[{tagText}]\x01 {nColor}{player.Controller.PlayerName}\x01 : {cColor}{text}";
+
+            if (teamOnly)
+            {
+                var senderTeam = player.Controller.TeamNum;
+                foreach (var p in _core.PlayerManager.GetAllPlayers())
+                {
+                    if (p.IsValid && !p.IsFakeClient && p.Controller.TeamNum == senderTeam)
+                        p.SendChat(formattedMessage);
+                }
+            }
+            else
+            {
+                foreach (var p in _core.PlayerManager.GetAllPlayers())
+                {
+                    if (p.IsValid && !p.IsFakeClient)
+                        p.SendChat(formattedMessage);
+                }
+            }
+            return HookResult.Handled;
+        }
 
         return HookResult.Continue;
+    }
+
+    private string FormatColors(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return string.Empty;
+        return input.Replace("[default]", "\x01", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[white]", "\x01", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[darkred]", "\x02", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[lightpurple]", "\x03", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[green]", "\x04", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[lime]", "\x05", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[lightgreen]", "\x05", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[red]", "\x07", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[gray]", "\x08", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[grey]", "\x08", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[yellow]", "\x09", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[gold]", "\x10", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[silver]", "\x0A", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[lightblue]", "\x0B", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[blue]", "\x0C", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[darkblue]", "\x0C", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[bluegrey]", "\x0A", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[purple]", "\x0E", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[magenta]", "\x0E", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[lightred]", "\x0F", StringComparison.OrdinalIgnoreCase)
+                    .Replace("[olive]", "\x09", StringComparison.OrdinalIgnoreCase);
     }
 
     private void CheckExpiredPunishments()

@@ -228,7 +228,7 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
         foreach (var value in values)
         {
             var current = value;
-            var option = new ButtonMenuOption(current.ToString("0.##")) { CloseAfterClick = false };
+            var option = new ButtonMenuOption(current.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)) { CloseAfterClick = false };
             option.Click += (_, args) =>
             {
                 var caller = args.Player;
@@ -251,7 +251,7 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
                     }
                     else
                     {
-                        _core.Scheduler.NextTick(() => caller.ExecuteCommand($"{command} {targetId} {current.ToString("0.##")}"));
+                        _core.Scheduler.NextTick(() => caller.ExecuteCommand($"{command} {targetId} {current.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}"));
                     }
                 }
                 return ValueTask.CompletedTask;

@@ -40,7 +40,7 @@ public class ResizeCommand : CommandBase
             return;
         }
 
-        if (args.Length < 2 || !float.TryParse(args[1], out var scale))
+        if (args.Length < 2 || !float.TryParse(args[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var scale))
         {
             Reply(context, "resize_usage");
             return;
@@ -79,9 +79,9 @@ public class ResizeCommand : CommandBase
         var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
         var prefix = L("prefix");
 
-        BroadcastNotification(adminName, "resize_notification", applied, scale.ToString("0.00"));
+        BroadcastNotification(adminName, "resize_notification", applied, scale.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
 
-        AdminLogManager.AddLogAsync("resize", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={applied};scale={scale.ToString("0.00")}");
+        AdminLogManager.AddLogAsync("resize", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={applied};scale={scale.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}");
         Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} resized {Count} player(s) to {Scale}", adminName, applied, scale);
     }
 
