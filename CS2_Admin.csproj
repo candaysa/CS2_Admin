@@ -39,7 +39,11 @@
     </Content>
   </ItemGroup>
 
-
+  <ItemGroup>
+    <EmbeddedResource Include="resources/language/*.jsonc">
+      <LogicalName>CS2_Admin.Translations.%(Filename).lang</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
 
   <Target Name="CreateZip" AfterTargets="Publish">
     <ItemGroup>
