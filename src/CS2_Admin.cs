@@ -542,32 +542,38 @@ public class CS2_Admin : BasePlugin
         _eventRegistrar = new EventRegistrar(Core, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _groupDbManager, _sanctionStateService, _config.MultiServer, _config.Tags, _config.Permissions, _chatTagConfigManager, _playerNameHistoryManager, _playerSessionManager, _discord);
         _eventRegistrar.OnClientPutInServer(e =>
         {
-            var player = Core.PlayerManager.GetPlayer(e.PlayerId);
-            if (player?.IsValid == true && !player.IsFakeClient)
+            Core.Scheduler.DelayBySeconds(3f, () =>
             {
-                _connectedPlayersCache[e.PlayerId] = (player.SteamID, player.Controller.PlayerName ?? "", player.IPAddress ?? "");
-                _ = _playerSessionManager.OpenSessionAsync(player.SteamID, player.Controller.PlayerName, e.PlayerId, player.IPAddress);
-                _ = _sanctionStateService.RefreshAsync(player.SteamID, player.IPAddress);
-                _ = _playerNameHistoryManager.ObserveNameAsync(player.SteamID, player.Controller.PlayerName);
-                
-                int activePlayers = Core.PlayerManager.GetAllPlayers().Count(p => p.IsValid && !p.IsFakeClient);
-                _ = _discord.SendConnectNotificationAsync(player.Controller.PlayerName, player.SteamID, player.IPAddress, activePlayers);
-
-                _ = Task.Run(async () =>
+                var player = Core.PlayerManager.GetPlayer(e.PlayerId);
+                if (player?.IsValid == true && !player.IsFakeClient)
                 {
-                    var customName = await _playerNameHistoryManager.GetCustomNameAsync(player.SteamID);
-                    if (!string.IsNullOrWhiteSpace(customName))
+                    _connectedPlayersCache[e.PlayerId] = (player.SteamID, player.Controller.PlayerName ?? "", player.IPAddress ?? "");
+                    _ = _playerSessionManager.OpenSessionAsync(player.SteamID, player.Controller.PlayerName, e.PlayerId, player.IPAddress);
+                    _ = _sanctionStateService.RefreshAsync(player.SteamID, player.IPAddress);
+                    _ = _playerNameHistoryManager.ObserveNameAsync(player.SteamID, player.Controller.PlayerName);
+                    
+                    int activePlayers = Core.PlayerManager.GetAllPlayers().Count(p => p.IsValid && !p.IsFakeClient);
+                    if (_discord != null)
+                        _ = _discord.SendConnectNotificationAsync(player.Controller.PlayerName, player.SteamID, player.IPAddress, activePlayers);
+    
+                    _ = Task.Run(async () =>
                     {
-                        Core.Scheduler.NextTick(() =>
+                        var customName = await _playerNameHistoryManager.GetCustomNameAsync(player.SteamID);
+                        if (!string.IsNullOrWhiteSpace(customName))
                         {
-                            if (player.IsValid && player.Controller != null)
+                            Core.Scheduler.NextTick(() =>
                             {
-                                player.Controller.PlayerName = customName;
-                            }
-                        });
-                    }
-                });
-            }
+                                var live = Core.PlayerManager.GetPlayer(e.PlayerId);
+                                if (live?.IsValid == true && live.Controller != null)
+                                {
+                                    live.Controller.PlayerName = customName;
+                                    live.Controller.PlayerNameUpdated();
+                                }
+                            });
+                        }
+                    });
+                }
+            });
         });
         _eventRegistrar.OnClientSteamAuthorize(e =>
         {

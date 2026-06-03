@@ -39,6 +39,7 @@ public class EventRegistrar
     private CancellationTokenSource? _banEnforceCts;
     private volatile bool _databaseReady;
     private int _isBanEnforcementRunning;
+    private readonly Dictionary<ulong, string> _lastKnownAdminTags = new();
 
     private Action<IOnClientPutInServerEvent>? _onClientPutInServer;
     private Action<IOnClientSteamAuthorizeEvent>? _onClientSteamAuthorize;
@@ -194,46 +195,106 @@ public class EventRegistrar
         });
 
 
-        if (_chatTagConfigManager.Config.ChatEnabled)
+        if (_chatTagConfigManager.Config.ChatEnabled && !string.IsNullOrWhiteSpace(text))
         {
-            var admin = _adminDbManager.GetAdminFromCache(steamId);
-            string groupName = string.Empty;
-            if (admin != null && admin.GroupList.Count > 0)
-                groupName = _groupDbManager.GetPrimaryGroupNameSync(admin.GroupList) ?? admin.GroupList[0];
-            else if (admin != null && admin.Flags.Length > 0)
-                groupName = "ADMIN";
-
-            var style = _chatTagConfigManager.GetStyleForGroup(groupName);
-            var tagText = string.IsNullOrWhiteSpace(groupName) ? _chatTagConfigManager.Config.PlayerTag : groupName;
-
-            var cColor = FormatColors(string.IsNullOrWhiteSpace(style.ChatColor) ? "[default]" : style.ChatColor);
-            var tColor = FormatColors(string.IsNullOrWhiteSpace(style.TagColor) ? "[green]" : style.TagColor);
-            var nColor = FormatColors(string.IsNullOrWhiteSpace(style.NameColor) ? "[lightpurple]" : style.NameColor);
-
-            var teamPrefix = teamOnly ? "\x08[TAKIM] " : "";
-            string formattedMessage = $" \x01{teamPrefix}{tColor}[{tagText}]\x01 {nColor}{player.Controller.PlayerName}\x01 : {cColor}{text}";
-
-            if (teamOnly)
-            {
-                var senderTeam = player.Controller.TeamNum;
-                foreach (var p in _core.PlayerManager.GetAllPlayers())
-                {
-                    if (p.IsValid && !p.IsFakeClient && p.Controller.TeamNum == senderTeam)
-                        p.SendChat(formattedMessage);
-                }
-            }
-            else
-            {
-                foreach (var p in _core.PlayerManager.GetAllPlayers())
-                {
-                    if (p.IsValid && !p.IsFakeClient)
-                        p.SendChat(formattedMessage);
-                }
-            }
-            return HookResult.Handled;
+            BroadcastFormattedChat(player, text, teamOnly);
+            return HookResult.Stop;
         }
 
         return HookResult.Continue;
+    }
+
+    private void BroadcastFormattedChat(IPlayer sender, string rawText, bool teamOnly)
+    {
+        var text = rawText.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var groupTag = ResolveChatGroupTag(sender);
+        var style = _chatTagConfigManager.GetStyleForGroup(groupTag);
+        var senderName = sender.Controller.PlayerName ?? LocalizerHelper.Get(_core, "unknown");
+        var scopePrefix = teamOnly ? $"{style.ChatColor}{LocalizerHelper.Get(_core, "chat_team_prefix")} " : string.Empty;
+        var formatted = $" \x01{scopePrefix}{style.ChatColor}[ {style.TagColor}{groupTag} {style.ChatColor}] {style.NameColor}{senderName}{style.ChatColor}: {text}";
+        var senderTeam = sender.Controller.TeamNum;
+
+        foreach (var target in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid && !p.IsFakeClient))
+        {
+            if (teamOnly && target.Controller.TeamNum != senderTeam)
+            {
+                continue;
+            }
+
+            target.SendChat(formatted);
+        }
+    }
+
+    private string ResolveChatGroupTag(IPlayer player)
+    {
+        var steamId = player.SteamID;
+        if (_lastKnownAdminTags.TryGetValue(steamId, out var knownTag) && !string.IsNullOrWhiteSpace(knownTag))
+        {
+            return knownTag.Trim();
+        }
+
+        try
+        {
+            var admin = _adminDbManager.GetAdminFromCache(steamId);
+            if (admin != null)
+            {
+                string primaryGroup = string.Empty;
+                if (admin.GroupList.Count > 0)
+                    primaryGroup = _groupDbManager.GetPrimaryGroupNameSync(admin.GroupList) ?? admin.GroupList[0];
+                
+                if (!string.IsNullOrWhiteSpace(primaryGroup))
+                {
+                    var resolved = primaryGroup.Trim();
+                    _lastKnownAdminTags[steamId] = resolved;
+                    return resolved;
+                }
+            }
+        }
+        catch
+        {
+            // Non-fatal: continue with secondary resolvers.
+        }
+
+        var fromScoreboard = ExtractTagFromScoreboard(player.Controller.Clan);
+        if (!string.IsNullOrWhiteSpace(fromScoreboard))
+        {
+            return fromScoreboard;
+        }
+
+        if (_core.Permission.PlayerHasPermission(steamId, _permissions.AdminRoot))
+        {
+            return "ADMIN";
+        }
+
+        return _chatTagConfigManager.Config.PlayerTag;
+    }
+
+    private static string ExtractTagFromScoreboard(string? rawClan)
+    {
+        if (string.IsNullOrWhiteSpace(rawClan))
+        {
+            return string.Empty;
+        }
+
+        var normalized = rawClan.Replace("\u200B", string.Empty).Trim();
+        var segments = normalized.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (segments.Length >= 2 && System.Text.RegularExpressions.Regex.IsMatch(segments[0], @"^#?\d+$"))
+        {
+            return segments[1].Trim();
+        }
+
+        if (segments.Length >= 1)
+        {
+            return segments[^1].Trim();
+        }
+
+        return string.Empty;
     }
 
     private string FormatColors(string input)
