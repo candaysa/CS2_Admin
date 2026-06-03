@@ -1,7 +1,7 @@
-# CS2_Admin2 Project Structure
+# CS2_Admin Project Structure
 
 ```
-CS2_Admin2/
+CS2_Admin/
 │
 ├── src/
 │   ├── CS2_Admin.cs                          # Plugin entry point (~200 lines)
@@ -205,8 +205,8 @@ CS2_Admin2/
 ├── discord.json                               # Discord bot configuration
 ├── maps.json                                  # Map list
 ├── tags.json                                  # Chat tag configuration
-├── CS2_Admin2.csproj                          # Project file
-└── CS2_Admin2.sln                             # Solution file
+├── CS2_Admin.csproj                          # Project file
+└── CS2_Admin.sln                             # Solution file
 ```
 
 ## File Size Targets
