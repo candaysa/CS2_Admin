@@ -41,7 +41,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="resources/language/*.jsonc">
-      <LogicalName>CS2_Admin.Translations.%(Filename)%(Extension)</LogicalName>
+      <LogicalName>CS2_Admin.Translations.%(Filename).lang</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 

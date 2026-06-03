@@ -53,7 +53,15 @@ public static class AutoUpdater
             var latestVer = release.TagName.TrimStart('v', 'V');
             var currVer = currentVersion.TrimStart('v', 'V');
 
-            if (latestVer == currVer)
+            if (Version.TryParse(latestVer, out var vLatest) && Version.TryParse(currVer, out var vCurrent))
+            {
+                if (vLatest <= vCurrent)
+                {
+                    core.Logger.LogInformationIfEnabled("[CS2Admin] You are running the latest version: {Version}", currVer);
+                    return;
+                }
+            }
+            else if (latestVer == currVer)
             {
                 core.Logger.LogInformationIfEnabled("[CS2Admin] You are running the latest version: {Version}", currVer);
                 return;
@@ -78,8 +86,9 @@ public static class AutoUpdater
 
     private static async Task ApplyUpdateAsync(ISwiftlyCore core, string downloadUrl)
     {
-        var tempZipPath = Path.Combine(core.PluginPath, "update_temp.zip");
-        var tempExtractPath = Path.Combine(core.PluginPath, "update_extracted");
+        var parentDir = Directory.GetParent(core.PluginPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))?.FullName ?? core.PluginPath;
+        var tempZipPath = Path.Combine(parentDir, "cs2admin_update_temp.zip");
+        var tempExtractPath = Path.Combine(parentDir, "cs2admin_update_extracted");
 
         try
         {

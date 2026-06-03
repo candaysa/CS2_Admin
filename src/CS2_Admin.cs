@@ -193,7 +193,8 @@ public class CS2_Admin : BasePlugin
     {
         try
         {
-            var languageDir = Path.Combine(Core.PluginPath, "resources", "language");
+            var configDir = Path.GetDirectoryName(Core.Configuration.GetConfigPath("config.json")) ?? string.Empty;
+            var languageDir = Path.Combine(configDir, "language");
             Core.Logger.LogInformationIfEnabled("[CS2Admin] Attempting to load custom localizer from: {Path} | Config Language: {Lang}", languageDir, _config.Language);
             
             // Extract embedded translations to disk if they are missing.
@@ -225,7 +226,7 @@ public class CS2_Admin : BasePlugin
             var asm = System.Reflection.Assembly.GetExecutingAssembly();
             var resources = asm.GetManifestResourceNames()
                 .Where(x => x.StartsWith("CS2_Admin.Translations.", StringComparison.OrdinalIgnoreCase)
-                            && x.EndsWith(".jsonc", StringComparison.OrdinalIgnoreCase))
+                            && x.EndsWith(".lang", StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
             if (resources.Count == 0)
@@ -236,7 +237,9 @@ public class CS2_Admin : BasePlugin
 
             foreach (var resourceName in resources)
             {
-                var fileName = resourceName["CS2_Admin.Translations.".Length..];
+                // Remove the prefix and the .lang suffix, then append .jsonc
+                var nameWithoutPrefix = resourceName["CS2_Admin.Translations.".Length..];
+                var fileName = nameWithoutPrefix[..^5] + ".jsonc";
                 var destinationPath = Path.Combine(outputDir, fileName);
                 
                 // Do not overwrite existing files, allowing users to modify them
@@ -248,14 +251,14 @@ public class CS2_Admin : BasePlugin
                 using var stream = asm.GetManifestResourceStream(resourceName);
                 if (stream == null) continue;
 
-                using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
-                var content = reader.ReadToEnd();
-                File.WriteAllText(destinationPath, content, System.Text.Encoding.UTF8);
+                using var file = File.Create(destinationPath);
+                stream.CopyTo(file);
+                Core.Logger.LogInformationIfEnabled("[CS2Admin] Extracted default translation file: {File}", fileName);
             }
         }
         catch (Exception ex)
         {
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Error extracting embedded translations: {Message}", ex.Message);
+            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to extract translations: {Message}", ex.Message);
         }
     }
 
@@ -542,32 +545,38 @@ public class CS2_Admin : BasePlugin
         _eventRegistrar = new EventRegistrar(Core, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _groupDbManager, _sanctionStateService, _config.MultiServer, _config.Tags, _config.Permissions, _chatTagConfigManager, _playerNameHistoryManager, _playerSessionManager, _discord);
         _eventRegistrar.OnClientPutInServer(e =>
         {
-            var player = Core.PlayerManager.GetPlayer(e.PlayerId);
-            if (player?.IsValid == true && !player.IsFakeClient)
+            Core.Scheduler.DelayBySeconds(3f, () =>
             {
-                _connectedPlayersCache[e.PlayerId] = (player.SteamID, player.Controller.PlayerName ?? "", player.IPAddress ?? "");
-                _ = _playerSessionManager.OpenSessionAsync(player.SteamID, player.Controller.PlayerName, e.PlayerId, player.IPAddress);
-                _ = _sanctionStateService.RefreshAsync(player.SteamID, player.IPAddress);
-                _ = _playerNameHistoryManager.ObserveNameAsync(player.SteamID, player.Controller.PlayerName);
-                
-                int activePlayers = Core.PlayerManager.GetAllPlayers().Count(p => p.IsValid && !p.IsFakeClient);
-                _ = _discord.SendConnectNotificationAsync(player.Controller.PlayerName, player.SteamID, player.IPAddress, activePlayers);
-
-                _ = Task.Run(async () =>
+                var player = Core.PlayerManager.GetPlayer(e.PlayerId);
+                if (player?.IsValid == true && !player.IsFakeClient)
                 {
-                    var customName = await _playerNameHistoryManager.GetCustomNameAsync(player.SteamID);
-                    if (!string.IsNullOrWhiteSpace(customName))
+                    _connectedPlayersCache[e.PlayerId] = (player.SteamID, player.Controller.PlayerName ?? "", player.IPAddress ?? "");
+                    _ = _playerSessionManager.OpenSessionAsync(player.SteamID, player.Controller.PlayerName, e.PlayerId, player.IPAddress);
+                    _ = _sanctionStateService.RefreshAsync(player.SteamID, player.IPAddress);
+                    _ = _playerNameHistoryManager.ObserveNameAsync(player.SteamID, player.Controller.PlayerName);
+                    
+                    int activePlayers = Core.PlayerManager.GetAllPlayers().Count(p => p.IsValid && !p.IsFakeClient);
+                    if (_discord != null)
+                        _ = _discord.SendConnectNotificationAsync(player.Controller.PlayerName, player.SteamID, player.IPAddress, activePlayers);
+    
+                    _ = Task.Run(async () =>
                     {
-                        Core.Scheduler.NextTick(() =>
+                        var customName = await _playerNameHistoryManager.GetCustomNameAsync(player.SteamID);
+                        if (!string.IsNullOrWhiteSpace(customName))
                         {
-                            if (player.IsValid && player.Controller != null)
+                            Core.Scheduler.NextTick(() =>
                             {
-                                player.Controller.PlayerName = customName;
-                            }
-                        });
-                    }
-                });
-            }
+                                var live = Core.PlayerManager.GetPlayer(e.PlayerId);
+                                if (live?.IsValid == true && live.Controller != null)
+                                {
+                                    live.Controller.PlayerName = customName;
+                                    live.Controller.PlayerNameUpdated();
+                                }
+                            });
+                        }
+                    });
+                }
+            });
         });
         _eventRegistrar.OnClientSteamAuthorize(e =>
         {

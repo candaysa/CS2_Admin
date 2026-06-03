@@ -112,7 +112,8 @@ public class ChatTagsFileConfig
         "[magenta]"
     ];
     // Legacy alias for older tags.json files.
-    public bool Enabled { get; set; } = false;
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Enabled { get; set; } = null;
     public Dictionary<string, ChatTagGroupStyle> Groups { get; set; } = new();
 }
 

@@ -287,7 +287,6 @@ CS2_Admin natively ties into Swiftly's permission system. Below are all the comm
 | `!rcon <command>` | `admin.rcon` | Executes a server console command |
 | `!cvar <cvar> [value]` | `admin.rcon` | Changes a server convar |
 | `!players` | `@All` | Lists active players and their status |
-| `!who` | `@All` | Alternative to list players |
 
 ---
 
