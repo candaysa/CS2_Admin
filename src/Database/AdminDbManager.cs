@@ -354,6 +354,23 @@ public class AdminDbManager
         }
     }
 
+        public Admin? GetAdminFromCache(ulong steamId)
+    {
+        lock (_adminCache)
+        {
+            if (_adminCache.TryGetValue(steamId, out var cachedAdmin) &&
+                DateTime.UtcNow - _lastCacheUpdate < _cacheLifetime)
+            {
+                if (cachedAdmin.IsExpired)
+                {
+                    _adminCache.Remove(steamId);
+                    return null;
+                }
+                return cachedAdmin;
+            }
+        }
+        return null;
+    }
     public void ClearCache()
     {
         _adminCache.Clear();

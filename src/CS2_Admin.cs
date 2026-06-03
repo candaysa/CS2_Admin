@@ -23,7 +23,7 @@ using System.Text.Json.Nodes;
 
 namespace CS2_Admin;
 
-[PluginMetadata(Id = "CS2_Admin", Version = "1.0.12", Name = "CS2_Admin", Author = "CanDaysa", Description = "Comprehensive admin plugin for CS2.")]
+[PluginMetadata(Id = "CS2_Admin", Version = "1.0.13", Name = "CS2_Admin", Author = "CanDaysa", Description = "Comprehensive admin plugin for CS2.")]
 public class CS2_Admin : BasePlugin
 {
     private PluginConfig _config = null!;
@@ -45,6 +45,7 @@ public class CS2_Admin : BasePlugin
     private ServerInfoDbManager _serverInfoDbManager = null!;
     private DiscordServerStatusDbManager _discordServerStatusDbManager = null!;
     private DiscordMessageStateDbManager _discordMessageStateDbManager = null!;
+    private readonly Dictionary<int, (ulong SteamId, string Name, string Ip)> _connectedPlayersCache = new();
     private AdminPlaytimeDbManager _adminPlaytimeDbManager = null!;
     private RankLeaderboardDbManager _rankLeaderboardDbManager = null!;
     private PlayerIpDbManager _playerIpDbManager = null!;
@@ -109,7 +110,7 @@ public class CS2_Admin : BasePlugin
     private RconCommand _rconCmd = null!;
     private CvarCommand _cvarCmd = null!;
     private ListPlayersCommand _listPlayersCmd = null!;
-    private WhoCommand _whoCmd = null!;
+
     private AddAdminCommand _addAdminCmd = null!;
     private EditAdminCommand _editAdminCmd = null!;
     private RemoveAdminCommand _removeAdminCmd = null!;
@@ -533,7 +534,7 @@ public class CS2_Admin : BasePlugin
         _unwarnCmd = new UnwarnCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _warnManager, _adminDbManager, _discord, _sanctionStateService);
 
         // Who command
-        _whoCmd = new WhoCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _sanctionStateService, _config.MultiServer);
+
     }
 
     private void InitializeEventHandlers()
@@ -544,12 +545,28 @@ public class CS2_Admin : BasePlugin
             var player = Core.PlayerManager.GetPlayer(e.PlayerId);
             if (player?.IsValid == true && !player.IsFakeClient)
             {
+                _connectedPlayersCache[e.PlayerId] = (player.SteamID, player.Controller.PlayerName ?? "", player.IPAddress ?? "");
                 _ = _playerSessionManager.OpenSessionAsync(player.SteamID, player.Controller.PlayerName, e.PlayerId, player.IPAddress);
                 _ = _sanctionStateService.RefreshAsync(player.SteamID, player.IPAddress);
                 _ = _playerNameHistoryManager.ObserveNameAsync(player.SteamID, player.Controller.PlayerName);
                 
                 int activePlayers = Core.PlayerManager.GetAllPlayers().Count(p => p.IsValid && !p.IsFakeClient);
                 _ = _discord.SendConnectNotificationAsync(player.Controller.PlayerName, player.SteamID, player.IPAddress, activePlayers);
+
+                _ = Task.Run(async () =>
+                {
+                    var customName = await _playerNameHistoryManager.GetCustomNameAsync(player.SteamID);
+                    if (!string.IsNullOrWhiteSpace(customName))
+                    {
+                        Core.Scheduler.NextTick(() =>
+                        {
+                            if (player.IsValid && player.Controller != null)
+                            {
+                                player.Controller.PlayerName = customName;
+                            }
+                        });
+                    }
+                });
             }
         });
         _eventRegistrar.OnClientSteamAuthorize(e =>
@@ -605,12 +622,12 @@ public class CS2_Admin : BasePlugin
         });
         _eventRegistrar.OnClientDisconnected(e =>
         {
-            var player = Core.PlayerManager.GetPlayer(e.PlayerId);
-            if (player?.IsValid == true && !player.IsFakeClient)
+            if (_connectedPlayersCache.TryGetValue(e.PlayerId, out var cached))
             {
-                _recentPlayersTracker.Add(new RecentPlayerInfo(player.SteamID, player.Controller.PlayerName ?? "", player.IPAddress ?? "", DateTime.UtcNow));
-                _ = _playerSessionManager.CloseSessionAsync(player.SteamID, player.Controller.PlayerName, e.PlayerId, player.IPAddress);
-                _ = _discord.SendDisconnectNotificationAsync(player.Controller.PlayerName, player.SteamID, player.IPAddress);
+                _connectedPlayersCache.Remove(e.PlayerId);
+                _recentPlayersTracker.Add(new RecentPlayerInfo(cached.SteamId, cached.Name, cached.Ip, DateTime.UtcNow));
+                _ = _playerSessionManager.CloseSessionAsync(cached.SteamId, cached.Name, e.PlayerId, cached.Ip);
+                _ = _discord.SendDisconnectNotificationAsync(cached.Name, cached.SteamId, cached.Ip);
             }
         });
         _eventRegistrar.OnRoundStart(ev =>
@@ -705,7 +722,7 @@ public class CS2_Admin : BasePlugin
         RegisterCmdList(_config.Commands.Rcon, _rconCmd.Execute);
         RegisterCmdList(_config.Commands.Cvar, _cvarCmd.Execute);
         RegisterCmdList(_config.Commands.ListPlayers, _listPlayersCmd.Execute);
-        RegisterCmdList(_config.Commands.Who, _whoCmd.Execute);
+
         RegisterCmdList(_config.Commands.AddAdmin, _addAdminCmd.Execute);
         RegisterCmdList(_config.Commands.EditAdmin, _editAdminCmd.Execute);
         RegisterCmdList(_config.Commands.RemoveAdmin, _removeAdminCmd.Execute);

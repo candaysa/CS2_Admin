@@ -154,7 +154,7 @@ public class DiscordFileConfig
     public string BotToken { get; set; } = "";
     public string ServerPublicIp { get; set; } = "";
     public string BannerUrl { get; set; } = "";
-    public string CustomConnectUrl { get; set; } = "https://cs2browser.net/?search={IP}:{PORT}";
+    public string CustomConnectUrl { get; set; } = "";
     public string AdminLogChannelId { get; set; } = "";
     public string ChatLogChannelId { get; set; } = "";
     public string ConnectionLogChannelId { get; set; } = "";
@@ -262,7 +262,8 @@ public class CommandsConfig
     public List<string> Unfreeze { get; set; } = ["unfreeze"];
     [JsonIgnore]
     public List<string> Resize { get; set; } = ["resize"];
-    [JsonIgnore]
+
+    [JsonIgnore]
     public List<string> Blind { get; set; } = ["blind"];
     [JsonIgnore]
     public List<string> Glow { get; set; } = ["glow", "glove"];
@@ -315,7 +316,6 @@ public class CommandsConfig
     [JsonIgnore]
     public List<string> Cvar { get; set; } = ["cvar"];
     public List<string> ListPlayers { get; set; } = ["players"];
-    public List<string> Who { get; set; } = ["who"];
 }
 
 public class PermissionsConfig
@@ -392,7 +392,7 @@ public class PermissionsConfig
     public string Rcon { get; set; } = "admin.rcon";
     public string Cvar { get; set; } = "admin.cvar";
     public string ListPlayers { get; set; } = "admin.generic";
-    public string Who { get; set; } = "admin.generic";
+
     [JsonIgnore]
     public List<string> RootBypassPermissions { get; set; } = ["admin.*", "*"];
 }

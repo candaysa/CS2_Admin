@@ -58,7 +58,7 @@ public class AdminLogManager
         }
     }
 
-    public async Task AddLogAsync(
+            public async Task AddLogAsync(
         string action,
         string adminName,
         ulong adminSteamId,
@@ -69,11 +69,12 @@ public class AdminLogManager
         int? targetUserId = null,
         string? reason = null)
     {
+        var serverId = ServerIdentity.GetServerId(_core);
+
         try
         {
             using var connection = _core.Database.GetConnection("mysql_detailed");
             var now = DateTime.UtcNow;
-            var serverId = ServerIdentity.GetServerId(_core);
 
             connection.Insert(new AdminLog
             {
@@ -104,7 +105,14 @@ public class AdminLogManager
                     CreatedAt = now
                 });
             }
+        }
+        catch (Exception ex)
+        {
+            _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error writing admin log to database: {Message}", ex.Message);
+        }
 
+        try
+        {
             if (ShouldSendAdminActionWebhook(action, adminSteamId))
             {
                 await _discordBot!.SendAdminActionNotificationAsync(
@@ -119,10 +127,9 @@ public class AdminLogManager
         }
         catch (Exception ex)
         {
-            _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error writing admin log: {Message}", ex.Message);
+            _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error sending discord admin log: {Message}", ex.Message);
         }
     }
-
     private bool ShouldSendAdminActionWebhook(string action, ulong adminSteamId)
     {
         if (_discordBot == null)
