@@ -86,8 +86,9 @@ public static class AutoUpdater
 
     private static async Task ApplyUpdateAsync(ISwiftlyCore core, string downloadUrl)
     {
-        var tempZipPath = Path.Combine(core.PluginPath, "update_temp.zip");
-        var tempExtractPath = Path.Combine(core.PluginPath, "update_extracted");
+        var parentDir = Directory.GetParent(core.PluginPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))?.FullName ?? core.PluginPath;
+        var tempZipPath = Path.Combine(parentDir, "cs2admin_update_temp.zip");
+        var tempExtractPath = Path.Combine(parentDir, "cs2admin_update_extracted");
 
         try
         {
