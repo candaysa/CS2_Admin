@@ -69,17 +69,15 @@ public class DiscordNotificationService
     {
         var channelId = ResolveLogChannelId(_connectionChannelId);
         _core.Logger.LogInformationIfEnabled(
-            "[CS2_Admin][Debug][DiscordConnect] start steamid={SteamId} name={Name} ip={Ip} preferredChannel={PreferredChannel} resolvedChannel={ResolvedChannel} fallback={Fallback}",
+            "[CS2_Admin][DiscordConnect] Bağlantı bilgisi Discord'a gönderiliyor... | SteamID: {SteamId} | İsim: {Name} | IP: {Ip} | Kanal ID: {ResolvedChannel}",
             steamId,
             string.IsNullOrWhiteSpace(playerName) ? "-" : playerName,
             string.IsNullOrWhiteSpace(ipAddress) ? "-" : ipAddress,
-            DiscordHelpers.MaskChannelId(_connectionChannelId),
-            DiscordHelpers.MaskChannelId(channelId),
-            string.IsNullOrWhiteSpace(_connectionChannelId));
+            DiscordHelpers.MaskChannelId(channelId));
 
         if (string.IsNullOrWhiteSpace(channelId))
         {
-            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordConnect] skipped steamid={SteamId} reason=no_channel", steamId);
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordConnect] Discord'a gönderilmedi (Sebep: Bağlantı kanalı ayarlanmamış) | SteamID: {SteamId}", steamId);
             return;
         }
 
@@ -133,17 +131,15 @@ public class DiscordNotificationService
     {
         var channelId = ResolveLogChannelId(_connectionChannelId);
         _core.Logger.LogInformationIfEnabled(
-            "[CS2_Admin][Debug][DiscordDisconnect] start steamid={SteamId} name={Name} ip={Ip} preferredChannel={PreferredChannel} resolvedChannel={ResolvedChannel} fallback={Fallback}",
+            "[CS2_Admin][DiscordDisconnect] Çıkış bilgisi Discord'a gönderiliyor... | SteamID: {SteamId} | İsim: {Name} | IP: {Ip} | Kanal ID: {ResolvedChannel}",
             steamId,
             string.IsNullOrWhiteSpace(playerName) ? "-" : playerName,
             string.IsNullOrWhiteSpace(ipAddress) ? "-" : ipAddress,
-            DiscordHelpers.MaskChannelId(_connectionChannelId),
-            DiscordHelpers.MaskChannelId(channelId),
-            string.IsNullOrWhiteSpace(_connectionChannelId));
+            DiscordHelpers.MaskChannelId(channelId));
 
         if (string.IsNullOrWhiteSpace(channelId))
         {
-            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordDisconnect] skipped steamid={SteamId} reason=no_channel", steamId);
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordDisconnect] Discord'a gönderilmedi (Sebep: Bağlantı kanalı ayarlanmamış) | SteamID: {SteamId}", steamId);
             return;
         }
 
@@ -194,37 +190,34 @@ public class DiscordNotificationService
     {
         if (player == null || !player.IsValid || player.IsFakeClient)
         {
-            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordChat] service skipped reason=invalid_or_fake");
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordChat] service skipped steamid={SteamId} reason=empty", player.SteamID);
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordChat] İşlem iptal edildi (Sebep: Geçersiz veya Bot oyuncu)");
             return;
         }
 
         var trimmed = message.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordChat] İşlem iptal edildi (Sebep: Boş mesaj) | SteamID: {SteamId}", player.SteamID);
+            return;
+        }
+
         if (trimmed.StartsWith("!") || trimmed.StartsWith("/"))
         {
-            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordChat] service skipped steamid={SteamId} reason=command text={Text}", player.SteamID, trimmed);
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordChat] Discord'a gönderilmedi (Sebep: Oyun-içi komut kullanıldı) | SteamID: {SteamId} | Komut: {Text}", player.SteamID, trimmed);
             return;
         }
 
         var channelId = ResolveLogChannelId(_chatChannelId);
         _core.Logger.LogInformationIfEnabled(
-            "[CS2_Admin][Debug][DiscordChat] service start steamid={SteamId} name={Name} teamOnly={TeamOnly} preferredChannel={PreferredChannel} resolvedChannel={ResolvedChannel} fallback={Fallback} textLength={Length}",
+            "[CS2_Admin][DiscordChat] Mesaj Discord'a gönderiliyor... | SteamID: {SteamId} | İsim: {Name} | Takım Chat: {TeamOnly} | Kanal ID: {ResolvedChannel}",
             player.SteamID,
             player.Controller.PlayerName ?? "-",
             teamOnly,
-            DiscordHelpers.MaskChannelId(_chatChannelId),
-            DiscordHelpers.MaskChannelId(channelId),
-            string.IsNullOrWhiteSpace(_chatChannelId),
-            trimmed.Length);
+            DiscordHelpers.MaskChannelId(channelId));
 
         if (string.IsNullOrWhiteSpace(channelId))
         {
-            _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordChat] service skipped steamid={SteamId} reason=no_channel", player.SteamID);
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordChat] Discord'a gönderilmedi (Sebep: Sohbet kanalı ayarlanmamış) | SteamID: {SteamId}", player.SteamID);
             return;
         }
 
@@ -393,7 +386,7 @@ public class DiscordNotificationService
             var reporterValue = $"[{DiscordHelpers.EscapeMarkdown(playerName)}]({DiscordHelpers.BuildSteamProfileUrl(playerSteamId)})";
             var embed = new
             {
-                title = T("discord_calladmin_title_embed", ":rotating_light: {0} CallAdmin", GetServerLabel()),
+                title = $"🚨 {T("discord_calladmin_title_embed", "{0} CallAdmin", GetServerLabel())}",
                 description = T(
                     "discord_calladmin_description",
                     "**Reporter:** {0}\n**Server:** `{1}`",
@@ -456,7 +449,7 @@ public class DiscordNotificationService
                 : DiscordHelpers.EscapeMarkdown(targetName);
             var embed = new
             {
-                title = T("discord_report_title_embed", ":triangular_flag_on_post: {0} Player Report", GetServerLabel()),
+                title = $"🚩 {T("discord_report_title_embed", "{0} Player Report", GetServerLabel())}",
                 description = T("discord_report_description", "**Reporter:** {0}\n**Target:** {1}", reporterValue, targetDisplayValue),
                 color = 16763904,
                 fields = new[]
