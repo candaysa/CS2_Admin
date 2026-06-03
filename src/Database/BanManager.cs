@@ -521,7 +521,10 @@ public class BanManager
         try
         {
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            return connection.Select<Ban>(b => b.SteamId == steamId).Count();
+            return connection.ExecuteScalar<int>(
+                "SELECT COUNT(*) FROM `admin_bans` WHERE `steamid` = @SteamId",
+                new { SteamId = steamId }
+            );
         }
         catch (Exception ex)
         {

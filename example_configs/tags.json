@@ -1,0 +1,40 @@
+{
+  "CS2AdminTags": {
+    "Version": 4,
+    "ScoreboardEnabled": true,
+    "ChatEnabled": false,
+    "PlayerTag": "PLAYER",
+    "ShowAdminName": true,
+    "SupportedColors": [
+      "[default]",
+      "[white]",
+      "[silver]",
+      "[gray]",
+      "[grey]",
+      "[lightyellow]",
+      "[yellow]",
+      "[gold]",
+      "[lightred]",
+      "[red]",
+      "[darkred]",
+      "[olive]",
+      "[lime]",
+      "[green]",
+      "[lightblue]",
+      "[blue]",
+      "[darkblue]",
+      "[bluegrey]",
+      "[lightpurple]",
+      "[purple]",
+      "[magenta]"
+    ],
+    "Enabled": false,
+    "Groups": {
+      "Owner": {
+        "ChatColor": "",
+        "TagColor": "",
+        "NameColor": ""
+      }
+    }
+  }
+}

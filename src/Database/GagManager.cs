@@ -1,5 +1,6 @@
 using CS2_Admin.Models;
 using CS2_Admin.Utils;
+using Dapper;
 using Dommel;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
@@ -94,7 +95,11 @@ public class GagManager
                 var admin = _currentAdmin.Value ?? new AdminContext();
                 using var connection = _core.Database.GetConnection("mysql_detailed");
 
-                var gag = connection.FirstOrDefault<Gag>(g => g.SteamId == steamId && g.StatusValue == GagStatusNames.Active);
+                var gag = connection.QueryFirstOrDefault<Gag>(
+                    $@"SELECT * FROM `admin_gags` WHERE `steamid` = @SteamId AND {PunishmentQueryCompat.ActiveStatusWhere} ORDER BY `created_at` DESC LIMIT 1",
+                    new { SteamId = steamId }
+                );
+
                 if (gag == null)
                 {
                     return false;
@@ -153,8 +158,15 @@ public class GagManager
             }
 
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            var gags = connection.Select<Gag>(g => g.SteamId == steamId && g.StatusValue == GagStatusNames.Active);
-            var gag = gags.FirstOrDefault(g => g.ExpiresAt == null || g.ExpiresAt > DateTime.UtcNow);
+            
+            var gag = connection.QueryFirstOrDefault<Gag>(
+                $@"SELECT * FROM `admin_gags` 
+                  WHERE `steamid` = @SteamId 
+                    AND {PunishmentQueryCompat.ActiveStatusWhere} 
+                    AND (`expires_at` IS NULL OR `expires_at` > @Now) 
+                  ORDER BY `created_at` DESC LIMIT 1",
+                new { SteamId = steamId, Now = DateTime.UtcNow }
+            );
 
             if (gag != null)
             {
@@ -208,8 +220,10 @@ public class GagManager
             try
             {
                 using var connection = _core.Database.GetConnection("mysql_detailed");
-                var gags = connection.Select<Gag>(g => g.SteamId == steamId);
-                return gags.Count();
+                return connection.ExecuteScalar<int>(
+                    "SELECT COUNT(*) FROM `admin_gags` WHERE `steamid` = @SteamId",
+                    new { SteamId = steamId }
+                );
             }
             catch (Exception ex)
             {
@@ -226,16 +240,15 @@ public class GagManager
             try
             {
                 using var connection = _core.Database.GetConnection("mysql_detailed");
-                var activeGags = connection.Select<Gag>(g => g.StatusValue == GagStatusNames.Active);
-                var expiredGags = activeGags.Where(g => g.ExpiresAt != null && g.ExpiresAt <= DateTime.UtcNow);
-
-                var cleaned = 0;
-                foreach (var gag in expiredGags)
-                {
-                    gag.Status = GagStatus.Expired;
-                    connection.Update(gag);
-                    cleaned++;
-                }
+                
+                var cleaned = connection.Execute(
+                    $@"UPDATE `admin_gags` 
+                      SET `status` = '3' 
+                      WHERE {PunishmentQueryCompat.ActiveStatusWhere} 
+                        AND `expires_at` IS NOT NULL 
+                        AND `expires_at` <= @Now",
+                    new { Now = DateTime.UtcNow }
+                );
 
                 if (cleaned > 0)
                 {

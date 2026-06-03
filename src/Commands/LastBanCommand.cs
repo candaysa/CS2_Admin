@@ -1,0 +1,392 @@
+using CS2_Admin.Config;
+using CS2_Admin.Database;
+using CS2_Admin.Services;
+using CS2_Admin.Utils;
+using SwiftlyS2.Core.Menus.OptionsBase;
+using SwiftlyS2.Shared;
+using SwiftlyS2.Shared.Commands;
+using SwiftlyS2.Shared.Players;
+
+namespace CS2_Admin.Commands;
+
+public class LastBanCommand : CommandBase
+{
+    private readonly BanManager _banManager;
+    private readonly MuteManager _muteManager;
+    private readonly GagManager _gagManager;
+    private readonly WarnManager _warnManager;
+    private readonly AdminDbManager _adminDbManager;
+    private readonly PlayerIpDbManager _playerIpDbManager;
+    private readonly PlayerSessionManager _playerSessionManager;
+    private readonly RecentPlayersTracker _recentPlayersTracker;
+    private readonly DiscordBotService _discord;
+    private readonly SanctionMenuConfig _sanctions;
+    private readonly MultiServerConfig _multiServerConfig;
+    private readonly int _banType;
+    private readonly PlayerSanctionStateService _sanctionStateService;
+    private readonly IReadOnlyList<string> _lastBanAliases;
+
+    public LastBanCommand(
+        ISwiftlyCore core,
+        BanManager banManager,
+        MuteManager muteManager,
+        GagManager gagManager,
+        WarnManager warnManager,
+        AdminDbManager adminDbManager,
+        AdminLogManager adminLogManager,
+        PlayerIpDbManager playerIpDbManager,
+        PlayerSessionManager playerSessionManager,
+        RecentPlayersTracker recentPlayersTracker,
+        DiscordBotService discord,
+        PermissionsConfig permissions,
+        CommandsConfig commands,
+        TagsConfig tags,
+        MessagesConfig messages,
+        SanctionMenuConfig sanctions,
+        MultiServerConfig multiServerConfig,
+        int banType,
+        PlayerSanctionStateService sanctionStateService,
+        PermissionService permissionService,
+        IReadOnlyList<string> lastBanAliases)
+        : base(core, permissions, commands, tags, messages, adminLogManager, permissionService)
+    {
+        _banManager = banManager;
+        _muteManager = muteManager;
+        _gagManager = gagManager;
+        _warnManager = warnManager;
+        _adminDbManager = adminDbManager;
+        _playerIpDbManager = playerIpDbManager;
+        _playerSessionManager = playerSessionManager;
+        _recentPlayersTracker = recentPlayersTracker;
+        _discord = discord;
+        _sanctions = sanctions;
+        _multiServerConfig = multiServerConfig;
+        _banType = banType is >= 1 and <= 3 ? banType : 1;
+        _sanctionStateService = sanctionStateService;
+        _lastBanAliases = lastBanAliases;
+    }
+
+    public override void Execute(ICommandContext context)
+    {
+        if (!HasPerm(context, Permissions.LastBan))
+        {
+            Reply(context, "no_permission");
+            return;
+        }
+
+        var recent = _recentPlayersTracker.GetRecent();
+        if (recent.Count > 0)
+        {
+            ShowLastBanTargets(context, recent);
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            var fallbackRecent = await _playerSessionManager.GetRecentDisconnectedPlayersAsync();
+            Core.Scheduler.NextTick(() => ShowLastBanTargets(context, fallbackRecent));
+        });
+    }
+
+    private void ShowLastBanTargets(ICommandContext context, IReadOnlyList<RecentPlayerInfo> recent)
+    {
+        if (context.Sender == null)
+        {
+            if (recent.Count == 0)
+            {
+                ReplyRaw(context, T("lastban_no_recent_players", "No recent disconnected players found."));
+                return;
+            }
+
+            ReplyRaw(context, T("lastban_console_header", "Recent disconnected players:"));
+            foreach (var item in recent)
+            {
+                context.Reply($"- {item.Name} | {item.SteamId} | {item.IpAddress} | {item.LastSeenAt:yyyy-MM-dd HH:mm:ss}");
+            }
+            return;
+        }
+
+        if (!context.Sender.IsValid)
+        {
+            return;
+        }
+
+        var menuBuilder = Core.MenusAPI.CreateBuilder();
+        menuBuilder.Design.SetMenuTitle(T("menu_last_players", "Recent Disconnected Players"));
+
+        if (recent.Count == 0)
+        {
+            var empty = new ButtonMenuOption(T("lastban_no_recent_players", "No recent disconnected players found.")) { CloseAfterClick = true };
+            empty.Click += (_, _) => ValueTask.CompletedTask;
+            menuBuilder.AddOption(empty);
+        }
+        else
+        {
+            foreach (var item in recent)
+            {
+                var option = new SubmenuMenuOption(
+                    $"{item.Name} ({item.SteamId})",
+                    () => BuildLastActionMenu(context.Sender!, item));
+                menuBuilder.AddOption(option);
+            }
+        }
+
+        Core.MenusAPI.OpenMenuForPlayer(context.Sender, menuBuilder.Build());
+    }
+
+    private SwiftlyS2.Shared.Menus.IMenuAPI BuildLastActionMenu(IPlayer admin, RecentPlayerInfo target)
+    {
+        var builder = Core.MenusAPI.CreateBuilder();
+        builder.Design.SetMenuTitle(T("menu_last_actions", $"Actions for {target.Name}", target.Name));
+        var hasAction = false;
+
+        if (HasPerm(admin, Permissions.Ban))
+        {
+            builder.AddOption(new SubmenuMenuOption(L("menu_ban"), () => BuildLastDurationMenu(admin, target, LastSanctionAction.Ban)));
+            hasAction = true;
+        }
+
+        if (HasPerm(admin, Permissions.Ban))
+        {
+            builder.AddOption(new SubmenuMenuOption(L("menu_ipban"), () => BuildLastDurationMenu(admin, target, LastSanctionAction.IpBan)));
+            hasAction = true;
+        }
+
+        if (HasPerm(admin, Permissions.Warn))
+        {
+            builder.AddOption(new SubmenuMenuOption(L("menu_warn"), () => BuildLastDurationMenu(admin, target, LastSanctionAction.Warn)));
+            hasAction = true;
+        }
+
+        if (HasPerm(admin, Permissions.Mute))
+        {
+            builder.AddOption(new SubmenuMenuOption(L("menu_mute"), () => BuildLastDurationMenu(admin, target, LastSanctionAction.Mute)));
+            hasAction = true;
+        }
+
+        if (HasPerm(admin, Permissions.Gag))
+        {
+            builder.AddOption(new SubmenuMenuOption(L("menu_gag"), () => BuildLastDurationMenu(admin, target, LastSanctionAction.Gag)));
+            hasAction = true;
+        }
+
+        if (!hasAction)
+        {
+            var noAction = new ButtonMenuOption(L("menu_no_actions_available")) { CloseAfterClick = true };
+            noAction.Click += (_, _) => ValueTask.CompletedTask;
+            builder.AddOption(noAction);
+        }
+
+        return builder.Build();
+    }
+
+    private SwiftlyS2.Shared.Menus.IMenuAPI BuildLastDurationMenu(IPlayer admin, RecentPlayerInfo target, LastSanctionAction action)
+    {
+        var builder = Core.MenusAPI.CreateBuilder();
+        builder.Design.SetMenuTitle(T("menu_select_duration", "Select Duration"));
+
+        foreach (var item in _sanctions.Durations)
+        {
+            var btn = new ButtonMenuOption(item.Name) { CloseAfterClick = true };
+            btn.Click += (_, _) =>
+            {
+                Core.Scheduler.NextTick(() => OpenLastReasonMenu(admin, target, action, item.Minutes));
+                return ValueTask.CompletedTask;
+            };
+            builder.AddOption(btn);
+        }
+
+        return builder.Build();
+    }
+
+    private void OpenLastReasonMenu(IPlayer admin, RecentPlayerInfo target, LastSanctionAction action, int duration)
+    {
+        var builder = Core.MenusAPI.CreateBuilder();
+        builder.BindToParent(BuildLastDurationMenu(admin, target, action));
+        builder.Design.SetMenuTitle(T("menu_select_reason", "Select Reason"));
+
+        foreach (var reason in GetReasonsForLastAction(action))
+        {
+            var option = new ButtonMenuOption(reason) { CloseAfterClick = true };
+            option.Click += (_, _) =>
+            {
+                _ = ApplyLastSanctionAsync(admin, target, action, duration, reason);
+                return ValueTask.CompletedTask;
+            };
+            builder.AddOption(option);
+        }
+
+        Core.MenusAPI.OpenMenuForPlayer(admin, builder.Build());
+    }
+
+    private IReadOnlyList<string> GetReasonsForLastAction(LastSanctionAction action)
+    {
+        return _sanctions.Reasons;
+    }
+
+    private async Task ApplyLastSanctionAsync(IPlayer admin, RecentPlayerInfo target, LastSanctionAction action, int duration, string reason)
+    {
+        if (!await ValidateCanPunishLastTargetAsync(admin, target))
+        {
+            return;
+        }
+
+        var adminName = admin.Controller.PlayerName ?? L("console_name");
+        var adminSteamId = admin.SteamID;
+        var isGlobal = ResolveGlobalMode();
+
+        switch (action)
+        {
+            case LastSanctionAction.Ban:
+            {
+                var existing = await _banManager.GetActiveBanAsync(target.SteamId, target.IpAddress, _multiServerConfig.Enabled);
+                if (existing != null)
+                {
+                    Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("steamid_already_banned", target.SteamId)}"));
+                    return;
+                }
+
+                _banManager.SetAdminContext(adminName, adminSteamId);
+                var ok = await _banManager.AddBanAsync(target.SteamId, target.Name, duration, reason, isGlobal);
+                if (!ok)
+                {
+                    Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("lastban_action_failed", L("menu_ban"))}"));
+                    return;
+                }
+
+                await AdminLogManager.AddLogAsync("lastban_ban", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};global={isGlobal};reason={reason}", target.Name);
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
+                Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("lastban_action_applied", L("menu_ban"), target.Name)}"));
+                return;
+            }
+            case LastSanctionAction.IpBan:
+            {
+                if (string.IsNullOrWhiteSpace(target.IpAddress))
+                {
+                    Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("lastban_no_ip")}"));
+                    return;
+                }
+
+                var existing = await _banManager.GetActiveBanAsync(0, target.IpAddress, _multiServerConfig.Enabled);
+                if (existing != null)
+                {
+                    Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("lastban_ip_already_banned", target.IpAddress)}"));
+                    return;
+                }
+
+                _banManager.SetAdminContext(adminName, adminSteamId);
+                var ok = await _banManager.AddIpBanAsync(target.IpAddress, target.Name, duration, reason, isGlobal, target.SteamId);
+                if (!ok)
+                {
+                    Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("lastban_action_failed", L("menu_ipban"))}"));
+                    return;
+                }
+
+                await AdminLogManager.AddLogAsync("lastban_ipban", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};global={isGlobal};reason={reason}", target.Name);
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
+                Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("lastban_action_applied", L("menu_ipban"), target.Name)}"));
+                return;
+            }
+            case LastSanctionAction.Warn:
+            {
+                _warnManager.SetAdminContext(adminName, adminSteamId);
+                var ok = await _warnManager.AddWarnAsync(target.SteamId, duration, reason);
+                if (!ok)
+                {
+                    Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("lastban_action_failed", L("menu_warn"))}"));
+                    return;
+                }
+
+                await AdminLogManager.AddLogAsync("lastban_warn", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};reason={reason}", target.Name);
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
+                Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("lastban_action_applied", L("menu_warn"), target.Name)}"));
+                return;
+            }
+            case LastSanctionAction.Mute:
+            {
+                var existing = await _muteManager.GetActiveMuteAsync(target.SteamId);
+                if (existing != null)
+                {
+                    Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("player_already_muted", target.Name)}"));
+                    return;
+                }
+
+                _muteManager.SetAdminContext(adminName, adminSteamId);
+                var ok = await _muteManager.AddMuteAsync(target.SteamId, duration, reason);
+                if (!ok)
+                {
+                    Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("lastban_action_failed", L("menu_mute"))}"));
+                    return;
+                }
+
+                await AdminLogManager.AddLogAsync("lastban_mute", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};reason={reason}", target.Name);
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
+                Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("lastban_action_applied", L("menu_mute"), target.Name)}"));
+                return;
+            }
+            case LastSanctionAction.Gag:
+            {
+                var existing = await _gagManager.GetActiveGagAsync(target.SteamId);
+                if (existing != null)
+                {
+                    Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("player_already_gagged", target.Name)}"));
+                    return;
+                }
+
+                _gagManager.SetAdminContext(adminName, adminSteamId);
+                var ok = await _gagManager.AddGagAsync(target.SteamId, duration, reason);
+                if (!ok)
+                {
+                    Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("lastban_action_failed", L("menu_gag"))}"));
+                    return;
+                }
+
+                await AdminLogManager.AddLogAsync("lastban_gag", adminName, adminSteamId, target.SteamId, target.IpAddress, $"duration={duration};reason={reason}", target.Name);
+                await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
+                Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("lastban_action_applied", L("menu_gag"), target.Name)}"));
+                return;
+            }
+            default:
+                return;
+        }
+    }
+
+    private async Task<bool> ValidateCanPunishLastTargetAsync(IPlayer admin, RecentPlayerInfo target)
+    {
+        return await PlayerUtils.CanAdminTargetAsync(Core, _adminDbManager, admin, target.SteamId);
+    }
+
+    private bool ResolveGlobalMode()
+    {
+        if (!_multiServerConfig.Enabled)
+        {
+            return false;
+        }
+
+        return _multiServerConfig.GlobalBansByDefault;
+    }
+
+    private string T(string key, string fallback, params object[] args)
+    {
+        try
+        {
+            var value = args.Length == 0 ? L(key) : L(key, args);
+            return string.Equals(value, key, StringComparison.OrdinalIgnoreCase)
+                ? (args.Length == 0 ? fallback : string.Format(fallback, args))
+                : value;
+        }
+        catch
+        {
+            return args.Length == 0 ? fallback : string.Format(fallback, args);
+        }
+    }
+
+    private enum LastSanctionAction
+    {
+        Ban,
+        IpBan,
+        Warn,
+        Mute,
+        Gag
+    }
+}

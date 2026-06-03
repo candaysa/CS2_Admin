@@ -104,6 +104,23 @@ public class AdminPlaytimeDbManager
         }
     }
 
+    public async Task ResetAllAsync()
+    {
+        try
+        {
+            using var connection = _core.Database.GetConnection("mysql_detailed");
+            if (connection.State != System.Data.ConnectionState.Open)
+                connection.Open();
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "TRUNCATE TABLE admin_playtime";
+            cmd.ExecuteNonQuery();
+        }
+        catch (Exception ex)
+        {
+            _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error resetting admin playtime: {Message}", ex.Message);
+        }
+    }
+
     private static string NormalizePlayerName(string? playerName, ulong steamId)
     {
         var safe = string.IsNullOrWhiteSpace(playerName) ? steamId.ToString() : playerName.Trim();

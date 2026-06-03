@@ -1,0 +1,72 @@
+{
+  "CS2Admin": {
+    "Version": 4,
+    "Debug": false,
+    "Language": "en",
+    "LanguageOptions": [
+      "en",
+      "tr",
+      "de",
+      "ru",
+      "hu"
+    ],
+    "Messages": {
+      "Prefix": "CS2_Admin",
+      "EnableCenterHtmlMessages": true,
+      "CenterHtmlDurationMs": 5000,
+      "BanKickDelaySeconds": 5
+    },
+    "MultiServer": {
+      "Enabled": false,
+      "GlobalBansByDefault": true
+    },
+    "BanMode_Info_Comment": "steamid, ip, both",
+    "BanMode": "steamid",
+    "AdminPlaytime": {
+      "TrackIntervalMinutes": 1,
+      "MenuTopLimit": 20,
+      "DiscordTopLimit": 20,
+      "AutoSendResetAfterSend": false,
+      "AutoSendDayOfWeek": 0
+    },
+    "Sanctions": {
+      "Reasons": [
+        "Hacking",
+        "Obscene language",
+        "Insult players",
+        "Admin disrespect",
+        "Other"
+      ],
+      "Durations": [
+        {
+          "Name": "5 minutes",
+          "Minutes": 5
+        },
+        {
+          "Name": "30 minutes",
+          "Minutes": 30
+        },
+        {
+          "Name": "1 hour",
+          "Minutes": 60
+        },
+        {
+          "Name": "1 day",
+          "Minutes": 1440
+        },
+        {
+          "Name": "1 week",
+          "Minutes": 10080
+        },
+        {
+          "Name": "1 month",
+          "Minutes": 43200
+        },
+        {
+          "Name": "Permanent",
+          "Minutes": -1
+        }
+      ]
+    }
+  }
+}

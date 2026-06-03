@@ -44,9 +44,20 @@ public class RankLeaderboardDbManager
                 ORDER BY `value` DESC, `kills` DESC, `name` ASC
                 LIMIT @Limit
                 """,
-                new { Limit = safeLimit });
+                new { Limit = safeLimit * 5 });
 
-            return rows.ToList();
+            var filteredRows = new List<RankLeaderboardEntry>();
+            foreach (var row in rows)
+            {
+                if (string.IsNullOrWhiteSpace(row.Steam)) continue;
+                if (!ulong.TryParse(row.Steam, out var steamId)) continue;
+                if (_core.Permission.PlayerHasPermission(steamId, "@css/generic") || _core.Permission.PlayerHasPermission(steamId, "@css/root")) continue;
+
+                filteredRows.Add(row);
+                if (filteredRows.Count >= safeLimit) break;
+            }
+
+            return filteredRows;
         }
         catch (Exception ex)
         {

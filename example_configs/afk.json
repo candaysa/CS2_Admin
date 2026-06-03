@@ -1,0 +1,10 @@
+{
+  "CS2AdminAfk": {
+    "Version": 2,
+    "Enabled": false,
+    "Timer": 30,
+    "SkipWarmup": true,
+    "WarningSound": "UIPanorama.ui_custom_lobby_dialog_slide",
+    "AfkSkipAdmin": false
+  }
+}

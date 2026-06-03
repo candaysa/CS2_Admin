@@ -286,7 +286,7 @@ public class PlayerSessionManager
                 new { ExpandedLimit = Math.Max(safeLimit * 5, 100) });
 
             return rows
-                .Where(x => x.SteamId != 0 && !adminSteamIds.Contains(x.SteamId))
+                .Where(x => x.SteamId != 0 && !adminSteamIds.Contains(x.SteamId) && !_core.Permission.PlayerHasPermission(x.SteamId, "@css/generic") && !_core.Permission.PlayerHasPermission(x.SteamId, "@css/root"))
                 .Take(safeLimit)
                 .ToList();
         }

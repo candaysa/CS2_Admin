@@ -51,7 +51,7 @@ public static class PlayerUtils
         return false;
     }
 
-    public static IPlayer? FindPlayerByTarget(ISwiftlyCore core, string target)
+    public static IPlayer? FindPlayerByTarget(ISwiftlyCore core, string target, IPlayer? caller = null)
     {
         var players = core.PlayerManager.GetAllPlayers().Where(p => p.IsValid).ToList();
         var normalizedTarget = target.Trim();
@@ -92,7 +92,7 @@ public static class PlayerUtils
         return null;
     }
 
-    public static List<IPlayer> FindPlayersByTarget(ISwiftlyCore core, string target, bool includeDeadPlayers = true)
+    public static List<IPlayer> FindPlayersByTarget(ISwiftlyCore core, string target, bool includeDeadPlayers = true, IPlayer? caller = null)
     {
         var players = core.PlayerManager.GetAllPlayers().Where(p => p.IsValid).ToList();
         var normalizedTarget = target.Trim();
@@ -121,10 +121,14 @@ public static class PlayerUtils
                 return players.Where(p => p.IsFakeClient).ToList();
             case "@humans":
                 return players.Where(p => !p.IsFakeClient).ToList();
+            case "@me":
+                if (caller != null && caller.IsValid)
+                    return new List<IPlayer> { caller };
+                break;
         }
 
         // Single player target
-        var player = FindPlayerByTarget(core, normalizedTarget);
+        var player = FindPlayerByTarget(core, normalizedTarget, caller);
         return player != null ? new List<IPlayer> { player } : new List<IPlayer>();
     }
 
@@ -208,7 +212,7 @@ public static class PlayerUtils
             1 => localizer["team_spectator"],
             2 => localizer["team_terrorist"],
             3 => localizer["team_ct"],
-            _ => localizer["team_unknown"]
+            _ => localizer["unknown"]
         };
     }
 
@@ -276,7 +280,10 @@ public static class PlayerUtils
                 return true;
             }
 
-            context.Reply($" \x02{PluginLocalizer.Get(core)["prefix"]}\x01 {PluginLocalizer.Get(core)["cannot_target_self"]}");
+            var prefix = PluginLocalizer.Get(core)["prefix"];
+            var msg = PluginLocalizer.Get(core)["cannot_target_self"];
+            var sender = context.Sender;
+            core.Scheduler.NextTick(() => sender.SendChat($" \x02{prefix}\x01 {msg}"));
             return false;
         }
 
@@ -284,7 +291,10 @@ public static class PlayerUtils
         var targetImm = await adminDbManager.GetEffectiveImmunityAsync(targetSteamId);
         if (targetImm >= adminImm && targetImm > 0)
         {
-            context.Reply($" \x02{PluginLocalizer.Get(core)["prefix"]}\x01 {PluginLocalizer.Get(core)["cannot_target_immunity"]}");
+            var prefix = PluginLocalizer.Get(core)["prefix"];
+            var msg = PluginLocalizer.Get(core)["cannot_target_immunity"];
+            var sender = context.Sender;
+            core.Scheduler.NextTick(() => sender.SendChat($" \x02{prefix}\x01 {msg}"));
             return false;
         }
 
@@ -310,7 +320,9 @@ public static class PlayerUtils
                 return true;
             }
 
-            admin.SendChat($" \x02{PluginLocalizer.Get(core)["prefix"]}\x01 {PluginLocalizer.Get(core)["cannot_target_self"]}");
+            var prefix = PluginLocalizer.Get(core)["prefix"];
+            var msg = PluginLocalizer.Get(core)["cannot_target_self"];
+            core.Scheduler.NextTick(() => admin.SendChat($" \x02{prefix}\x01 {msg}"));
             return false;
         }
 
@@ -318,7 +330,9 @@ public static class PlayerUtils
         var targetImm = await adminDbManager.GetEffectiveImmunityAsync(targetSteamId);
         if (targetImm >= adminImm && targetImm > 0)
         {
-            admin.SendChat($" \x02{PluginLocalizer.Get(core)["prefix"]}\x01 {PluginLocalizer.Get(core)["cannot_target_immunity"]}");
+            var prefix = PluginLocalizer.Get(core)["prefix"];
+            var msg = PluginLocalizer.Get(core)["cannot_target_immunity"];
+            core.Scheduler.NextTick(() => admin.SendChat($" \x02{prefix}\x01 {msg}"));
             return false;
         }
 

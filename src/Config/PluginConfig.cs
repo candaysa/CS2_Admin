@@ -8,7 +8,7 @@ public class PluginConfig
     public int Version { get; set; } = CurrentVersion;
     public bool Debug { get; set; } = false;
     public string Language { get; set; } = "en";
-    public List<string> LanguageOptions { get; set; } = ["en", "tr", "de", "fr", "it", "el", "ru", "bg", "hu"];
+    public List<string> LanguageOptions { get; set; } = ["en", "tr", "de", "ru", "hu"];
     [JsonIgnore]
     public DiscordFileConfig Discord { get; set; } = new();
     [JsonIgnore]
@@ -74,7 +74,7 @@ public class PluginConfig
 
 public class TagsConfig
 {
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; } = false;
     public string PlayerTag { get; set; } = "PLAYER";
     public bool ShowAdminName { get; set; } = true;
 }
@@ -112,7 +112,7 @@ public class ChatTagsFileConfig
         "[magenta]"
     ];
     // Legacy alias for older tags.json files.
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; } = false;
     public Dictionary<string, ChatTagGroupStyle> Groups { get; set; } = new();
 }
 
@@ -128,11 +128,13 @@ public class AdminPlaytimeConfig
     public int TrackIntervalMinutes { get; set; } = 1;
     public int MenuTopLimit { get; set; } = 20;
     public int DiscordTopLimit { get; set; } = 20;
+    public bool AutoSendResetAfterSend { get; set; } = false;
+    public int AutoSendDayOfWeek { get; set; } = 0;
 }
 
 public class MultiServerConfig
 {
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; } = false;
     public bool GlobalBansByDefault { get; set; } = true;
 }
 
@@ -170,7 +172,7 @@ public class AfkFileConfig
 {
     public const int CurrentVersion = 2;
     public int Version { get; set; } = CurrentVersion;
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; } = false;
     public float Timer { get; set; } = 30f;
     public bool SkipWarmup { get; set; } = true;
     public string WarningSound { get; set; } = "UIPanorama.ui_custom_lobby_dialog_slide";
@@ -260,9 +262,7 @@ public class CommandsConfig
     public List<string> Unfreeze { get; set; } = ["unfreeze"];
     [JsonIgnore]
     public List<string> Resize { get; set; } = ["resize"];
-    [JsonIgnore]
-    public List<string> Drug { get; set; } = ["drug"];
-    [JsonIgnore]
+    [JsonIgnore]
     public List<string> Blind { get; set; } = ["blind"];
     [JsonIgnore]
     public List<string> Glow { get; set; } = ["glow", "glove"];
@@ -293,13 +293,19 @@ public class CommandsConfig
     [JsonIgnore]
     public List<string> RestartGame { get; set; } = ["rr", "restart"];
     [JsonIgnore]
+    public List<string> HeadshotMode { get; set; } = ["hson", "hsoff"];
+    [JsonIgnore]
     public List<string> HeadshotOn { get; set; } = ["hson"];
     [JsonIgnore]
     public List<string> HeadshotOff { get; set; } = ["hsoff"];
     [JsonIgnore]
+    public List<string> BunnyHop { get; set; } = ["bhopon", "bunnyon", "bhopoff", "bunnyoff"];
+    [JsonIgnore]
     public List<string> BunnyOn { get; set; } = ["bhopon", "bunnyon"];
     [JsonIgnore]
     public List<string> BunnyOff { get; set; } = ["bhopoff", "bunnyoff"];
+    [JsonIgnore]
+    public List<string> RespawnMode { get; set; } = ["respawnon", "respawnoff"];
     [JsonIgnore]
     public List<string> RespawnOn { get; set; } = ["respawnon"];
     [JsonIgnore]
@@ -363,7 +369,7 @@ public class PermissionsConfig
     public string Freeze { get; set; } = "admin.cheats";
     public string Unfreeze { get; set; } = "admin.cheats";
     public string Resize { get; set; } = "admin.cheats";
-    public string Drug { get; set; } = "admin.cheats";
+
     public string Blind { get; set; } = "admin.cheats";
     public string Glow { get; set; } = "admin.cheats";
     public string Beacon { get; set; } = "admin.cheats";
@@ -466,3 +472,4 @@ public class SanctionMenuConfig
         new() { Name = "Permanent", Minutes = -1 }
     };
 }
+

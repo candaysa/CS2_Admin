@@ -1,5 +1,11 @@
-build
-bin
-obj
-examples
-.tmp_*
+# Build and Output Folders
+build/
+obj/
+bin/
+
+# IDE and User specific files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates

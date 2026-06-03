@@ -1,5 +1,6 @@
 using CS2_Admin.Models;
 using CS2_Admin.Utils;
+using Dapper;
 using Dommel;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
@@ -87,7 +88,11 @@ public class MuteManager
                 var admin = _currentAdmin.Value ?? new AdminContext();
                 using var connection = _core.Database.GetConnection("mysql_detailed");
 
-                var mute = connection.FirstOrDefault<Mute>(m => m.SteamId == steamId && m.StatusValue == MuteStatusNames.Active);
+                var mute = connection.QueryFirstOrDefault<Mute>(
+                    $@"SELECT * FROM `admin_mutes` WHERE `steamid` = @SteamId AND {PunishmentQueryCompat.ActiveStatusWhere} ORDER BY `created_at` DESC LIMIT 1",
+                    new { SteamId = steamId }
+                );
+
                 if (mute == null)
                 {
                     return false;
@@ -134,8 +139,15 @@ public class MuteManager
             }
 
             using var connection = _core.Database.GetConnection("mysql_detailed");
-            var mutes = connection.Select<Mute>(m => m.SteamId == steamId && m.StatusValue == MuteStatusNames.Active);
-            var mute = mutes.FirstOrDefault(m => m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow);
+            
+            var mute = connection.QueryFirstOrDefault<Mute>(
+                $@"SELECT * FROM `admin_mutes` 
+                  WHERE `steamid` = @SteamId 
+                    AND {PunishmentQueryCompat.ActiveStatusWhere} 
+                    AND (`expires_at` IS NULL OR `expires_at` > @Now) 
+                  ORDER BY `created_at` DESC LIMIT 1",
+                new { SteamId = steamId, Now = DateTime.UtcNow }
+            );
 
             if (mute != null)
             {
@@ -181,8 +193,10 @@ public class MuteManager
             try
             {
                 using var connection = _core.Database.GetConnection("mysql_detailed");
-                var mutes = connection.Select<Mute>(m => m.SteamId == steamId);
-                return mutes.Count();
+                return connection.ExecuteScalar<int>(
+                    "SELECT COUNT(*) FROM `admin_mutes` WHERE `steamid` = @SteamId",
+                    new { SteamId = steamId }
+                );
             }
             catch (Exception ex)
             {
@@ -199,16 +213,15 @@ public class MuteManager
             try
             {
                 using var connection = _core.Database.GetConnection("mysql_detailed");
-                var activeMutes = connection.Select<Mute>(m => m.StatusValue == MuteStatusNames.Active);
-                var expiredMutes = activeMutes.Where(m => m.ExpiresAt != null && m.ExpiresAt <= DateTime.UtcNow);
-
-                var cleaned = 0;
-                foreach (var mute in expiredMutes)
-                {
-                    mute.Status = MuteStatus.Expired;
-                    connection.Update(mute);
-                    cleaned++;
-                }
+                
+                var cleaned = connection.Execute(
+                    $@"UPDATE `admin_mutes` 
+                      SET `status` = '3' 
+                      WHERE {PunishmentQueryCompat.ActiveStatusWhere} 
+                        AND `expires_at` IS NOT NULL 
+                        AND `expires_at` <= @Now",
+                    new { Now = DateTime.UtcNow }
+                );
 
                 if (cleaned > 0)
                 {

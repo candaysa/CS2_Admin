@@ -1,0 +1,62 @@
+{
+  "CS2AdminCommands": {
+    "Version": 3,
+    "CallAdmin": [
+      "calladmin"
+    ],
+    "Report": [
+      "report"
+    ],
+    "AdminTime": [
+      "admintime"
+    ],
+    "AdminTimeSend": [
+      "admintimesend"
+    ],
+    "Afk": [
+      "afk"
+    ],
+    "Ban": [
+      "ban"
+    ],
+    "IpBan": [
+      "ipban"
+    ],
+    "LastBan": [
+      "lastban"
+    ],
+    "Warn": [
+      "warn"
+    ],
+    "Unwarn": [
+      "unwarn"
+    ],
+    "AddBan": [
+      "addban"
+    ],
+    "Unban": [
+      "unban"
+    ],
+    "Kick": [
+      "kick"
+    ],
+    "Goto": [
+      "goto"
+    ],
+    "Bring": [
+      "bring"
+    ],
+    "ChangeMap": [
+      "map"
+    ],
+    "ChangeWSMap": [
+      "wsmap"
+    ],
+    "ListPlayers": [
+      "players"
+    ],
+    "Who": [
+      "who"
+    ]
+  }
+}

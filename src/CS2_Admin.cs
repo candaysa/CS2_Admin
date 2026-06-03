@@ -3,6 +3,7 @@ using CS2_Admin.Config;
 using CS2_Admin.Database;
 using CS2_Admin.Events;
 using CS2_Admin.Menu;
+using CS2_Admin.Services;
 using CS2_Admin.Utils;
 
 using Microsoft.Extensions.Configuration;
@@ -14,26 +15,26 @@ using SwiftlyS2.Shared.GameEventDefinitions;
 using SwiftlyS2.Shared.GameEvents;
 using SwiftlyS2.Shared.Misc;
 using SwiftlyS2.Shared.Plugins;
-using SwiftlyS2.Shared.Translation;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Reflection;
-using System.Data;
-using System.Threading;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text;
-using System.Text.Encodings.Web;
 
 namespace CS2_Admin;
 
 [PluginMetadata(Id = "CS2_Admin", Version = "1.0.12", Name = "CS2_Admin", Author = "CanDaysa", Description = "Comprehensive admin plugin for CS2.")]
-public partial class CS2_Admin : BasePlugin
+public class CS2_Admin : BasePlugin
 {
     private PluginConfig _config = null!;
-    public PluginConfig Config => _config;
-    public AdminMenuManager AdminMenuManager { get; private set; } = null!;
+    private AdminMenuManager _adminMenuManager = null!;
+    private DiscordBotService _discord = null!;
+    private EventRegistrar _eventRegistrar = null!;
+    private AfkManagerService _afkManager = null!;
+    private PlayerSanctionStateService _sanctionStateService = null!;
+    private RecentPlayersTracker _recentPlayersTracker = null!;
+    private ChatTagConfigManager _chatTagConfigManager = null!;
 
-    // Database managers
     private BanManager _banManager = null!;
     private MuteManager _muteManager = null!;
     private GagManager _gagManager = null!;
@@ -50,105 +51,119 @@ public partial class CS2_Admin : BasePlugin
     private PlayerSessionManager _playerSessionManager = null!;
     private PlayerNameHistoryManager _playerNameHistoryManager = null!;
 
-    // Command handlers
-    private BanCommands _banCommands = null!;
-    private MuteCommands _muteCommands = null!;
-    private PlayerCommands _playerCommands = null!;
-    private ServerCommands _serverCommands = null!;
-    private AdminCommands _adminCommands = null!;
-    private ChatCommands _chatCommands = null!;
-    private WarnCommands _warnCommands = null!;
-    private AdminPlaytimeCommands _adminPlaytimeCommands = null!;
+    private AdminMenuCommand _adminMenuCmd = null!;
+    private AsayCommand _asayCmd = null!;
+    private SayCommand _sayCmd = null!;
+    private PsayCommand _psayCmd = null!;
+    private CsayCommand _csayCmd = null!;
+    private HsayCommand _hsayCmd = null!;
+    private CallAdminCommand _callAdminCmd = null!;
+    private ReportCommand _reportCmd = null!;
+    private AdminTimeCommand _adminTimeCmd = null!;
+    private AdminTimeSendCommand _adminTimeSendCmd = null!;
+    private BanCommand _banCmd = null!;
+    private IpBanCommand _ipBanCmd = null!;
+    private LastBanCommand _lastBanCmd = null!;
+    private AddBanCommand _addBanCmd = null!;
+    private UnbanCommand _unbanCmd = null!;
+    private WarnCommand _warnCmd = null!;
+    private UnwarnCommand _unwarnCmd = null!;
+    private MuteCommand _muteCmd = null!;
+    private UnmuteCommand _unmuteCmd = null!;
+    private GagCommand _gagCmd = null!;
+    private UngagCommand _ungagCmd = null!;
+    private SilenceCommand _silenceCmd = null!;
+    private UnsilenceCommand _unsilenceCmd = null!;
+    private KickCommand _kickCmd = null!;
+    private SlapCommand _slapCmd = null!;
+    private SlayCommand _slayCmd = null!;
+    private RespawnCommand _respawnCmd = null!;
+    private TeamCommand _teamCmd = null!;
+    private MixTeamCommand _mixTeamCmd = null!;
+    private NoClipCommand _noClipCmd = null!;
+    private GotoCommand _gotoCmd = null!;
+    private BringCommand _bringCmd = null!;
+    private FreezeCommand _freezeCmd = null!;
+    private UnfreezeCommand _unfreezeCmd = null!;
+    private ResizeCommand _resizeCmd = null!;
 
-    // Event handlers
-    private EventHandlers _eventHandlers = null!;
+    private BlindCommand _blindCmd = null!;
+    private GlowCommand _glowCmd = null!;
+    private BeaconCommand _beaconCmd = null!;
+    private BurnCommand _burnCmd = null!;
+    private DisarmCommand _disarmCmd = null!;
+    private SpeedCommand _speedCmd = null!;
+    private GravityCommand _gravityCmd = null!;
+    private RenameCommand _renameCmd = null!;
+    private UnrenameCommand _unrenameCmd = null!;
+    private HpCommand _hpCmd = null!;
+    private MoneyCommand _moneyCmd = null!;
+    private GiveCommand _giveCmd = null!;
+    private VoteCommand _voteCmd = null!;
+    private MapCommand _mapCmd = null!;
+    private WsMapCommand _wsMapCmd = null!;
+    private RestartCommand _restartCmd = null!;
+    private HsToggleCommand _hsToggleCmd = null!;
+    private BunnyToggleCommand _bunnyToggleCmd = null!;
+    private RespawnToggleCommand _respawnToggleCmd = null!;
+    private RconCommand _rconCmd = null!;
+    private CvarCommand _cvarCmd = null!;
+    private ListPlayersCommand _listPlayersCmd = null!;
+    private WhoCommand _whoCmd = null!;
+    private AddAdminCommand _addAdminCmd = null!;
+    private EditAdminCommand _editAdminCmd = null!;
+    private RemoveAdminCommand _removeAdminCmd = null!;
+    private ListAdminsCommand _listAdminsCmd = null!;
+    private AddGroupCommand _addGroupCmd = null!;
+    private EditGroupCommand _editGroupCmd = null!;
+    private RemoveGroupCommand _removeGroupCmd = null!;
+    private ListGroupsCommand _listGroupsCmd = null!;
+    private GodCommand _godCmd = null!;
+    private AdminReloadCommand _adminReloadCmd = null!;
 
-    // Utils
-    private DiscordBotService _discord = null!;
-    private AfkManagerService _afkManager = null!;
-    private PlayerSanctionStateService _sanctionStateService = null!;
-    private RecentPlayersTracker _recentPlayersTracker = null!;
-    private ChatTagConfigManager _chatTagConfigManager = null!;
+    private static readonly HashSet<string> BlockedAliases = new(StringComparer.OrdinalIgnoreCase) { "groups" };
+    private static readonly HashSet<string> RawConCollisions = new(StringComparer.OrdinalIgnoreCase) { "say", "kick", "noclip", "give", "map", "restart", "rcon" };
+    private static readonly ConcurrentDictionary<string, long> RecentCmd = new();
+    private const long DedupMs = 500;
+    private const long RetentionMs = 10_000;
     private Timer? _adminPlaytimeTimer;
+    private Timer? _adminTimeAutoSendTimer;
+    private Timer? _periodicUpdateTimer;
     private int _isTrackingAdminPlaytime;
-    private string? _resolvedTranslationDirectory;
-    private string? _appliedLocalizerKey;
-    private static readonly HashSet<string> BlockedCommandAliases = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "groups"
-    };
-    private static readonly HashSet<string> RawConCommandCollisionAliases = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "say",
-        "kick",
-        "noclip",
-        "give",
-        "map",
-        "restart",
-        "rcon"
-    };
-    private static readonly object CommandDedupeLock = new();
-    private static readonly Dictionary<string, long> RecentCommandExecutions = new(StringComparer.Ordinal);
-    private const long CommandDedupeWindowMs = 500;
-    private const long CommandDedupeRetentionMs = 10_000;
 
-    public CS2_Admin(ISwiftlyCore core) : base(core)
-    {
-    }
-
-    public override void ConfigureSharedInterface(IInterfaceManager interfaceManager)
-    {
-    }
-
-    public override void UseSharedInterface(IInterfaceManager interfaceManager)
-    {
-    }
+    public CS2_Admin(ISwiftlyCore core) : base(core) { }
 
     public override void Load(bool hotReload)
     {
-        // Load configuration
         LoadConfiguration();
-        TryApplyConfiguredLocalizer(_config.Language, force: true);
-
-        Core.Logger.LogInformationIfEnabled("[CS2Admin] Loading plugin...");
-
-        // Initialize utilities
-        _discord = new DiscordBotService(Core, Config.Discord);
-
-        // Initialize database managers
+        _discord = new DiscordBotService(Core, _config.Discord);
         InitializeDatabaseManagers();
         _discord.EnsureGatewayConnection();
-
-        // Initialize Admin Menu Manager
-        AdminMenuManager = new AdminMenuManager(Core, Config, _warnManager, _adminDbManager, _groupDbManager, _adminLogManager, _adminPlaytimeDbManager);
-
+        _adminMenuManager = new AdminMenuManager(Core, _config, _warnManager, _adminDbManager, _groupDbManager, _adminLogManager, _adminPlaytimeDbManager);
         _adminLogManager.SetDiscordBotService(_discord);
-
-        // Initialize command handlers
-        InitializeCommandHandlers();
-
-        // Initialize event handlers
+        InitializeCommands();
         InitializeEventHandlers();
-
-        // Register commands
         RegisterCommands();
-
-        // Register events
-        RegisterEvents();
         _afkManager.Start();
-
-        // Initialize databases
         _ = InitializeDatabasesAsync();
+        
+        var versionAttr = (PluginMetadata)Attribute.GetCustomAttribute(typeof(CS2_Admin), typeof(PluginMetadata));
+        if (versionAttr != null)
+        {
+            _ = Task.Run(() => global::CS2_Admin.Utils.AutoUpdater.CheckForUpdatesAsync(Core, versionAttr.Version));
+            StartPeriodicUpdateCheck(versionAttr.Version);
+        }
 
         Core.Logger.LogInformationIfEnabled("[CS2Admin] Plugin loaded successfully!");
     }
 
     public override void Unload()
     {
-        Core.Logger.LogInformationIfEnabled("[CS2Admin] Unloading plugin...");
-        _eventHandlers?.UnregisterHooks();
+        _eventRegistrar?.UnregisterAll();
         _afkManager?.Stop();
         _adminPlaytimeTimer?.Dispose();
+        _adminTimeAutoSendTimer?.Dispose();
+        _periodicUpdateTimer?.Dispose();
         _discord?.StopBackgroundUpdates();
     }
 
@@ -156,306 +171,242 @@ public partial class CS2_Admin : BasePlugin
     {
         _config = new PluginConfig();
         _chatTagConfigManager ??= new ChatTagConfigManager(Core);
+        EnsureConfig<PluginConfig>("config.json", "CS2Admin", PluginConfig.CurrentVersion, cfg => _config = cfg);
+        EnsureConfig<CommandsConfig>("commands.json", "CS2AdminCommands", CommandsConfig.CurrentVersion, cfg => _config.Commands = cfg);
+        EnsureConfig<PermissionsConfig>("permissions.json", "CS2AdminPermissions", PermissionsConfig.CurrentVersion, cfg => _config.Permissions = cfg);
+        EnsureConfig<MapsFileConfig>("maps.json", "CS2AdminMaps", MapsFileConfig.CurrentVersion, cfg => { _config.MapsFile = cfg; if (cfg.Maps.Count > 0) _config.GameMaps.Maps = cfg.Maps; if (cfg.WorkshopMaps.Count > 0) _config.WorkshopMaps.Maps = cfg.WorkshopMaps; });
+        EnsureConfig<DiscordFileConfig>("discord.json", "CS2_Discord", DiscordFileConfig.CurrentVersion, cfg => { _config.Discord = cfg; ServerIdentity.ConfigurePublicIp(cfg.ServerPublicIp); });
+        EnsureConfig<AfkFileConfig>("afk.json", "CS2AdminAfk", AfkFileConfig.CurrentVersion, cfg => _config.Afk = cfg);
+        LoadChatTags();
+        SanitizeCommandAliases();
+        EnsureInternalMenuAliases();
+        EnsureBanModeConfig();
+        _config.BanMode = PluginConfig.NormalizeBanMode(_config.BanMode);
+        DebugSettings.LoggingEnabled = _config.Debug;
+        ApplyLanguageCulture(_config.Language);
+        PluginLocalizer.SetConfiguredPrefix(_config.Messages.Prefix);
+        LoadCustomLocalizer();
+    }
 
-        EnsureVersionedConfigFile<PluginConfig>("config.json", "CS2Admin", PluginConfig.CurrentVersion);
-        EnsureVersionedConfigFile<CommandsConfig>("commands.json", "CS2AdminCommands", CommandsConfig.CurrentVersion);
-        EnsureVersionedConfigFile<PermissionsConfig>("permissions.json", "CS2AdminPermissions", PermissionsConfig.CurrentVersion);
-        EnsureVersionedConfigFile<MapsFileConfig>("maps.json", "CS2AdminMaps", MapsFileConfig.CurrentVersion);
-        EnsureVersionedConfigFile<DiscordFileConfig>("discord.json", "CS2_Discord", DiscordFileConfig.CurrentVersion);
-        EnsureVersionedConfigFile<AfkFileConfig>("afk.json", "CS2AdminAfk", AfkFileConfig.CurrentVersion);
-
+    private void LoadCustomLocalizer()
+    {
         try
         {
-            // Initialize config file with model - this will auto-create config.json if it doesn't exist
-            Core.Configuration
-                .InitializeJsonWithModel<PluginConfig>("config.json", "CS2Admin")
-                .Configure(builder => builder.AddJsonFile(Core.Configuration.GetConfigPath("config.json"), optional: false, reloadOnChange: true));
+            var languageDir = Path.Combine(Core.PluginPath, "resources", "language");
+            Core.Logger.LogInformationIfEnabled("[CS2Admin] Attempting to load custom localizer from: {Path} | Config Language: {Lang}", languageDir, _config.Language);
+            
+            // Extract embedded translations to disk if they are missing.
+            ExtractEmbeddedTranslationsToConfigDirectory(languageDir);
 
-            // Bind configuration to our model. Support both:
-            // 1) { "CS2Admin": { ... } }
-            // 2) { ... }  (root-level keys)
-            var pluginSection = Core.Configuration.Manager.GetSection("CS2Admin");
-            if (pluginSection.GetChildren().Any())
+            var localizer = JsonFileLocalizer.TryCreate(languageDir, _config.Language);
+            if (localizer != null)
             {
-                pluginSection.Bind(_config);
+                PluginLocalizer.SetOverride(localizer);
+                Core.Logger.LogInformationIfEnabled("[CS2Admin] Custom localizer loaded successfully from: {Path}", languageDir);
             }
             else
             {
-                Core.Configuration.Manager.Bind(_config);
+                Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to create custom localizer from {Path}, fallback to native.", languageDir);
             }
-
-            _config.BanMode = PluginConfig.NormalizeBanMode(_config.BanMode);
-
-            // Resolve language defensively from multiple config layouts.
-            // Priority: root Language > CS2_Admin.Language > CS2Admin.Language > bound value.
-            _config.Language = ResolveConfiguredLanguage(Core.Configuration.GetConfigPath("config.json"), _config.Language);
-
-            ApplyLanguageCulture(_config.Language);
-            PluginLocalizer.SetConfiguredPrefix(_config.Messages.Prefix);
-
-            Core.Logger.LogInformationIfEnabled("[CS2Admin] Configuration loaded from {Path}", Core.Configuration.GetConfigPath("config.json"));
-            Core.Logger.LogInformationIfEnabled("[CS2Admin] Config language set to: {Language}", _config.Language);
         }
         catch (Exception ex)
         {
-            _config.Language = "en";
-            ApplyLanguageCulture(_config.Language);
-            PluginLocalizer.SetConfiguredPrefix(_config.Messages.Prefix);
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to fully load config.json, continuing with defaults/partial values: {Message}", ex.Message);
+            Core.Logger.LogWarningIfEnabled("[CS2Admin] Error loading custom localizer: {Message}\n{StackTrace}", ex.Message, ex.StackTrace);
         }
+    }
 
+    private void ExtractEmbeddedTranslationsToConfigDirectory(string outputDir)
+    {
         try
         {
-            // Load command aliases from a dedicated config file (commands.json)
-            Core.Configuration
-                .InitializeJsonWithModel<CommandsConfig>("commands.json", "CS2AdminCommands")
-                .Configure(builder => builder.AddJsonFile(Core.Configuration.GetConfigPath("commands.json"), optional: false, reloadOnChange: true));
-            var commandsConfig = new CommandsConfig();
-            Core.Configuration.Manager.GetSection("CS2AdminCommands").Bind(commandsConfig);
-            _config.Commands = commandsConfig;
-            EnsureRequiredCommandAliases(_config.Commands);
-            EnsureInternalMenuAliases(_config.Commands);
-            SanitizeCommandAliases();
+            Directory.CreateDirectory(outputDir);
 
-            Core.Logger.LogInformationIfEnabled("[CS2Admin] Command aliases loaded from {Path}", Core.Configuration.GetConfigPath("commands.json"));
-        }
-        catch (Exception ex)
-        {
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to load commands.json, using command aliases from main/default config: {Message}", ex.Message);
-            EnsureRequiredCommandAliases(_config.Commands);
-            EnsureInternalMenuAliases(_config.Commands);
-            SanitizeCommandAliases();
-        }
+            var asm = System.Reflection.Assembly.GetExecutingAssembly();
+            var resources = asm.GetManifestResourceNames()
+                .Where(x => x.StartsWith("CS2_Admin.Translations.", StringComparison.OrdinalIgnoreCase)
+                            && x.EndsWith(".jsonc", StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
-        try
-        {
-            // Load permissions from a dedicated config file (permissions.json)
-            Core.Configuration
-                .InitializeJsonWithModel<PermissionsConfig>("permissions.json", "CS2AdminPermissions")
-                .Configure(builder => builder.AddJsonFile(Core.Configuration.GetConfigPath("permissions.json"), optional: false, reloadOnChange: true));
-            var permissionsConfig = new PermissionsConfig();
-            Core.Configuration.Manager.GetSection("CS2AdminPermissions").Bind(permissionsConfig);
-            _config.Permissions = permissionsConfig;
-
-            Core.Logger.LogInformationIfEnabled("[CS2Admin] Permissions loaded from {Path}", Core.Configuration.GetConfigPath("permissions.json"));
-        }
-        catch (Exception ex)
-        {
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to load permissions.json, using default permissions: {Message}", ex.Message);
-        }
-
-        try
-        {
-            Core.Configuration
-                .InitializeJsonWithModel<MapsFileConfig>("maps.json", "CS2AdminMaps")
-                .Configure(builder => builder.AddJsonFile(Core.Configuration.GetConfigPath("maps.json"), optional: false, reloadOnChange: true));
-
-            var mapsFileConfig = new MapsFileConfig();
-            Core.Configuration.Manager.GetSection("CS2AdminMaps").Bind(mapsFileConfig);
-            _config.MapsFile = mapsFileConfig;
-
-            if (mapsFileConfig.Maps.Count > 0)
+            if (resources.Count == 0)
             {
-                _config.GameMaps.Maps = mapsFileConfig.Maps;
+                Core.Logger.LogWarningIfEnabled("[CS2Admin] No embedded translation resources were found in assembly.");
+                return;
             }
 
-            if (mapsFileConfig.WorkshopMaps.Count > 0)
+            foreach (var resourceName in resources)
             {
-                _config.WorkshopMaps.Maps = mapsFileConfig.WorkshopMaps;
-            }
+                var fileName = resourceName["CS2_Admin.Translations.".Length..];
+                var destinationPath = Path.Combine(outputDir, fileName);
+                
+                // Do not overwrite existing files, allowing users to modify them
+                if (File.Exists(destinationPath))
+                {
+                    continue;
+                }
 
-            Core.Logger.LogInformationIfEnabled("[CS2Admin] Maps loaded from {Path}", Core.Configuration.GetConfigPath("maps.json"));
+                using var stream = asm.GetManifestResourceStream(resourceName);
+                if (stream == null) continue;
+
+                using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
+                var content = reader.ReadToEnd();
+                File.WriteAllText(destinationPath, content, System.Text.Encoding.UTF8);
+            }
         }
         catch (Exception ex)
         {
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to load maps.json, using default maps: {Message}", ex.Message);
+            Core.Logger.LogWarningIfEnabled("[CS2Admin] Error extracting embedded translations: {Message}", ex.Message);
         }
+    }
 
-        CleanupLegacyCommandsFromConfig();
-        EnsureBanModeConfig();
-        DebugSettings.LoggingEnabled = _config.Debug;
-
+    private void EnsureConfig<T>(string file, string section, int version, Action<T> apply) where T : class, new()
+    {
         try
         {
-            Core.Configuration
-                .InitializeJsonWithModel<DiscordFileConfig>("discord.json", "CS2_Discord")
-                .Configure(builder => builder.AddJsonFile(Core.Configuration.GetConfigPath("discord.json"), optional: false, reloadOnChange: true));
-            var discordConfig = new DiscordFileConfig();
-            Core.Configuration.Manager.GetSection("CS2_Discord").Bind(discordConfig);
-            _config.Discord = discordConfig;
-            ServerIdentity.ConfigurePublicIp(discordConfig.ServerPublicIp);
-            Core.Logger.LogInformationIfEnabled("[CS2Admin] Discord bot configuration loaded from {Path}", Core.Configuration.GetConfigPath("discord.json"));
+            global::CS2_Admin.Utils.ConfigMigrator.EnsureVersionedConfigFile<T>(Core, Core.Configuration.GetConfigPath(file), file, section, version);
+            Core.Configuration.InitializeJsonWithModel<T>(file, section).Configure(b => b.AddJsonFile(Core.Configuration.GetConfigPath(file), false, true));
+            var cfg = new T();
+            Core.Configuration.Manager.GetSection(section).Bind(cfg);
+            apply(cfg);
         }
         catch (Exception ex)
         {
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to load discord.json, using defaults: {Message}", ex.Message);
+            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to load {File}: {Msg}", file, ex.Message);
         }
+    }
 
+    private void ApplyLanguageCulture(string lang)
+    {
+        var culture = lang.ToLowerInvariant() switch { "tr" => "tr-TR", "de" => "de-DE", "fr" => "fr-FR", "it" => "it-IT", "el" => "el-GR", "ru" => "ru-RU", "bg" => "bg-BG", "hu" => "hu-HU", _ => "en-US" };
+        try { var ci = CultureInfo.GetCultureInfo(culture); CultureInfo.DefaultThreadCurrentCulture = ci; CultureInfo.DefaultThreadCurrentUICulture = ci; } catch { }
+    }
+
+    private void LoadChatTags()
+    {
         try
         {
             _chatTagConfigManager.Load();
             _config.Tags.Enabled = _chatTagConfigManager.Config.ScoreboardEnabled;
             _config.Tags.PlayerTag = string.IsNullOrWhiteSpace(_chatTagConfigManager.Config.PlayerTag) ? "PLAYER" : _chatTagConfigManager.Config.PlayerTag.Trim();
             _config.Tags.ShowAdminName = _chatTagConfigManager.Config.ShowAdminName;
-            _config.ShowAdminName = _chatTagConfigManager.Config.ShowAdminName;
-            Core.Logger.LogInformationIfEnabled("[CS2Admin] Chat tags loaded from {Path}", Core.Configuration.GetConfigPath("tags.json"));
         }
         catch (Exception ex)
         {
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to load tags.json, using defaults: {Message}", ex.Message);
-        }
-
-        try
-        {
-            Core.Configuration
-                .InitializeJsonWithModel<AfkFileConfig>("afk.json", "CS2AdminAfk")
-                .Configure(builder => builder.AddJsonFile(Core.Configuration.GetConfigPath("afk.json"), optional: false, reloadOnChange: true));
-            var afkConfig = new AfkFileConfig();
-            Core.Configuration.Manager.GetSection("CS2AdminAfk").Bind(afkConfig);
-            _config.Afk = afkConfig;
-            Core.Logger.LogInformationIfEnabled("[CS2Admin] AFK configuration loaded from {Path}", Core.Configuration.GetConfigPath("afk.json"));
-        }
-        catch (Exception ex)
-        {
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to load afk.json, using defaults: {Message}", ex.Message);
+            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to load tags.json, using defaults: {Msg}", ex.Message);
         }
     }
 
-    private void EnsureVersionedConfigFile<T>(string fileName, string sectionName, int expectedVersion) where T : class, new()
+    private void SanitizeCommandAliases()
     {
-        var filePath = Core.Configuration.GetConfigPath(fileName);
-        if (!File.Exists(filePath))
+        foreach (var prop in typeof(CommandsConfig).GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
-            return;
-        }
+            if (prop.PropertyType != typeof(List<string>))
+                continue;
 
+            var aliases = prop.GetValue(_config.Commands) as List<string>;
+            if (aliases == null || aliases.Count == 0)
+                continue;
+
+            var blocked = aliases
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Where(x => BlockedAliases.Contains(x))
+                .ToList();
+
+            if (blocked.Count > 0)
+                Core.Logger.LogWarningIfEnabled("[CS2Admin] Removed blocked command alias(es) [{Blocked}] from {Property}.", string.Join(", ", blocked), prop.Name);
+
+            var cleaned = aliases
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Where(x => !BlockedAliases.Contains(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            prop.SetValue(_config.Commands, cleaned);
+        }
+    }
+
+    private void EnsureInternalMenuAliases()
+    {
+        EnsurePreferredAlias(_config.Commands.Slap, "cs2a_slap");
+        EnsurePreferredAlias(_config.Commands.God, "cs2a_god");
+        EnsurePreferredAlias(_config.Commands.Slay, "cs2a_slay");
+        EnsurePreferredAlias(_config.Commands.Respawn, "cs2a_respawn");
+        EnsurePreferredAlias(_config.Commands.ChangeTeam, "cs2a_team");
+        EnsurePreferredAlias(_config.Commands.MixTeam, "cs2a_mixteam");
+        EnsurePreferredAlias(_config.Commands.NoClip, "cs2a_noclip");
+        EnsurePreferredAlias(_config.Commands.Goto, "cs2a_goto");
+        EnsurePreferredAlias(_config.Commands.Bring, "cs2a_bring");
+        EnsurePreferredAlias(_config.Commands.Freeze, "cs2a_freeze");
+        EnsurePreferredAlias(_config.Commands.Unfreeze, "cs2a_unfreeze");
+        EnsurePreferredAlias(_config.Commands.Resize, "cs2a_resize");
+
+        EnsurePreferredAlias(_config.Commands.Blind, "cs2a_blind");
+        EnsurePreferredAlias(_config.Commands.Glow, "cs2a_glow");
+        EnsurePreferredAlias(_config.Commands.Beacon, "cs2a_beacon");
+        EnsurePreferredAlias(_config.Commands.Burn, "cs2a_burn");
+        EnsurePreferredAlias(_config.Commands.Disarm, "cs2a_disarm");
+        EnsurePreferredAlias(_config.Commands.Speed, "cs2a_speed");
+        EnsurePreferredAlias(_config.Commands.Gravity, "cs2a_gravity");
+        EnsurePreferredAlias(_config.Commands.Hp, "cs2a_hp");
+        EnsurePreferredAlias(_config.Commands.Money, "cs2a_money");
+        EnsurePreferredAlias(_config.Commands.Give, "cs2a_give");
+        EnsurePreferredAlias(_config.Commands.ChangeMap, "cs2a_map");
+        EnsurePreferredAlias(_config.Commands.ChangeWSMap, "cs2a_wsmap");
+        EnsurePreferredAlias(_config.Commands.RestartGame, "cs2a_restart");
+        EnsurePreferredAlias(_config.Commands.HeadshotOn, "cs2a_hson");
+        EnsurePreferredAlias(_config.Commands.HeadshotOff, "cs2a_hsoff");
+        EnsurePreferredAlias(_config.Commands.BunnyOn, "cs2a_bunnyon");
+        EnsurePreferredAlias(_config.Commands.BunnyOff, "cs2a_bunnyoff");
+        EnsurePreferredAlias(_config.Commands.RespawnOn, "cs2a_respawnon");
+        EnsurePreferredAlias(_config.Commands.RespawnOff, "cs2a_respawnoff");
+    }
+
+    private static void EnsurePreferredAlias(List<string>? aliases, string preferredAlias)
+    {
+        if (aliases == null)
+            return;
+
+        aliases.RemoveAll(x => string.Equals(x?.Trim(), preferredAlias, StringComparison.OrdinalIgnoreCase));
+        aliases.Insert(0, preferredAlias);
+    }
+
+    private void EnsureBanModeConfig()
+    {
         try
         {
-            var json = File.ReadAllText(filePath);
+            var configPath = Core.Configuration.GetConfigPath("config.json");
+            if (!File.Exists(configPath))
+                return;
+
+            var json = File.ReadAllText(configPath);
             var root = JsonNode.Parse(json) as JsonObject;
             if (root == null)
-            {
-                RecreateConfigFile(filePath, fileName, expectedVersion, "root is not a JSON object");
                 return;
-            }
 
-            if (!TryReadVersionFromNode(root, sectionName, out var currentVersion) || currentVersion != expectedVersion)
-            {
-                T? migratedObj = null;
-                try
-                {
-                    var sectionNode = string.IsNullOrWhiteSpace(sectionName) ? root : (root[sectionName] as JsonObject ?? root);
-                    var sectionJson = sectionNode.ToJsonString();
-                    
-                    var options = new JsonSerializerOptions 
-                    { 
-                        ReadCommentHandling = JsonCommentHandling.Skip,
-                        AllowTrailingCommas = true,
-                        PropertyNameCaseInsensitive = true 
-                    };
-                    migratedObj = JsonSerializer.Deserialize<T>(sectionJson, options);
-                }
-                catch
-                {
-                }
+            JsonObject targetSection;
+            if (root["CS2Admin"] is JsonObject pluginSection)
+                targetSection = pluginSection;
+            else
+                targetSection = root;
 
-                migratedObj ??= new T();
+            var desiredBanMode = PluginConfig.NormalizeBanMode(targetSection["BanMode"]?.GetValue<string>());
+            targetSection.Remove("BanType");
+            targetSection.Remove("BanType_Info_Comment");
 
-                var versionProperty = typeof(T).GetProperty("Version");
-                if (versionProperty != null && versionProperty.CanWrite)
-                {
-                    versionProperty.SetValue(migratedObj, expectedVersion);
-                }
+            var currentBanMode = targetSection["BanMode"]?.GetValue<string>();
+            if (string.Equals(currentBanMode, desiredBanMode, StringComparison.OrdinalIgnoreCase))
+                return;
 
-                var writeOptions = new JsonSerializerOptions 
-                { 
-                    WriteIndented = true, 
-                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping 
-                };
-
-                string outJson;
-                if (!string.IsNullOrWhiteSpace(sectionName))
-                {
-                    var outRoot = new Dictionary<string, T> { { sectionName, migratedObj } };
-                    outJson = JsonSerializer.Serialize(outRoot, writeOptions);
-                }
-                else
-                {
-                    outJson = JsonSerializer.Serialize(migratedObj, writeOptions);
-                }
-
-                File.WriteAllText(filePath, outJson);
-                Core.Logger.LogInformationIfEnabled("[CS2Admin] Migrated {File} to version {Version}.", fileName, expectedVersion);
-            }
+            targetSection["BanMode"] = desiredBanMode;
+            var rewritten = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(configPath, rewritten);
+            Core.Logger.LogInformationIfEnabled("[CS2Admin] Normalized BanMode in config.json: {BanMode}", desiredBanMode);
         }
         catch (Exception ex)
         {
-            RecreateConfigFile(filePath, fileName, expectedVersion, ex.Message);
+            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to normalize BanMode in config.json: {Msg}", ex.Message);
         }
-    }
-
-    private void RecreateConfigFile(string filePath, string fileName, int expectedVersion, string reason)
-    {
-        try
-        {
-            File.Delete(filePath);
-            Core.Logger.LogWarningIfEnabled(
-                "[CS2Admin] {File} version mismatch/corruption ({Reason}). File deleted and will be regenerated with version {Version}.",
-                fileName,
-                reason,
-                expectedVersion);
-        }
-        catch (Exception ex)
-        {
-            Core.Logger.LogWarningIfEnabled(
-                "[CS2Admin] Failed to delete {File} for version reset: {Message}",
-                fileName,
-                ex.Message);
-        }
-    }
-
-    private static bool TryReadVersionFromNode(JsonObject root, string sectionName, out int version)
-    {
-        version = 0;
-
-        if (TryParseVersionNode(root["Version"], out version))
-        {
-            return true;
-        }
-
-        if (!string.IsNullOrWhiteSpace(sectionName) && root[sectionName] is JsonObject section && TryParseVersionNode(section["Version"], out version))
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool TryParseVersionNode(JsonNode? node, out int version)
-    {
-        version = 0;
-        if (node == null)
-        {
-            return false;
-        }
-
-        if (node is JsonValue value)
-        {
-            if (value.TryGetValue<int>(out var intValue))
-            {
-                version = intValue;
-                return true;
-            }
-
-            if (value.TryGetValue<string>(out var textValue) &&
-                int.TryParse(textValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
-            {
-                version = parsed;
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private void InitializeDatabaseManagers()
@@ -481,1258 +432,338 @@ public partial class CS2_Admin : BasePlugin
         _afkManager = new AfkManagerService(Core, _config.Afk, _config.Permissions, _config.Messages);
     }
 
-    private void InitializeCommandHandlers()
+    private void InitializeCommands()
     {
-        _banCommands = new BanCommands(
-            Core,
-            _banManager,
-            _muteManager,
-            _gagManager,
-            _warnManager,
-            _adminDbManager,
-            _adminLogManager,
-            _playerIpDbManager,
-            _playerSessionManager,
-            _recentPlayersTracker,
-            _discord,
-            _config.Permissions,
-            _config.Commands,
-            _config.Tags,
-            _config.Messages,
-            _config.Sanctions,
-            _config.MultiServer,
-            _config.EffectiveBanType,
-            _sanctionStateService);
-        _muteCommands = new MuteCommands(
-            Core, 
-            _muteManager, 
-            _gagManager, 
-            _adminDbManager,
-            _adminLogManager,
-            _discord, 
-            _config.Commands,
-            _config.Permissions,
-            _config.Tags,
-            _config.Permissions.Mute,
-            _config.Permissions.Gag,
-            _config.Permissions.Silence,
-            _config.Permissions.AdminRoot,
-            _config.Messages,
-            _sanctionStateService);
-        _warnCommands = new WarnCommands(
-            Core,
-            _warnManager,
-            _adminDbManager,
-            _adminLogManager,
-            _discord,
-            _config.Permissions.Warn,
-            _config.Permissions.Unwarn,
-            _config.Permissions.AdminRoot,
-            _config.Messages,
-            _config.Sanctions,
-            _config.Commands.Warn,
-            _config.Commands.Unwarn,
-            _sanctionStateService);
-        _playerCommands = new PlayerCommands(Core, _discord, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _adminLogManager, _playerNameHistoryManager, _config.MultiServer);
-        _serverCommands = new ServerCommands(Core, _adminLogManager, _config.Permissions, _config.GameMaps, _config.WorkshopMaps, _config.Commands);
-        _adminCommands = new AdminCommands(Core, _adminDbManager, _groupDbManager, _adminLogManager, _config.Permissions, _config.Tags, _config.Commands, AdminMenuManager, _chatTagConfigManager);
-        _chatCommands = new ChatCommands(
-            Core,
-            _adminLogManager,
-            _discord,
-            _config.Permissions,
-            _config.Tags,
-            _config.Messages,
-            _config.Commands,
-            _config.Sanctions);
-        _adminPlaytimeCommands = new AdminPlaytimeCommands(Core, _adminPlaytimeDbManager, _adminLogManager, _discord, _config.Permissions, _config.AdminPlaytime);
+        var ps = new PermissionService(Core, _config.Permissions);
+
+        // Base-only commands
+        _hsToggleCmd = new HsToggleCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps);
+        _respawnToggleCmd = new RespawnToggleCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps);
+        _voteCmd = new VoteCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps);
+        _rconCmd = new RconCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps);
+        _cvarCmd = new CvarCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps);
+        _restartCmd = new RestartCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps);
+        _bunnyToggleCmd = new BunnyToggleCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps);
+        _listPlayersCmd = new ListPlayersCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps);
+
+        // AdminDbManager-only commands (pattern: extra at end)
+        _kickCmd = new KickCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _psayCmd = new PsayCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _csayCmd = new CsayCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _hsayCmd = new HsayCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _slapCmd = new SlapCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _slayCmd = new SlayCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _godCmd = new GodCommand(Core, _adminDbManager, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps);
+        _respawnCmd = new RespawnCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _teamCmd = new TeamCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _mixTeamCmd = new MixTeamCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _resizeCmd = new ResizeCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+
+        _blindCmd = new BlindCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _glowCmd = new GlowCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _beaconCmd = new BeaconCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _burnCmd = new BurnCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _disarmCmd = new DisarmCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _speedCmd = new SpeedCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _gravityCmd = new GravityCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _hpCmd = new HpCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _moneyCmd = new MoneyCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _giveCmd = new GiveCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _listAdminsCmd = new ListAdminsCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+
+        // AdminDbManager-only commands (pattern: extra after core)
+        _bringCmd = new BringCommand(Core, _adminDbManager, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps);
+        _gotoCmd = new GotoCommand(Core, _adminDbManager, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps);
+        _freezeCmd = new FreezeCommand(Core, _adminDbManager, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps);
+        _unfreezeCmd = new UnfreezeCommand(Core, _adminDbManager, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps);
+        _noClipCmd = new NoClipCommand(Core, _adminDbManager, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps);
+
+        // AdminDbManager + DiscordBotService
+        _sayCmd = new SayCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager, _discord);
+        _asayCmd = new AsayCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager, _discord);
+
+        // DiscordBotService only
+        _callAdminCmd = new CallAdminCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _discord);
+        _reportCmd = new ReportCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _discord, _config.Sanctions);
+
+        // AdminDbManager + GroupDbManager
+        _listGroupsCmd = new ListGroupsCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager, _groupDbManager);
+
+        // AdminDbManager + GroupDbManager + ChatTagConfigManager
+        _addAdminCmd = new AddAdminCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager, _groupDbManager, _chatTagConfigManager);
+        _editAdminCmd = new EditAdminCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager, _groupDbManager, _chatTagConfigManager);
+        _removeAdminCmd = new RemoveAdminCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager, _groupDbManager, _chatTagConfigManager);
+        _addGroupCmd = new AddGroupCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager, _groupDbManager, _chatTagConfigManager);
+        _editGroupCmd = new EditGroupCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager, _groupDbManager, _chatTagConfigManager);
+        _removeGroupCmd = new RemoveGroupCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager, _groupDbManager, _chatTagConfigManager);
+        _adminReloadCmd = new AdminReloadCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager, _groupDbManager, _chatTagConfigManager);
+
+        // AdminDbManager + PlayerNameHistoryManager
+        _renameCmd = new RenameCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager, _playerNameHistoryManager);
+        _unrenameCmd = new UnrenameCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager, _playerNameHistoryManager);
+
+        // AdminPlaytime commands
+        _adminTimeCmd = new AdminTimeCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminPlaytimeDbManager, _config.AdminPlaytime);
+        _adminTimeSendCmd = new AdminTimeSendCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminPlaytimeDbManager, _discord, _config.AdminPlaytime);
+
+        // Map commands
+        _mapCmd = new MapCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _config.GameMaps, _config.WorkshopMaps);
+        _wsMapCmd = new WsMapCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _config.GameMaps, _config.WorkshopMaps);
+
+        // AdminMenu command
+        _adminMenuCmd = new AdminMenuCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminMenuManager);
+
+        // Ban/IPBan/Unban/AddBan commands
+        _banCmd = new BanCommand(Core, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _adminLogManager, _playerIpDbManager, _playerSessionManager, _recentPlayersTracker, _discord, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _config.Sanctions, _config.MultiServer, _config.EffectiveBanType, _sanctionStateService, ps);
+        _ipBanCmd = new IpBanCommand(Core, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _adminLogManager, _playerIpDbManager, _playerSessionManager, _recentPlayersTracker, _discord, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _config.Sanctions, _config.MultiServer, _config.EffectiveBanType, _sanctionStateService, ps);
+        _unbanCmd = new UnbanCommand(Core, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _adminLogManager, _playerIpDbManager, _playerSessionManager, _recentPlayersTracker, _discord, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _config.Sanctions, _config.MultiServer, _config.EffectiveBanType, _sanctionStateService, ps);
+        _addBanCmd = new AddBanCommand(Core, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _adminLogManager, _playerIpDbManager, _playerSessionManager, _recentPlayersTracker, _discord, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _config.Sanctions, _config.MultiServer, _config.EffectiveBanType, _sanctionStateService, ps);
+        _lastBanCmd = new LastBanCommand(Core, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _adminLogManager, _playerIpDbManager, _playerSessionManager, _recentPlayersTracker, _discord, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _config.Sanctions, _config.MultiServer, _config.EffectiveBanType, _sanctionStateService, ps, _config.Commands.LastBan);
+
+        // Mute/Gag/Silence commands
+        _muteCmd = new MuteCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _muteManager, _gagManager, _adminDbManager, _discord, _sanctionStateService, _config.Permissions.Mute);
+        _unmuteCmd = new UnmuteCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _muteManager, _gagManager, _adminDbManager, _discord, _sanctionStateService, _config.Permissions.Mute);
+        _gagCmd = new GagCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _muteManager, _gagManager, _adminDbManager, _discord, _sanctionStateService, _config.Permissions.Gag);
+        _ungagCmd = new UngagCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _muteManager, _gagManager, _adminDbManager, _discord, _sanctionStateService, _config.Permissions.Gag);
+        _silenceCmd = new SilenceCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _muteManager, _gagManager, _adminDbManager, _discord, _sanctionStateService, _config.Permissions.Silence);
+        _unsilenceCmd = new UnsilenceCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _muteManager, _gagManager, _adminDbManager, _discord, _sanctionStateService, _config.Permissions.Silence);
+
+        // Warn/Unwarn
+        _warnCmd = new WarnCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _warnManager, _adminDbManager, _discord, _sanctionStateService, _config.Sanctions);
+        _unwarnCmd = new UnwarnCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _warnManager, _adminDbManager, _discord, _sanctionStateService);
+
+        // Who command
+        _whoCmd = new WhoCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _sanctionStateService, _config.MultiServer);
     }
 
     private void InitializeEventHandlers()
     {
-        _eventHandlers = new EventHandlers(Core, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _groupDbManager, _playerIpDbManager, _playerSessionManager, _playerNameHistoryManager, _recentPlayersTracker, _sanctionStateService, _discord, _config.Permissions, _config.Tags, _config.Commands, _config.MultiServer, _chatTagConfigManager);
-        _eventHandlers.SetDatabaseReady(false);
-        _eventHandlers.OnPlayerDisconnected += playerId => _playerCommands.OnPlayerDisconnect(playerId);
-        _eventHandlers.RegisterHooks();
-    }
-
-    private async Task InitializeDatabasesAsync()
-    {
-        if (!CanConnectToDatabase())
+        _eventRegistrar = new EventRegistrar(Core, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _groupDbManager, _sanctionStateService, _config.MultiServer, _config.Tags, _config.Permissions, _chatTagConfigManager, _playerNameHistoryManager, _playerSessionManager, _discord);
+        _eventRegistrar.OnClientPutInServer(e =>
         {
-            _eventHandlers.SetDatabaseReady(false);
-            return;
-        }
-
-        if (!TryRunMigrations("startup-initial"))
-        {
-            _eventHandlers.SetDatabaseReady(false);
-            Core.Logger.LogWarningIfEnabled(
-                "[CS2Admin] Initial migration failed. Database-backed features are disabled until migration succeeds.");
-            return;
-        }
-
-        if (!EnsureRequiredTablesAvailable())
-        {
-            _eventHandlers.SetDatabaseReady(false);
-            Core.Logger.LogWarningIfEnabled(
-                "[CS2Admin] Required DB tables are still missing after retry migration. Database-backed features will stay disabled.");
-            return;
-        }
-
-        await InitializeDatabaseManagersAsync();
-
-        await _chatTagConfigManager.SyncWithGroupsAsync(_groupDbManager);
-
-        _eventHandlers.SetDatabaseReady(true);
-        StartAdminPlaytimeTracking();
-        _discord.StartBackgroundUpdates(_playerSessionManager, _discordServerStatusDbManager, _rankLeaderboardDbManager, _discordMessageStateDbManager);
-        await _eventHandlers.RefreshAdminStateForAllOnlinePlayersAsync();
-
-        Core.Logger.LogInformationIfEnabled(
-            "[CS2Admin] Server IP: {Ip} Port: {Port}",
-            ServerIdentity.GetIp(Core),
-            ServerIdentity.GetPort(Core));
-    }
-
-    private bool EnsureRequiredTablesAvailable()
-    {
-        if (ValidateRequiredTables())
-        {
-            return true;
-        }
-
-        Core.Logger.LogWarningIfEnabled(
-            "[CS2Admin] Required DB tables are missing after initial migration. Retrying migration once.");
-        ResetMigrationVersionState();
-
-        if (!TryRunMigrations("startup-retry"))
-        {
-            Core.Logger.LogWarningIfEnabled(
-                "[CS2Admin] Retry migration failed. Database-backed features will stay disabled.");
-            return false;
-        }
-
-        return ValidateRequiredTables();
-    }
-
-    private void ResetMigrationVersionState()
-    {
-        try
-        {
-            using var connection = Core.Database.GetConnection("mysql_detailed");
-            if (connection.State != ConnectionState.Open)
+            var player = Core.PlayerManager.GetPlayer(e.PlayerId);
+            if (player?.IsValid == true && !player.IsFakeClient)
             {
-                connection.Open();
+                _ = _playerSessionManager.OpenSessionAsync(player.SteamID, player.Controller.PlayerName, e.PlayerId, player.IPAddress);
+                _ = _sanctionStateService.RefreshAsync(player.SteamID, player.IPAddress);
+                _ = _playerNameHistoryManager.ObserveNameAsync(player.SteamID, player.Controller.PlayerName);
+                
+                int activePlayers = Core.PlayerManager.GetAllPlayers().Count(p => p.IsValid && !p.IsFakeClient);
+                _ = _discord.SendConnectNotificationAsync(player.Controller.PlayerName, player.SteamID, player.IPAddress, activePlayers);
             }
-
-            // Execute one-by-one to avoid provider settings that reject batched statements.
-            var statements = new[]
+        });
+        _eventRegistrar.OnClientSteamAuthorize(e =>
+        {
+            var player = Core.PlayerManager.GetPlayer(e.PlayerId);
+            if (player?.IsValid == true && !player.IsFakeClient)
             {
-                "DROP TABLE IF EXISTS `VersionInfoMetaData`;",
-                "DROP TABLE IF EXISTS `VersionInfo`;",
-                "DROP TABLE IF EXISTS `versioninfometadata`;",
-                "DROP TABLE IF EXISTS `versioninfo`;"
-            };
-
-            foreach (var statement in statements)
-            {
-                using var cmd = connection.CreateCommand();
-                cmd.CommandText = statement;
-                _ = cmd.ExecuteNonQuery();
-            }
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Migration version state reset due to missing required tables.");
-        }
-        catch (Exception ex)
-        {
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to reset migration version state: {Message}", ex.Message);
-        }
-    }
-
-    private async Task InitializeDatabaseManagersAsync()
-    {
-        await _groupDbManager.InitializeAsync();
-        await _banManager.InitializeAsync();
-        await _muteManager.InitializeAsync();
-        await _gagManager.InitializeAsync();
-        await _warnManager.InitializeAsync();
-        await _adminDbManager.InitializeAsync();
-        await _adminLogManager.InitializeAsync();
-        await _serverInfoDbManager.InitializeAsync();
-        await _discordServerStatusDbManager.InitializeAsync();
-        await _discordMessageStateDbManager.InitializeAsync();
-        await _adminPlaytimeDbManager.InitializeAsync();
-        await _playerIpDbManager.InitializeAsync();
-        await _playerSessionManager.InitializeAsync();
-        await _playerNameHistoryManager.InitializeAsync();
-    }
-
-    private bool TryRunMigrations(string source)
-    {
-        try
-        {
-            using var connection = Core.Database.GetConnection("mysql_detailed");
-            // Do not open the connection here. Some providers redact password
-            // from ConnectionString after Open(), which breaks FluentMigrator.
-            MigrationRunner.RunMigrations(connection);
-            Core.Logger.LogInformationIfEnabled("[CS2Admin] Database migration completed ({Source}).", source);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Database migration failed ({Source}): {Message}", source, ex.Message);
-            return false;
-        }
-    }
-
-    private bool CanConnectToDatabase()
-    {
-        try
-        {
-            using var connection = Core.Database.GetConnection("mysql_detailed");
-            if (connection.State != System.Data.ConnectionState.Open)
-            {
-                connection.Open();
-            }
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Core.Logger.LogWarningIfEnabled(
-                "[CS2Admin] Database connection is unavailable. Plugin will continue with limited functionality. Details: {Message}",
-                ex.Message);
-            return false;
-        }
-    }
-
-    private bool ValidateRequiredTables()
-    {
-        var requiredTables = new[]
-        {
-            "admin_admins",
-            "admin_groups",
-            "admin_bans",
-            "admin_mutes",
-            "admin_gags",
-            "admin_warns",
-            "admin_log",
-            "admin_actions_log",
-            "admin_servers",
-            "admin_discord_server_status",
-            "admin_discord_message_state",
-            "admin_playtime",
-            "admin_player_ips",
-            "admin_player_ip_history",
-            "admin_player_sessions",
-            "admin_player_names_history"
-        };
-
-        try
-        {
-            using var connection = Core.Database.GetConnection("mysql_detailed");
-            if (connection.State != ConnectionState.Open)
-            {
-                connection.Open();
-            }
-
-            foreach (var tableName in requiredTables)
-            {
-                using var cmd = connection.CreateCommand();
-                cmd.CommandText = $"SELECT 1 FROM `{tableName}` LIMIT 1";
-                _ = cmd.ExecuteScalar();
-            }
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Core.Logger.LogWarningIfEnabled(
-                "[CS2Admin] Database schema validation failed: {Message}",
-                ex.Message);
-            return false;
-        }
-    }
-
-    private void ApplyLanguageCulture(string language)
-    {
-        var cultureName = language.ToLowerInvariant() switch
-        {
-            "tr" => "tr-TR",
-            "de" => "de-DE",
-            "fr" => "fr-FR",
-            "it" => "it-IT",
-            "el" => "el-GR",
-            "ru" => "ru-RU",
-            "bg" => "bg-BG",
-            "hu" => "hu-HU",
-            _ => "en-US"
-        };
-
-        try
-        {
-            var culture = CultureInfo.GetCultureInfo(cultureName);
-            CultureInfo.DefaultThreadCurrentCulture = culture;
-            CultureInfo.DefaultThreadCurrentUICulture = culture;
-            CultureInfo.CurrentCulture = culture;
-            CultureInfo.CurrentUICulture = culture;
-        }
-        catch (Exception ex)
-        {
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to apply language culture '{Culture}': {Message}", cultureName, ex.Message);
-        }
-    }
-
-    private string ResolveConfiguredLanguage(string configPath, string? fallbackLanguage)
-    {
-        var fromRoot = Core.Configuration.Manager["Language"];
-        if (!string.IsNullOrWhiteSpace(fromRoot))
-        {
-            return NormalizeSupportedLanguage(fromRoot);
-        }
-
-        var fromAltSection = Core.Configuration.Manager["CS2_Admin:Language"];
-        if (!string.IsNullOrWhiteSpace(fromAltSection))
-        {
-            return NormalizeSupportedLanguage(fromAltSection);
-        }
-
-        var fromMainSection = Core.Configuration.Manager["CS2Admin:Language"];
-        if (!string.IsNullOrWhiteSpace(fromMainSection))
-        {
-            return NormalizeSupportedLanguage(fromMainSection);
-        }
-
-        try
-        {
-            if (File.Exists(configPath))
-            {
-                var raw = File.ReadAllText(configPath);
-                var node = JsonNode.Parse(raw) as JsonObject;
-                if (node != null)
+                var steamId = player.SteamID;
+                _ = Task.Run(async () =>
                 {
-                    if (node["Language"]?.GetValue<string>() is { } rawRoot && !string.IsNullOrWhiteSpace(rawRoot))
+                    try
                     {
-                        return NormalizeSupportedLanguage(rawRoot);
-                    }
+                        var admin = await _adminDbManager.GetAdminAsync(steamId);
+                        if (admin != null && admin.IsActive)
+                        {
+                            var effectiveFlags = await _adminDbManager.GetEffectiveFlagsAsync(steamId);
+                            var hasRoot = false;
+                            foreach (var flag in effectiveFlags)
+                            {
+                                if (string.IsNullOrWhiteSpace(flag)) continue;
+                                var normalizedFlag = flag.Trim();
+                                Core.Permission.AddPermission(steamId, normalizedFlag);
+                                if (string.Equals(normalizedFlag, _config.Permissions.AdminRoot, StringComparison.OrdinalIgnoreCase))
+                                    hasRoot = true;
+                            }
+                            if (hasRoot)
+                            {
+                                foreach (var bypassPermission in _config.Permissions.RootBypassPermissions)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(bypassPermission))
+                                        Core.Permission.AddPermission(steamId, bypassPermission.Trim());
+                                }
+                            }
 
-                    if (node["CS2_Admin"] is JsonObject cs2AdminAlt
-                        && cs2AdminAlt["Language"]?.GetValue<string>() is { } rawAlt
-                        && !string.IsNullOrWhiteSpace(rawAlt))
+                            if (_config.Tags.Enabled)
+                            {
+                                var tag = _groupDbManager.GetPrimaryGroupNameSync(admin.GroupList) ?? admin.GroupList.FirstOrDefault() ?? "ADMIN";
+                                Core.Scheduler.NextTick(() =>
+                                {
+                                    var target = Core.PlayerManager.GetPlayer(e.PlayerId);
+                                    if (target?.IsValid == true)
+                                        PlayerUtils.SetScoreTagReliable(Core, target.PlayerID, tag);
+                                });
+                            }
+                        }
+                    }
+                    catch (Exception ex)
                     {
-                        return NormalizeSupportedLanguage(rawAlt);
+                        Core.Logger.LogWarningIfEnabled("[CS2_Admin] Failed to assign permissions for player {PlayerId}: {Message}", e.PlayerId, ex.Message);
                     }
-
-                    if (node["CS2Admin"] is JsonObject cs2Admin
-                        && cs2Admin["Language"]?.GetValue<string>() is { } rawSection
-                        && !string.IsNullOrWhiteSpace(rawSection))
-                    {
-                        return NormalizeSupportedLanguage(rawSection);
-                    }
-                }
+                });
             }
-        }
-        catch
+        });
+        _eventRegistrar.OnClientDisconnected(e =>
         {
-            // Keep fallback language when raw parsing fails.
-        }
-
-        return NormalizeSupportedLanguage(fallbackLanguage);
-    }
-
-    private static string NormalizeSupportedLanguage(string? language)
-    {
-        var raw = (language ?? "en").Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return "en";
-        }
-
-        static string? MapLanguageToken(string token)
-        {
-            return token.Trim().ToLowerInvariant() switch
+            var player = Core.PlayerManager.GetPlayer(e.PlayerId);
+            if (player?.IsValid == true && !player.IsFakeClient)
             {
-                "en" or "english" => "en",
-                "tr" or "turkish" or "turkce" => "tr",
-                "de" or "german" or "deutsch" => "de",
-                "fr" or "french" or "francais" => "fr",
-                "it" or "italian" or "italiano" => "it",
-                "el" or "greek" => "el",
-                "ru" or "russian" => "ru",
-                "bg" or "bulgarian" => "bg",
-                "hu" or "hungarian" or "magyar" => "hu",
-                _ => null
-            };
-        }
-
-        // First try the full raw value, then each split token.
-        var mapped = MapLanguageToken(raw);
-        if (!string.IsNullOrWhiteSpace(mapped))
-        {
-            return mapped;
-        }
-
-        var tokens = raw.Split(['-', '_', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
-        foreach (var token in tokens)
-        {
-            mapped = MapLanguageToken(token);
-            if (!string.IsNullOrWhiteSpace(mapped))
-            {
-                return mapped;
+                _recentPlayersTracker.Add(new RecentPlayerInfo(player.SteamID, player.Controller.PlayerName ?? "", player.IPAddress ?? "", DateTime.UtcNow));
+                _ = _playerSessionManager.CloseSessionAsync(player.SteamID, player.Controller.PlayerName, e.PlayerId, player.IPAddress);
+                _ = _discord.SendDisconnectNotificationAsync(player.Controller.PlayerName, player.SteamID, player.IPAddress);
             }
-        }
-
-        return "en";
-    }
-
-    private void TryApplyConfiguredLocalizer(string language, bool force = false)
-    {
-        try
+        });
+        _eventRegistrar.OnRoundStart(ev =>
         {
-            var requestedLanguage = NormalizeSupportedLanguage(language);
-            var effectiveLanguage = requestedLanguage;
-
-            if (!TryResolveTranslationCandidate(requestedLanguage, out var resourceDir, out var fileLocalizer))
+            EnsureCommandsRegistered();
+            _ = RefreshAdminStateForAllOnlinePlayersAsync();
+            return HookResult.Continue;
+        });
+        _eventRegistrar.OnPlayerConnectFull(e =>
+        {
+            var player = e.Accessor.GetPlayer("userid");
+            if (player?.IsValid == true && !player.IsFakeClient)
             {
-                if (!string.Equals(requestedLanguage, "en", StringComparison.OrdinalIgnoreCase)
-                    && TryResolveTranslationCandidate("en", out resourceDir, out fileLocalizer))
-                {
-                    Core.Logger.LogWarningIfEnabled(
-                        "[CS2Admin] Translation file for requested language '{RequestedLanguage}' could not be resolved. Falling back to English.",
-                        requestedLanguage);
-                    effectiveLanguage = "en";
-                }
-                else
-                {
-                    Core.Logger.LogWarningIfEnabled(
-                        "[CS2Admin] Translation resources are unavailable. Requested language was '{RequestedLanguage}'.",
-                        requestedLanguage);
-                    return;
-                }
+                _ = _sanctionStateService.RefreshAsync(player.SteamID, player.IPAddress);
             }
-
-            var localizerKey = $"{requestedLanguage}|{effectiveLanguage}|{resourceDir}";
-            if (!force && string.Equals(_appliedLocalizerKey, localizerKey, StringComparison.OrdinalIgnoreCase))
+            return HookResult.Continue;
+        });
+        _eventRegistrar.OnPlayerDisconnect(e =>
+        {
+            var player = e.Accessor.GetPlayer("userid");
+            if (player?.IsValid == true && !player.IsFakeClient)
             {
-                return;
+                _recentPlayersTracker.Add(new RecentPlayerInfo(player.SteamID, player.Controller.PlayerName ?? "", player.IPAddress ?? "", DateTime.UtcNow));
             }
-
-            PluginLocalizer.SetOverride(fileLocalizer);
-            Core.Logger.LogInformationIfEnabled("[CS2Admin] Plugin localizer override loaded from: {Path}", resourceDir);
-            var diag = fileLocalizer.Diagnostics;
-            Core.Logger.LogInformationIfEnabled(
-                "[CS2Admin] Translation coverage (requested={RequestedLanguage}, effective={EffectiveLanguage}): primaryKeys={PrimaryKeys}, fallbackKeys={FallbackKeys}, missingInPrimary={MissingCount} ({MissingRate:P1}), sameAsEnglish={SameCount} ({SameRate:P1}), sample={MissingSample}",
-                requestedLanguage,
-                effectiveLanguage,
-                diag.PrimaryKeyCount,
-                diag.FallbackKeyCount,
-                diag.MissingPrimaryCount,
-                diag.MissingPrimaryRate,
-                diag.SameAsFallbackCount,
-                diag.SameAsFallbackRate,
-                diag.GetMissingSample());
-
-            var coreAssembly = typeof(ISwiftlyCore).Assembly;
-            var translationFactoryType = coreAssembly.GetType("SwiftlyS2.Core.Translations.TranslationFactory");
-            var createResourceMethod = translationFactoryType?.GetMethod("Create", BindingFlags.Public | BindingFlags.Static);
-            var createLocalizerMethod = translationFactoryType?.GetMethod("CreateLocalizer", BindingFlags.Public | BindingFlags.Static);
-            if (createResourceMethod == null || createLocalizerMethod == null)
-            {
-                Core.Logger.LogWarningIfEnabled("[CS2Admin] Translation factory methods were not found in Swiftly runtime.");
-                return;
-            }
-
-            var translationResource = createResourceMethod.Invoke(null, new object[] { resourceDir });
-            if (translationResource == null)
-            {
-                Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to create translation resource from {Path}", resourceDir);
-                return;
-            }
-
-            var swiftLanguage = ToSwiftLanguage(effectiveLanguage);
-            var localizer = createLocalizerMethod.Invoke(null, new object[] { translationResource, swiftLanguage });
-            if (localizer == null)
-            {
-                Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to create localizer for language {Language}", effectiveLanguage);
-                return;
-            }
-
-            var coreType = Core.GetType();
-            var localizerProperty = coreType.GetProperty("Localizer", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (localizerProperty?.CanWrite != true)
-            {
-                var localizerField = coreType.GetField("<Localizer>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
-                if (localizerField != null)
-                {
-                    localizerField.SetValue(Core, localizer);
-                }
-                else
-                {
-                    Core.Logger.LogWarningIfEnabled("[CS2Admin] PluginLocalizer.Get(Core) property is not writable in current Swiftly runtime.");
-                }
-            }
-            else
-            {
-                localizerProperty.SetValue(Core, localizer);
-            }
-
-            _resolvedTranslationDirectory = resourceDir;
-            _appliedLocalizerKey = localizerKey;
-            Core.Logger.LogInformationIfEnabled(
-                "[CS2Admin] Runtime localizer forced. Requested={RequestedLanguage}, Effective={EffectiveLanguage}",
-                requestedLanguage,
-                effectiveLanguage);
-            Core.Logger.LogInformationIfEnabled("[CS2Admin] Localizer probe menu_admin_title: {Text}", PluginLocalizer.Get(Core)["menu_admin_title"]);
-        }
-        catch (Exception ex)
-        {
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to force runtime localizer to '{Language}': {Message}", language, ex.Message);
-        }
-    }
-
-    private bool TryResolveTranslationCandidate(string language, out string resourceDir, out JsonFileLocalizer fileLocalizer)
-    {
-        var normalizedLanguage = NormalizeSupportedLanguage(language);
-        var requestedFile = $"{normalizedLanguage}.jsonc";
-        resourceDir = string.Empty;
-        fileLocalizer = null!;
-
-        foreach (var candidate in EnumerateTranslationDirectoryCandidates())
-        {
-            if (!TryCreateLocalizerFromDirectory(candidate, requestedFile, normalizedLanguage, out var localizer))
-            {
-                continue;
-            }
-
-            // If stale user-override file is effectively English, prefer bundled resources.
-            if (!string.Equals(normalizedLanguage, "en", StringComparison.OrdinalIgnoreCase)
-                && IsLikelyStaleEnglishOverride(candidate, localizer.Diagnostics))
-            {
-                Core.Logger.LogWarningIfEnabled(
-                    "[CS2Admin] Skipping stale translation override candidate {Path} for '{Language}' because it is almost identical to English ({SameRate:P1}).",
-                    candidate,
-                    normalizedLanguage,
-                    localizer.Diagnostics.SameAsFallbackRate);
-                continue;
-            }
-
-            if (IsTranslationSchemaMismatch(normalizedLanguage, localizer.Diagnostics))
-            {
-                Core.Logger.LogWarningIfEnabled(
-                    "[CS2Admin] Ignoring translation candidate {Path} for '{Language}' because it does not contain matching plugin keys (fallbackKeys={FallbackKeys}, missing={Missing}).",
-                    candidate,
-                    normalizedLanguage,
-                    localizer.Diagnostics.FallbackKeyCount,
-                    localizer.Diagnostics.MissingPrimaryCount);
-                continue;
-            }
-
-            resourceDir = candidate;
-            fileLocalizer = localizer;
-            return true;
-        }
-
-        var extracted = ExtractEmbeddedTranslationsToConfigDirectory(overwriteExisting: false);
-        if (!string.IsNullOrWhiteSpace(extracted)
-            && TryCreateLocalizerFromDirectory(extracted, requestedFile, normalizedLanguage, out var extractedLocalizer)
-            && !IsTranslationSchemaMismatch(normalizedLanguage, extractedLocalizer.Diagnostics))
-        {
-            resourceDir = Path.GetFullPath(extracted);
-            fileLocalizer = extractedLocalizer;
-            return true;
-        }
-
-        return false;
-    }
-
-    private bool IsLikelyStaleEnglishOverride(string candidatePath, LocalizerDiagnostics diagnostics)
-    {
-        var overrideTranslationsPath = GetPluginResourcesDirectoryPath();
-        string fullCandidate;
-        string fullOverridePath;
-        try
-        {
-            fullCandidate = Path.GetFullPath(candidatePath);
-            fullOverridePath = Path.GetFullPath(overrideTranslationsPath);
-        }
-        catch
-        {
-            return false;
-        }
-
-        if (!fullCandidate.StartsWith(fullOverridePath, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        return diagnostics.FallbackKeyCount > 0 && diagnostics.SameAsFallbackRate >= 0.98;
-    }
-
-    private IEnumerable<string> EnumerateTranslationDirectoryCandidates()
-    {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var orderedCandidates = new List<string>
-        {
-            // Keep translation files under plugins/cs2admin/resources, not the config folder.
-            GetPluginResourcesDirectoryPath(),
-            Path.Combine(Core.PluginPath, "translations")
-        };
-
-        var assemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-        if (!string.IsNullOrWhiteSpace(assemblyDir))
-        {
-            orderedCandidates.Add(Path.Combine(assemblyDir, "translations"));
-        }
-
-        foreach (var candidate in orderedCandidates)
-        {
-            string? full = null;
-            try
-            {
-                full = Path.GetFullPath(candidate);
-            }
-            catch
-            {
-                // Ignore invalid path candidates.
-                continue;
-            }
-
-            if (!string.IsNullOrWhiteSpace(full) && seen.Add(full))
-            {
-                yield return full;
-            }
-        }
-    }
-
-    private static bool IsTranslationSchemaMismatch(string language, LocalizerDiagnostics diagnostics)
-    {
-        if (string.Equals(language, "en", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (diagnostics.FallbackKeyCount <= 0)
-        {
-            return true;
-        }
-
-        var matchedPrimaryKeys = diagnostics.FallbackKeyCount - diagnostics.MissingPrimaryCount;
-        if (matchedPrimaryKeys <= 0)
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool TryCreateLocalizerFromDirectory(
-        string directoryPath,
-        string requestedFile,
-        string normalizedLanguage,
-        out JsonFileLocalizer localizer)
-    {
-        localizer = null!;
-
-        if (!Directory.Exists(directoryPath))
-        {
-            return false;
-        }
-
-        if (!File.Exists(Path.Combine(directoryPath, "en.jsonc")))
-        {
-            return false;
-        }
-
-        if (!File.Exists(Path.Combine(directoryPath, requestedFile)))
-        {
-            return false;
-        }
-
-        var created = JsonFileLocalizer.TryCreate(directoryPath, normalizedLanguage);
-        if (created == null)
-        {
-            return false;
-        }
-
-        localizer = created;
-        return true;
-    }
-
-    private string? ExtractEmbeddedTranslationsToConfigDirectory(bool overwriteExisting = false)
-    {
-        try
-        {
-            var outputDir = GetPluginResourcesDirectoryPath();
-            Directory.CreateDirectory(outputDir);
-
-            var asm = Assembly.GetExecutingAssembly();
-            var resources = asm.GetManifestResourceNames()
-                .Where(x => x.StartsWith("CS2_Admin.Translations.", StringComparison.OrdinalIgnoreCase)
-                            && x.EndsWith(".jsonc", StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            if (resources.Count == 0)
-            {
-                Core.Logger.LogWarningIfEnabled("[CS2Admin] No embedded translation resources were found in assembly.");
-                return null;
-            }
-
-            var writtenCount = 0;
-            var skippedCount = 0;
-            foreach (var resourceName in resources)
-            {
-                var fileName = resourceName["CS2_Admin.Translations.".Length..];
-                var destinationPath = Path.Combine(outputDir, fileName);
-                if (!overwriteExisting && File.Exists(destinationPath))
-                {
-                    skippedCount++;
-                    continue;
-                }
-
-                using var stream = asm.GetManifestResourceStream(resourceName);
-                if (stream == null)
-                {
-                    continue;
-                }
-
-                using var reader = new StreamReader(stream, Encoding.UTF8);
-                var content = reader.ReadToEnd();
-                File.WriteAllText(destinationPath, content, Encoding.UTF8);
-                writtenCount++;
-            }
-
-            Core.Logger.LogInformationIfEnabled(
-                "[CS2Admin] Embedded translations synchronized to: {Path} (written={Written}, skipped={Skipped}, overwrite={Overwrite})",
-                outputDir,
-                writtenCount,
-                skippedCount,
-                overwriteExisting);
-            return outputDir;
-        }
-        catch (Exception ex)
-        {
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to extract embedded translations: {Message}", ex.Message);
-            return null;
-        }
-    }
-
-    private string GetPluginResourcesDirectoryPath()
-    {
-        if (!string.IsNullOrWhiteSpace(Core.PluginPath))
-        {
-            return Path.Combine(Core.PluginPath, "resources");
-        }
-
-        return Path.Combine(Core.PluginDataDirectory, "resources");
-    }
-
-    private static Language ToSwiftLanguage(string language)
-    {
-        return (language ?? "en").Trim().ToLowerInvariant() switch
-        {
-            "tr" => Language.Turkish,
-            "de" => Language.German,
-            "fr" => Language.French,
-            "it" => Language.Italian,
-            "el" => Language.Greek,
-            "ru" => Language.Russian,
-            "bg" => Language.Bulgarian,
-            "hu" => Language.Hungarian,
-            _ => Language.English
-        };
+            return HookResult.Continue;
+        });
+        _eventRegistrar.RegisterAll();
     }
 
     private void RegisterCommands()
     {
-        // Admin root/menu commands
-        foreach (var cmd in _config.Commands.AdminRoot)
-            RegisterCommand(cmd, _adminCommands.OnAdminRootCommand);
-        foreach (var cmd in _config.Commands.AdminMenu)
-            RegisterCommand(cmd, _adminCommands.OnAdminRootCommand);
+        RegisterCmdList(_config.Commands.AdminRoot, _adminMenuCmd.Execute);
+        RegisterCmdList(_config.Commands.AdminMenu, _adminMenuCmd.Execute);
+        RegisterCmdList(_config.Commands.Asay, _asayCmd.Execute);
+        RegisterCmdList(_config.Commands.Say, _sayCmd.Execute);
+        RegisterCmdList(_config.Commands.Psay, _psayCmd.Execute);
+        RegisterCmdList(_config.Commands.Csay, _csayCmd.Execute);
+        RegisterCmdList(_config.Commands.Hsay, _hsayCmd.Execute);
+        RegisterCmdList(_config.Commands.CallAdmin, _callAdminCmd.Execute);
+        RegisterCmdList(_config.Commands.Report, _reportCmd.Execute);
+        RegisterCmdList(_config.Commands.AdminTime, _adminTimeCmd.Execute);
+        RegisterCmdList(_config.Commands.AdminTimeSend, _adminTimeSendCmd.Execute);
+        RegisterCmdList(_config.Commands.Ban, _banCmd.Execute);
+        RegisterCmdList(_config.Commands.IpBan, _ipBanCmd.Execute);
+        RegisterCmdList(_config.Commands.LastBan, _lastBanCmd.Execute);
+        RegisterCmdList(_config.Commands.AddBan, _addBanCmd.Execute);
+        RegisterCmdList(_config.Commands.Unban, _unbanCmd.Execute);
+        RegisterCmdList(_config.Commands.Warn, _warnCmd.Execute);
+        RegisterCmdList(_config.Commands.Unwarn, _unwarnCmd.Execute);
+        RegisterCmdList(_config.Commands.Mute, _muteCmd.Execute);
+        RegisterCmdList(_config.Commands.Unmute, _unmuteCmd.Execute);
+        RegisterCmdList(_config.Commands.Gag, _gagCmd.Execute);
+        RegisterCmdList(_config.Commands.Ungag, _ungagCmd.Execute);
+        RegisterCmdList(_config.Commands.Silence, _silenceCmd.Execute);
+        RegisterCmdList(_config.Commands.Unsilence, _unsilenceCmd.Execute);
+        RegisterCmdList(_config.Commands.Kick, _kickCmd.Execute);
+        RegisterCmdList(_config.Commands.Slap, _slapCmd.Execute);
+        RegisterCmdList(_config.Commands.Slay, _slayCmd.Execute);
+        RegisterCmdList(_config.Commands.God, _godCmd.Execute);
+        RegisterCmdList(_config.Commands.Respawn, _respawnCmd.Execute);
+        RegisterCmdList(_config.Commands.ChangeTeam, _teamCmd.Execute);
+        RegisterCmdList(_config.Commands.MixTeam, _mixTeamCmd.Execute);
+        RegisterCmdList(_config.Commands.NoClip, _noClipCmd.Execute);
+        RegisterCmdList(_config.Commands.Goto, _gotoCmd.Execute);
+        RegisterCmdList(_config.Commands.Bring, _bringCmd.Execute);
+        RegisterCmdList(_config.Commands.Freeze, _freezeCmd.Execute);
+        RegisterCmdList(_config.Commands.Unfreeze, _unfreezeCmd.Execute);
+        RegisterCmdList(_config.Commands.Resize, _resizeCmd.Execute);
 
-        // Admin communication commands
-        foreach (var cmd in _config.Commands.Asay)
-            RegisterCommand(cmd, _chatCommands.OnAsayCommand);
-        foreach (var cmd in _config.Commands.Say)
-            RegisterCommand(cmd, _chatCommands.OnSayCommand);
-        foreach (var cmd in _config.Commands.Psay)
-            RegisterCommand(cmd, _chatCommands.OnPsayCommand);
-        foreach (var cmd in _config.Commands.Csay)
-            RegisterCommand(cmd, _chatCommands.OnCsayCommand);
-        foreach (var cmd in _config.Commands.Hsay)
-            RegisterCommand(cmd, _chatCommands.OnHsayCommand);
-        foreach (var cmd in _config.Commands.CallAdmin)
-            RegisterCommand(cmd, _chatCommands.OnCallAdminCommand);
-        foreach (var cmd in _config.Commands.Report)
-            RegisterCommand(cmd, _chatCommands.OnReportCommand);
-        foreach (var cmd in _config.Commands.AdminTime)
-            RegisterCommand(cmd, _adminPlaytimeCommands.OnAdminTimeCommand);
-        foreach (var cmd in _config.Commands.AdminTimeSend)
-            RegisterCommand(cmd, _adminPlaytimeCommands.OnAdminTimeSendCommand);
-        foreach (var cmd in _config.Commands.Afk)
-            RegisterCommand(cmd, _afkManager.OnAfkCommand);
+        RegisterCmdList(_config.Commands.Blind, _blindCmd.Execute);
+        RegisterCmdList(_config.Commands.Glow, _glowCmd.Execute);
+        RegisterCmdList(_config.Commands.Beacon, _beaconCmd.Execute);
+        RegisterCmdList(_config.Commands.Burn, _burnCmd.Execute);
+        RegisterCmdList(_config.Commands.Disarm, _disarmCmd.Execute);
+        RegisterCmdList(_config.Commands.Speed, _speedCmd.Execute);
+        RegisterCmdList(_config.Commands.Gravity, _gravityCmd.Execute);
+        RegisterCmdList(_config.Commands.Rename, _renameCmd.Execute);
+        RegisterCmdList(_config.Commands.Unrename, _unrenameCmd.Execute);
+        RegisterCmdList(_config.Commands.Hp, _hpCmd.Execute);
+        RegisterCmdList(_config.Commands.Money, _moneyCmd.Execute);
+        RegisterCmdList(_config.Commands.Give, _giveCmd.Execute);
+        RegisterCmdList(_config.Commands.Vote, _voteCmd.Execute);
+        RegisterCmdList(_config.Commands.ChangeMap, _mapCmd.Execute);
+        RegisterCmdList(_config.Commands.ChangeWSMap, _wsMapCmd.Execute);
+        RegisterCmdList(_config.Commands.RestartGame, _restartCmd.Execute);
+        RegisterCmdList(_config.Commands.HeadshotOn, _hsToggleCmd.Execute);
+        RegisterCmdList(_config.Commands.HeadshotOff, _hsToggleCmd.Execute);
+        RegisterCmdList(_config.Commands.BunnyOn, _bunnyToggleCmd.Execute);
+        RegisterCmdList(_config.Commands.BunnyOff, _bunnyToggleCmd.Execute);
+        RegisterCmdList(_config.Commands.RespawnOn, _respawnToggleCmd.Execute);
+        RegisterCmdList(_config.Commands.RespawnOff, _respawnToggleCmd.Execute);
+        RegisterCmdList(_config.Commands.Rcon, _rconCmd.Execute);
+        RegisterCmdList(_config.Commands.Cvar, _cvarCmd.Execute);
+        RegisterCmdList(_config.Commands.ListPlayers, _listPlayersCmd.Execute);
+        RegisterCmdList(_config.Commands.Who, _whoCmd.Execute);
+        RegisterCmdList(_config.Commands.AddAdmin, _addAdminCmd.Execute);
+        RegisterCmdList(_config.Commands.EditAdmin, _editAdminCmd.Execute);
+        RegisterCmdList(_config.Commands.RemoveAdmin, _removeAdminCmd.Execute);
+        RegisterCmdList(_config.Commands.ListAdmins, _listAdminsCmd.Execute);
+        RegisterCmdList(_config.Commands.AddGroup, _addGroupCmd.Execute);
+        RegisterCmdList(_config.Commands.EditGroup, _editGroupCmd.Execute);
+        RegisterCmdList(_config.Commands.RemoveGroup, _removeGroupCmd.Execute);
+        RegisterCmdList(_config.Commands.ListGroups, _listGroupsCmd.Execute);
+        RegisterCmdList(_config.Commands.AdminReload, _adminReloadCmd.Execute);
+        RegisterCmdList(_config.Commands.Afk, ctx => _afkManager.OnAfkCommand(ctx));
+    }
 
-        // Ban commands
-        foreach (var cmd in _config.Commands.Ban)
-            RegisterCommand(cmd, _banCommands.OnBanCommand);
-        foreach (var cmd in _config.Commands.IpBan)
-            RegisterCommand(cmd, _banCommands.OnIpBanCommand);
-        foreach (var cmd in _config.Commands.LastBan)
-            RegisterCommand(cmd, _banCommands.OnLastBanCommand);
-        foreach (var cmd in _config.Commands.AddBan)
-            RegisterCommand(cmd, _banCommands.OnAddBanCommand);
-        foreach (var cmd in _config.Commands.Unban)
-            RegisterCommand(cmd, _banCommands.OnUnbanCommand);
-        foreach (var cmd in _config.Commands.Warn)
-            RegisterCommand(cmd, _warnCommands.OnWarnCommand);
-        foreach (var cmd in _config.Commands.Unwarn)
-            RegisterCommand(cmd, _warnCommands.OnUnwarnCommand);
-
-        // Mute/Gag commands
-        foreach (var cmd in _config.Commands.Mute)
-            RegisterCommand(cmd, _muteCommands.OnMuteCommand);
-        foreach (var cmd in _config.Commands.Unmute)
-            RegisterCommand(cmd, _muteCommands.OnUnmuteCommand);
-        foreach (var cmd in _config.Commands.Gag)
-            RegisterCommand(cmd, _muteCommands.OnGagCommand);
-        foreach (var cmd in _config.Commands.Ungag)
-            RegisterCommand(cmd, _muteCommands.OnUngagCommand);
-        foreach (var cmd in _config.Commands.Silence)
-            RegisterCommand(cmd, _muteCommands.OnSilenceCommand);
-        foreach (var cmd in _config.Commands.Unsilence)
-            RegisterCommand(cmd, _muteCommands.OnUnsilenceCommand);
-
-        // Player commands
-        foreach (var cmd in _config.Commands.Kick)
-            RegisterCommand(cmd, _playerCommands.OnKickCommand);
-        foreach (var cmd in _config.Commands.Slap)
-            RegisterCommand(cmd, _playerCommands.OnSlapCommand);
-        foreach (var cmd in _config.Commands.God)
-            RegisterCommand(cmd, _playerCommands.OnGodCommand);
-        foreach (var cmd in _config.Commands.Slay)
-            RegisterCommand(cmd, _playerCommands.OnSlayCommand);
-        foreach (var cmd in _config.Commands.Respawn)
-            RegisterCommand(cmd, _playerCommands.OnRespawnCommand);
-        foreach (var cmd in _config.Commands.ChangeTeam)
-            RegisterCommand(cmd, _playerCommands.OnTeamCommand);
-        foreach (var cmd in _config.Commands.MixTeam)
-            RegisterCommand(cmd, _playerCommands.OnMixTeamCommand);
-        foreach (var cmd in _config.Commands.NoClip)
-            RegisterCommand(cmd, _playerCommands.OnNoclipCommand);
-        foreach (var cmd in _config.Commands.Goto)
-            RegisterCommand(cmd, _playerCommands.OnGotoCommand);
-        foreach (var cmd in _config.Commands.Bring)
-            RegisterCommand(cmd, _playerCommands.OnBringCommand);
-        foreach (var cmd in _config.Commands.Freeze)
-            RegisterCommand(cmd, _playerCommands.OnFreezeCommand);
-        foreach (var cmd in _config.Commands.Unfreeze)
-            RegisterCommand(cmd, _playerCommands.OnUnfreezeCommand);
-        foreach (var cmd in _config.Commands.Resize)
-            RegisterCommand(cmd, _playerCommands.OnResizeCommand);
-        foreach (var cmd in _config.Commands.Drug)
-            RegisterCommand(cmd, _playerCommands.OnDrugCommand);
-        foreach (var cmd in _config.Commands.Blind)
-            RegisterCommand(cmd, _playerCommands.OnBlindCommand);
-        foreach (var cmd in _config.Commands.Glow)
-            RegisterCommand(cmd, _playerCommands.OnGlowCommand);
-        foreach (var cmd in _config.Commands.Beacon)
-            RegisterCommand(cmd, _playerCommands.OnBeaconCommand);
-        foreach (var cmd in _config.Commands.Burn)
-            RegisterCommand(cmd, _playerCommands.OnBurnCommand);
-        foreach (var cmd in _config.Commands.Disarm)
-            RegisterCommand(cmd, _playerCommands.OnDisarmCommand);
-        foreach (var cmd in _config.Commands.Speed)
-            RegisterCommand(cmd, _playerCommands.OnSpeedCommand);
-        foreach (var cmd in _config.Commands.Gravity)
-            RegisterCommand(cmd, _playerCommands.OnGravityCommand);
-        foreach (var cmd in _config.Commands.Rename)
-            RegisterCommand(cmd, _playerCommands.OnRenameCommand);
-        foreach (var cmd in _config.Commands.Unrename)
-            RegisterCommand(cmd, _playerCommands.OnUnrenameCommand);
-        foreach (var cmd in _config.Commands.Hp)
-            RegisterCommand(cmd, _playerCommands.OnHpCommand);
-        foreach (var cmd in _config.Commands.Money)
-            RegisterCommand(cmd, _playerCommands.OnMoneyCommand);
-        foreach (var cmd in _config.Commands.Give)
-            RegisterCommand(cmd, _playerCommands.OnGiveCommand);
-        foreach (var cmd in _config.Commands.ListPlayers)
-            RegisterCommand(cmd, _playerCommands.OnPlayersCommand);
-        foreach (var cmd in _config.Commands.Who)
-            RegisterCommand(cmd, _playerCommands.OnWhoCommand);
-
-        // Server commands
-        foreach (var cmd in _config.Commands.ChangeMap)
-            RegisterCommand(cmd, _serverCommands.OnMapCommand);
-        foreach (var cmd in _config.Commands.ChangeWSMap)
-            RegisterCommand(cmd, _serverCommands.OnWSMapCommand);
-        foreach (var cmd in _config.Commands.RestartGame)
-            RegisterCommand(cmd, _serverCommands.OnRestartCommand);
-        foreach (var cmd in _config.Commands.HeadshotOn)
-            RegisterCommand(cmd, _serverCommands.OnHeadshotOnCommand);
-        foreach (var cmd in _config.Commands.HeadshotOff)
-            RegisterCommand(cmd, _serverCommands.OnHeadshotOffCommand);
-        foreach (var cmd in _config.Commands.BunnyOn)
-            RegisterCommand(cmd, _serverCommands.OnBunnyOnCommand);
-        foreach (var cmd in _config.Commands.BunnyOff)
-            RegisterCommand(cmd, _serverCommands.OnBunnyOffCommand);
-        foreach (var cmd in _config.Commands.RespawnOn)
-            RegisterCommand(cmd, _serverCommands.OnRespawnOnCommand);
-        foreach (var cmd in _config.Commands.RespawnOff)
-            RegisterCommand(cmd, _serverCommands.OnRespawnOffCommand);
-        foreach (var cmd in _config.Commands.Rcon)
-            RegisterCommand(cmd, _serverCommands.OnRconCommand);
-        foreach (var cmd in _config.Commands.Cvar)
-            RegisterCommand(cmd, _serverCommands.OnCvarCommand);
-        foreach (var cmd in _config.Commands.Vote)
-            RegisterCommand(cmd, _serverCommands.OnVoteCommand);
-
-        // Admin commands
-        foreach (var cmd in _config.Commands.AddAdmin)
-            RegisterCommand(cmd, _adminCommands.OnAddAdminCommand);
-        foreach (var cmd in _config.Commands.EditAdmin)
-            RegisterCommand(cmd, _adminCommands.OnEditAdminCommand);
-        foreach (var cmd in _config.Commands.RemoveAdmin)
-            RegisterCommand(cmd, _adminCommands.OnRemoveAdminCommand);
-        foreach (var cmd in _config.Commands.ListAdmins)
-            RegisterCommand(cmd, _adminCommands.OnListAdminsCommand);
-        foreach (var cmd in _config.Commands.AddGroup)
-            RegisterCommand(cmd, _adminCommands.OnAddGroupCommand);
-        foreach (var cmd in _config.Commands.EditGroup)
-            RegisterCommand(cmd, _adminCommands.OnEditGroupCommand);
-        foreach (var cmd in _config.Commands.RemoveGroup)
-            RegisterCommand(cmd, _adminCommands.OnRemoveGroupCommand);
-        foreach (var cmd in _config.Commands.ListGroups)
-            RegisterCommand(cmd, _adminCommands.OnListGroupsCommand);
-        foreach (var cmd in _config.Commands.AdminReload)
-            RegisterCommand(cmd, _adminCommands.OnAdminReloadCommand);
+    private void RegisterCmdList(IReadOnlyList<string> aliases, ICommandService.CommandListener handler)
+    {
+        if (aliases == null) return;
+        foreach (var alias in aliases)
+            RegisterCommand(alias, handler);
     }
 
     private void RegisterCommand(string name, ICommandService.CommandListener handler)
     {
-        if (string.IsNullOrWhiteSpace(name))
-            return;
-
-        var commandName = name.Trim();
-        var wrappedHandler = (ICommandService.CommandListener)(context =>
+        if (string.IsNullOrWhiteSpace(name)) return;
+        name = name.Trim();
+        var dedupWrapper = (ICommandService.CommandListener)(ctx =>
         {
-            var ctxCommandName = context.CommandName ?? string.Empty;
-            if (!context.IsSentByPlayer && !ctxCommandName.StartsWith("sw_", StringComparison.OrdinalIgnoreCase))
-            {
-                // Keep unprefixed commands usable in chat/player context,
-                // but block direct server-console execution unless `sw_` is used.
+            if (!ctx.IsSentByPlayer && !(ctx.CommandName ?? "").StartsWith("sw_", StringComparison.OrdinalIgnoreCase))
                 return;
-            }
-
-            if (ShouldSuppressDuplicateInvocation(context, ctxCommandName))
-            {
+            if (ShouldSuppressDuplicate(ctx))
                 return;
-            }
-
-            handler(context);
+            handler(ctx);
         });
-
-        // Avoid colliding with engine-provided ConCommands (kick/map/rcon/...) on raw registration.
-        if (!RawConCommandCollisionAliases.Contains(commandName))
-        {
-            TryRegisterCommand(commandName, wrappedHandler);
-        }
-
-        var swAlias = CommandAliasUtils.ToSwAlias(commandName);
-        if (!string.Equals(swAlias, commandName, StringComparison.OrdinalIgnoreCase))
-        {
-            TryRegisterCommand(swAlias, wrappedHandler);
-        }
+        var swAlias = "sw_" + name;
+        if (!RawConCollisions.Contains(name))
+            TryRegister(name, dedupWrapper);
+        if (!string.Equals(swAlias, name, StringComparison.OrdinalIgnoreCase))
+            TryRegister(swAlias, dedupWrapper);
     }
 
-    private void TryRegisterCommand(string name, ICommandService.CommandListener handler)
+    private void TryRegister(string name, ICommandService.CommandListener handler)
     {
-        if (Core.Command.IsCommandRegistered(name))
-        {
-            return;
-        }
-
-        Core.Command.RegisterCommand(name, handler, registerRaw: true);
+        if (!Core.Command.IsCommandRegistered(name))
+            Core.Command.RegisterCommand(name, handler, registerRaw: true);
     }
 
-    private void EnsureRequiredCommandAliases(CommandsConfig commands)
+    private bool ShouldSuppressDuplicate(ICommandContext ctx)
     {
-        if (commands.Beacon == null || commands.Beacon.Count == 0)
-        {
-            commands.Beacon = ["beacon"];
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Commands.Beacon alias list was empty. Restored default alias: beacon");
-        }
-        else
-        {
-            EnsureAlias(commands.Beacon, "beacon");
-        }
-
-        EnsureAlias(commands.Beacon, "sw_beacon");
-
-        if (commands.ListPlayers == null || commands.ListPlayers.Count == 0)
-        {
-            commands.ListPlayers = ["players"];
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Commands.ListPlayers alias list was empty. Restored default alias: players");
-        }
-
-        EnsureAlias(commands.Respawn, "revive");
-        EnsureAlias(commands.ChangeTeam, "swap");
-        EnsureAlias(commands.MixTeam, "mixteam");
-    }
-
-    private void EnsureInternalMenuAliases(CommandsConfig commands)
-    {
-        // Keep legacy aliases for compatibility, but prefer namespaced aliases to avoid collisions
-        // with other admin plugins that register the same `sw_*` commands.
-        EnsurePreferredAlias(commands.Slap, "cs2a_slap");
-        EnsurePreferredAlias(commands.God, "cs2a_god");
-        EnsurePreferredAlias(commands.Slay, "cs2a_slay");
-        EnsurePreferredAlias(commands.Respawn, "cs2a_respawn");
-        EnsurePreferredAlias(commands.ChangeTeam, "cs2a_team");
-        EnsurePreferredAlias(commands.MixTeam, "cs2a_mixteam");
-        EnsurePreferredAlias(commands.NoClip, "cs2a_noclip");
-        EnsurePreferredAlias(commands.Goto, "cs2a_goto");
-        EnsurePreferredAlias(commands.Bring, "cs2a_bring");
-        EnsurePreferredAlias(commands.Freeze, "cs2a_freeze");
-        EnsurePreferredAlias(commands.Unfreeze, "cs2a_unfreeze");
-        EnsurePreferredAlias(commands.Resize, "cs2a_resize");
-        EnsurePreferredAlias(commands.Drug, "cs2a_drug");
-        EnsurePreferredAlias(commands.Blind, "cs2a_blind");
-        EnsurePreferredAlias(commands.Glow, "cs2a_glow");
-        EnsurePreferredAlias(commands.Beacon, "cs2a_beacon");
-        EnsurePreferredAlias(commands.Burn, "cs2a_burn");
-        EnsurePreferredAlias(commands.Disarm, "cs2a_disarm");
-        EnsurePreferredAlias(commands.Speed, "cs2a_speed");
-        EnsurePreferredAlias(commands.Gravity, "cs2a_gravity");
-        EnsurePreferredAlias(commands.Hp, "cs2a_hp");
-        EnsurePreferredAlias(commands.Money, "cs2a_money");
-        EnsurePreferredAlias(commands.Give, "cs2a_give");
-        EnsurePreferredAlias(commands.ChangeMap, "cs2a_map");
-        EnsurePreferredAlias(commands.ChangeWSMap, "cs2a_wsmap");
-        EnsurePreferredAlias(commands.RestartGame, "cs2a_restart");
-        EnsurePreferredAlias(commands.HeadshotOn, "cs2a_hson");
-        EnsurePreferredAlias(commands.HeadshotOff, "cs2a_hsoff");
-        EnsurePreferredAlias(commands.BunnyOn, "cs2a_bunnyon");
-        EnsurePreferredAlias(commands.BunnyOff, "cs2a_bunnyoff");
-        EnsurePreferredAlias(commands.RespawnOn, "cs2a_respawnon");
-        EnsurePreferredAlias(commands.RespawnOff, "cs2a_respawnoff");
-    }
-
-    private static void EnsurePreferredAlias(List<string>? aliases, string preferredAlias)
-    {
-        if (aliases == null)
-        {
-            return;
-        }
-
-        aliases.RemoveAll(x => string.Equals(x?.Trim(), preferredAlias, StringComparison.OrdinalIgnoreCase));
-        aliases.Insert(0, preferredAlias);
-    }
-
-    private static void EnsureAlias(List<string>? aliases, string alias)
-    {
-        if (aliases == null || string.IsNullOrWhiteSpace(alias))
-        {
-            return;
-        }
-
-        if (aliases.Any(x => string.Equals(x?.Trim(), alias, StringComparison.OrdinalIgnoreCase)))
-        {
-            return;
-        }
-
-        aliases.Add(alias);
-    }
-
-    private bool ShouldSuppressDuplicateInvocation(ICommandContext context, string rawCommandName)
-    {
-        var normalizedCommand = rawCommandName.Trim().ToLowerInvariant();
-        if (normalizedCommand.StartsWith("sw_", StringComparison.Ordinal))
-        {
-            normalizedCommand = normalizedCommand[3..];
-        }
-
-        var args = context.Args
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Select(x => x.Trim())
-            .ToList();
-
-        if (args.Count > 0)
-        {
-            var first = args[0].TrimStart('!', '/').ToLowerInvariant();
-            if (first == normalizedCommand || first == $"sw_{normalizedCommand}")
-            {
-                args.RemoveAt(0);
-            }
-        }
-
-        var senderKey = context.Sender?.SteamID.ToString(CultureInfo.InvariantCulture)
-            ?? (context.IsSentByPlayer ? "player" : "console");
-
-        var key = $"{senderKey}|{normalizedCommand}|{string.Join(' ', args).ToLowerInvariant()}";
+        var cmd = (ctx.CommandName ?? "").TrimStart('!', '/');
+        var args = ctx.Args.Where(a => !string.IsNullOrWhiteSpace(a)).Select(a => a.Trim().ToLowerInvariant()).ToList();
+        var senderKey = ctx.Sender?.SteamID.ToString(CultureInfo.InvariantCulture) ?? (ctx.IsSentByPlayer ? "player" : "console");
+        var key = $"{senderKey}|{cmd}|{string.Join(' ', args)}";
         var now = Environment.TickCount64;
-
-        lock (CommandDedupeLock)
-        {
-            if (RecentCommandExecutions.TryGetValue(key, out var lastTick) && now - lastTick <= CommandDedupeWindowMs)
-            {
-                Core.Logger.LogInformationIfEnabled("[CS2Admin] Suppressed duplicate command invocation: {Command} {Args}", normalizedCommand, string.Join(' ', args));
-                return true;
-            }
-
-            RecentCommandExecutions[key] = now;
-
-            if (RecentCommandExecutions.Count > 1024)
-            {
-                var staleKeys = RecentCommandExecutions
-                    .Where(pair => now - pair.Value > CommandDedupeRetentionMs)
-                    .Select(pair => pair.Key)
-                    .ToList();
-
-                foreach (var stale in staleKeys)
-                {
-                    RecentCommandExecutions.Remove(stale);
-                }
-            }
-        }
-
+        if (RecentCmd.TryGetValue(key, out var last) && now - last <= DedupMs)
+            return true;
+        RecentCmd[key] = now;
+        if (RecentCmd.Count > 1024)
+            foreach (var k in RecentCmd.Keys.Where(k => now - RecentCmd[k] > RetentionMs).ToList())
+                RecentCmd.TryRemove(k, out _);
         return false;
-    }
-
-    private void SanitizeCommandAliases()
-    {
-        var commands = _config.Commands;
-        foreach (var prop in typeof(CommandsConfig).GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            if (prop.PropertyType != typeof(List<string>))
-            {
-                continue;
-            }
-
-            var aliases = prop.GetValue(commands) as List<string>;
-            if (aliases == null || aliases.Count == 0)
-            {
-                continue;
-            }
-
-            var blockedRemoved = aliases.Count(x => !string.IsNullOrWhiteSpace(x) && BlockedCommandAliases.Contains(x.Trim()));
-            var cleaned = aliases
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Select(x => x.Trim())
-                .Where(x => !BlockedCommandAliases.Contains(x))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (blockedRemoved > 0)
-            {
-                Core.Logger.LogWarningIfEnabled(
-                    "[CS2Admin] Removed blocked command alias(es) from {Property}. Final: {Aliases}",
-                    prop.Name,
-                    string.Join(", ", cleaned));
-            }
-
-            prop.SetValue(commands, cleaned);
-        }
-    }
-
-    private void CleanupLegacyCommandsFromConfig()
-    {
-        try
-        {
-            var configPath = Core.Configuration.GetConfigPath("config.json");
-            if (!File.Exists(configPath))
-            {
-                return;
-            }
-
-            var json = File.ReadAllText(configPath);
-            var root = JsonNode.Parse(json) as JsonObject;
-            if (root?["CS2Admin"] is not JsonObject pluginSection)
-            {
-                return;
-            }
-
-            if (!pluginSection.Remove("Commands"))
-            {
-                return;
-            }
-
-            var rewritten = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(configPath, rewritten);
-            Core.Logger.LogInformationIfEnabled("[CS2Admin] Removed legacy Commands block from config.json; commands are now managed by commands.json.");
-        }
-        catch (Exception ex)
-        {
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to cleanup legacy Commands block from config.json: {Message}", ex.Message);
-        }
-    }
-
-    private void EnsureBanModeConfig()
-    {
-        try
-        {
-            var configPath = Core.Configuration.GetConfigPath("config.json");
-            if (!File.Exists(configPath))
-            {
-                return;
-            }
-
-            var json = File.ReadAllText(configPath);
-            var root = JsonNode.Parse(json) as JsonObject;
-            if (root == null)
-            {
-                return;
-            }
-
-            JsonObject targetSection;
-            if (root["CS2Admin"] is JsonObject pluginSection)
-            {
-                targetSection = pluginSection;
-            }
-            else
-            {
-                targetSection = root;
-            }
-
-            var desiredBanMode = PluginConfig.NormalizeBanMode(
-                targetSection["BanMode"]?.GetValue<string>());
-
-            targetSection.Remove("BanType");
-            targetSection.Remove("BanType_Info_Comment");
-
-            var currentBanMode = targetSection["BanMode"]?.GetValue<string>();
-            if (string.Equals(currentBanMode, desiredBanMode, StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            targetSection["BanMode"] = desiredBanMode;
-            var rewritten = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(configPath, rewritten);
-            Core.Logger.LogInformationIfEnabled("[CS2Admin] Added/normalized BanMode in config.json: {BanMode}", desiredBanMode);
-        }
-        catch (Exception ex)
-        {
-            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to ensure BanMode in config.json: {Message}", ex.Message);
-        }
-    }
-
-    private void RegisterEvents()
-    {
-        Core.Event.OnClientPutInServer += _eventHandlers.OnClientPutInServer;
-        Core.Event.OnClientSteamAuthorize += _eventHandlers.OnClientSteamAuthorize;
-        Core.Event.OnClientDisconnected += _eventHandlers.OnClientDisconnected;
-
-        Core.GameEvent.HookPost<EventRoundStart>(_eventHandlers.OnRoundStart);
-        Core.GameEvent.HookPost<EventRoundStart>(OnRoundStartEnsureCommands);
-        
-        Core.GameEvent.HookPost<EventPlayerConnectFull>(_eventHandlers.OnPlayerConnectFull);
-        Core.GameEvent.HookPost<EventPlayerDisconnect>(_eventHandlers.OnPlayerDisconnectGameEvent);
-    }
-
-    private HookResult OnRoundStartEnsureCommands(EventRoundStart @event)
-    {
-        EnsureCommandsRegistered();
-        return HookResult.Continue;
     }
 
     private void EnsureCommandsRegistered()
@@ -1742,56 +773,281 @@ public partial class CS2_Admin : BasePlugin
             var probe = _config?.Commands?.AdminMenu?.FirstOrDefault();
             if (!string.IsNullOrWhiteSpace(probe) && Core.Command.IsCommandRegistered(probe))
                 return;
-
             RegisterCommands();
         }
-        catch (Exception ex)
+        catch { }
+    }
+
+    private async Task InitializeDatabasesAsync()
+    {
+        var maxRetries = 3;
+        var retryDelayMs = 5000;
+
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
-            Core.Logger.LogErrorIfEnabled("[CS2Admin] Failed while ensuring commands are registered: {Message}", ex.Message);
+            try
+            {
+                using var testConn = Core.Database.GetConnection("mysql_detailed");
+                testConn.Open();
+                if (testConn.State != System.Data.ConnectionState.Open)
+                {
+                    Core.Logger.LogWarningIfEnabled("[CS2Admin] Database connection not open (attempt {Attempt}/{MaxRetries})", attempt, maxRetries);
+                    if (attempt < maxRetries)
+                    {
+                        await Task.Delay(retryDelayMs);
+                        continue;
+                    }
+                    Core.Logger.LogWarningIfEnabled("[CS2Admin] Database unavailable after {MaxRetries} attempts, continuing without database features", maxRetries);
+                    return;
+                }
+                testConn.Close();
+            }
+            catch (Exception ex)
+            {
+                Core.Logger.LogWarningIfEnabled("[CS2Admin] Database connection failed (attempt {Attempt}/{MaxRetries}): {Msg}", attempt, maxRetries, ex.Message);
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(retryDelayMs);
+                    continue;
+                }
+                Core.Logger.LogWarningIfEnabled("[CS2Admin] Database unavailable after {MaxRetries} attempts, continuing without database features", maxRetries);
+                return;
+            }
+
+            try
+            {
+                using var conn = Core.Database.GetConnection("mysql_detailed");
+                MigrationRunner.RunMigrations(conn);
+                conn.Close();
+
+                await _groupDbManager.InitializeAsync();
+                await _banManager.InitializeAsync();
+                await _muteManager.InitializeAsync();
+                await _gagManager.InitializeAsync();
+                await _warnManager.InitializeAsync();
+                await _adminDbManager.InitializeAsync();
+                await _adminLogManager.InitializeAsync();
+                await _serverInfoDbManager.InitializeAsync();
+                await _discordServerStatusDbManager.InitializeAsync();
+                await _discordMessageStateDbManager.InitializeAsync();
+                await _adminPlaytimeDbManager.InitializeAsync();
+                await _playerIpDbManager.InitializeAsync();
+                await _playerSessionManager.InitializeAsync();
+                await _playerNameHistoryManager.InitializeAsync();
+
+                _eventRegistrar?.SetDatabaseReady(true);
+                await _chatTagConfigManager.SyncWithGroupsAsync(_groupDbManager);
+                await RefreshAdminStateForAllOnlinePlayersAsync();
+                StartAdminPlaytimeTracking();
+                StartAdminTimeAutoSend();
+                _discord.StartBackgroundUpdates(_playerSessionManager, _discordServerStatusDbManager, _rankLeaderboardDbManager, _discordMessageStateDbManager);
+
+                break;
+            }
+            catch (Exception ex)
+            {
+                Core.Logger.LogWarningIfEnabled("[CS2Admin] Database init failed (attempt {Attempt}/{MaxRetries}): {Msg}", attempt, maxRetries, ex.Message);
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(retryDelayMs);
+                }
+                else
+                {
+                    Core.Logger.LogWarningIfEnabled("[CS2Admin] Database init failed after {MaxRetries} attempts, continuing without database features", maxRetries);
+                }
+            }
         }
     }
 
     private void StartAdminPlaytimeTracking()
     {
-        var intervalMinutes = Math.Max(1, _config.AdminPlaytime.TrackIntervalMinutes);
+        var interval = Math.Max(1, _config.AdminPlaytime.TrackIntervalMinutes);
         _adminPlaytimeTimer?.Dispose();
-
-        _adminPlaytimeTimer = new Timer(
-            _ =>
+        _adminPlaytimeTimer = new Timer(_ =>
+        {
+            if (Interlocked.Exchange(ref _isTrackingAdminPlaytime, 1) == 1) return;
+            Core.Scheduler.NextTick(() =>
             {
-                if (Interlocked.Exchange(ref _isTrackingAdminPlaytime, 1) == 1)
+                var snapshots = Core.PlayerManager.GetAllPlayers()
+                    .Where(p => p.IsValid && !p.IsFakeClient)
+                    .Where(p => p.Controller.TeamNum >= 2)
+                    .Select(p => new AdminPlaytimeSnapshot(p.SteamID, p.Controller.PlayerName ?? PluginLocalizer.Get(Core)["player_fallback_name", p.PlayerID]))
+                    .ToList();
+                _ = Task.Run(async () =>
                 {
+                    try { await _adminPlaytimeDbManager.TrackOnlineAdminsAsync(snapshots, interval); }
+                    finally { Interlocked.Exchange(ref _isTrackingAdminPlaytime, 0); }
+                });
+            });
+        }, null, TimeSpan.FromMinutes(interval), TimeSpan.FromMinutes(interval));
+    }
+
+    private void StartAdminTimeAutoSend()
+    {
+        var cfg = _config.AdminPlaytime;
+        if (cfg.AutoSendDayOfWeek <= 0)
+            return;
+
+        var firstDelayMs = CalculateDayOfWeekDelay(cfg.AutoSendDayOfWeek);
+        var periodMs = (int)TimeSpan.FromDays(7).TotalMilliseconds;
+
+        _adminTimeAutoSendTimer?.Dispose();
+        _adminTimeAutoSendTimer = new Timer(async _ =>
+        {
+            try
+            {
+                var topAdmins = await _adminPlaytimeDbManager.GetTopAdminsAsync(cfg.DiscordTopLimit);
+                if (topAdmins.Count == 0)
                     return;
+
+                var allDbAdmins = await _adminDbManager.GetAllAdminsAsync();
+                var playedSteamIds = new HashSet<ulong>(topAdmins.Select(a => a.SteamId));
+                var zeroPlaytimeAdmins = allDbAdmins
+                    .Where(a => !playedSteamIds.Contains(a.SteamId))
+                    .Select(a => string.IsNullOrWhiteSpace(a.Name) ? a.SteamId.ToString() : a.Name)
+                    .ToList();
+
+                await _discord.SendAdminTimeNotificationAsync(topAdmins, zeroPlaytimeAdmins);
+                Core.Logger.LogInformationIfEnabled("[CS2Admin] Admin playtime auto-sent to Discord ({Count} admins)", topAdmins.Count);
+
+                if (cfg.AutoSendResetAfterSend)
+                {
+                    await _adminPlaytimeDbManager.ResetAllAsync();
+                    Core.Logger.LogInformationIfEnabled("[CS2Admin] Admin playtime reset after auto-send");
+                }
+            }
+            catch (Exception ex)
+            {
+                Core.Logger.LogWarningIfEnabled("[CS2Admin] Admin time auto-send failed: {Msg}", ex.Message);
+            }
+        }, null, firstDelayMs, periodMs);
+    }
+
+    private void StartPeriodicUpdateCheck(string currentVersion)
+    {
+        _periodicUpdateTimer?.Dispose();
+        _periodicUpdateTimer = new Timer(_ =>
+        {
+            _ = Task.Run(() => global::CS2_Admin.Utils.AutoUpdater.CheckForUpdatesAsync(Core, currentVersion));
+        }, null, TimeSpan.FromHours(1), TimeSpan.FromHours(1));
+    }
+
+    private async Task RefreshAdminStateForAllOnlinePlayersAsync()
+    {
+        try
+        {
+            var groups = await _groupDbManager.GetAllGroupsAsync();
+            var admins = await _adminDbManager.GetAllAdminsAsync();
+            var adminsBySteamId = admins.ToDictionary(a => a.SteamId, a => a);
+
+            var managedPermissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var group in groups)
+            {
+                foreach (var flag in SplitPermissions(group.Flags))
+                    managedPermissions.Add(flag);
+            }
+            foreach (var admin in admins)
+            {
+                foreach (var flag in SplitPermissions(admin.Flags))
+                    managedPermissions.Add(flag);
+            }
+            foreach (var bypassPermission in _config.Permissions.RootBypassPermissions)
+            {
+                if (!string.IsNullOrWhiteSpace(bypassPermission))
+                    managedPermissions.Add(bypassPermission.Trim());
+            }
+
+            var onlinePlayers = Core.PlayerManager
+                .GetAllPlayers()
+                .Where(p => p.IsValid && !p.IsFakeClient)
+                .Select(p => (p.PlayerID, p.SteamID))
+                .ToList();
+
+            var resolvedTags = new Dictionary<int, string>();
+
+            foreach (var snapshot in onlinePlayers)
+            {
+                foreach (var permission in managedPermissions)
+                    Core.Permission.RemovePermission(snapshot.SteamID, permission);
+
+                var effectiveFlags = await _adminDbManager.GetEffectiveFlagsAsync(snapshot.SteamID);
+                var hasRoot = false;
+
+                foreach (var flag in effectiveFlags)
+                {
+                    if (string.IsNullOrWhiteSpace(flag)) continue;
+                    var normalizedFlag = flag.Trim();
+                    Core.Permission.AddPermission(snapshot.SteamID, normalizedFlag);
+                    if (string.Equals(normalizedFlag, _config.Permissions.AdminRoot, StringComparison.OrdinalIgnoreCase))
+                        hasRoot = true;
                 }
 
-                Core.Scheduler.NextTick(() =>
+                if (hasRoot)
                 {
-                    var snapshots = Core.PlayerManager.GetAllPlayers()
-                        .Where(p => p.IsValid && !p.IsFakeClient)
-                        .Select(p => new AdminPlaytimeSnapshot(
-                            p.SteamID,
-                            p.Controller.PlayerName ?? PluginLocalizer.Get(Core)["player_fallback_name", p.PlayerID]))
-                        .ToList();
-
-                    _ = Task.Run(async () =>
+                    foreach (var bypassPermission in _config.Permissions.RootBypassPermissions)
                     {
-                        try
-                        {
-                            await _adminPlaytimeDbManager.TrackOnlineAdminsAsync(snapshots, intervalMinutes);
-                        }
-                        finally
-                        {
-                            Interlocked.Exchange(ref _isTrackingAdminPlaytime, 0);
-                        }
-                    });
-                });
-            },
-            null,
-            TimeSpan.FromMinutes(intervalMinutes),
-            TimeSpan.FromMinutes(intervalMinutes));
+                        if (!string.IsNullOrWhiteSpace(bypassPermission))
+                            Core.Permission.AddPermission(snapshot.SteamID, bypassPermission.Trim());
+                    }
+                }
+
+                if (_config.Tags.Enabled)
+                {
+                    adminsBySteamId.TryGetValue(snapshot.SteamID, out var activeAdmin);
+                    var adminGroupTag = activeAdmin != null && activeAdmin.IsActive
+                        ? _groupDbManager.GetPrimaryGroupNameSync(activeAdmin.GroupList) ?? activeAdmin.GroupList.FirstOrDefault()
+                        : null;
+
+                    if (string.IsNullOrWhiteSpace(adminGroupTag) &&
+                        Core.Permission.PlayerHasPermission(snapshot.SteamID, _config.Permissions.AdminRoot))
+                    {
+                        adminGroupTag = "ADMIN";
+                    }
+
+                    resolvedTags[snapshot.PlayerID] = string.IsNullOrWhiteSpace(adminGroupTag)
+                        ? _config.Tags.PlayerTag
+                        : adminGroupTag;
+                }
+            }
+
+            Core.Scheduler.NextTick(() =>
+            {
+                if (!_config.Tags.Enabled) return;
+                foreach (var pair in resolvedTags)
+                    PlayerUtils.SetScoreTagReliable(Core, pair.Key, pair.Value);
+            });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to refresh admin state: {Message}", ex.Message);
+        }
+    }
+
+    private static IEnumerable<string> SplitPermissions(string rawPermissions)
+    {
+        return rawPermissions
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(p => !string.IsNullOrWhiteSpace(p));
+    }
+
+    private static int CalculateDayOfWeekDelay(int targetDay)
+    {
+        var target = targetDay switch
+        {
+            1 => DayOfWeek.Monday,
+            2 => DayOfWeek.Tuesday,
+            3 => DayOfWeek.Wednesday,
+            4 => DayOfWeek.Thursday,
+            5 => DayOfWeek.Friday,
+            6 => DayOfWeek.Saturday,
+            7 => DayOfWeek.Sunday,
+            _ => DayOfWeek.Sunday
+        };
+
+        var now = DateTime.UtcNow;
+        var daysUntil = ((int)target - (int)now.DayOfWeek + 7) % 7;
+        if (daysUntil == 0)
+            daysUntil = 7;
+        return (int)TimeSpan.FromDays(daysUntil).TotalMilliseconds;
     }
 }
-
-
-
-

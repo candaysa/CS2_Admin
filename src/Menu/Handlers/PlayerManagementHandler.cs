@@ -62,7 +62,7 @@ public class PlayerManagementHandler : IAdminMenuHandler
         var builder = _core.MenusAPI.CreateBuilder();
         builder.Design.SetMenuTitle(T("menu_warn_history"));
 
-        var players = _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid).ToList();
+        var players = _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid && !p.IsFakeClient).ToList();
         foreach (var target in players)
         {
             var btn = new SubmenuMenuOption(
@@ -105,14 +105,14 @@ public class PlayerManagementHandler : IAdminMenuHandler
         {
             var status = warn.Status switch
             {
-                WarnStatus.Active => T("warn_status_active"),
-                WarnStatus.Expired => T("warn_status_expired"),
-                WarnStatus.Removed => T("warn_status_removed"),
+                WarnStatus.Active => T("active"),
+                WarnStatus.Expired => T("expired"),
+                WarnStatus.Removed => T("removed"),
                 _ => T("unknown")
             };
 
             var created = warn.CreatedAt.ToString("yyyy-MM-dd HH:mm");
-            var text = $"{created} | {status} | {Truncate(warn.Reason, 28)}";
+            var text = "$created | $status | $((Truncate(warn.Reason, 28)))";
             var option = new ButtonMenuOption(text) { CloseAfterClick = true };
             option.Click += (_, _) => ValueTask.CompletedTask;
             builder.AddOption(option);
@@ -152,7 +152,7 @@ public class PlayerManagementHandler : IAdminMenuHandler
         var builder = _core.MenusAPI.CreateBuilder();
         builder.Design.SetMenuTitle(T("menu_select_player"));
 
-        var players = _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid && p.PlayerID != admin.PlayerID).ToList();
+        var players = _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid && p.PlayerID != admin.PlayerID && !p.IsFakeClient).ToList();
         if (players.Count == 0)
         {
             var empty = new ButtonMenuOption(T("menu_no_players")) { CloseAfterClick = true };
@@ -284,7 +284,7 @@ public class PlayerManagementHandler : IAdminMenuHandler
     {
         var targetId = target.PlayerID;
         var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Kick, "kick");
-        ExecuteAndReopenPlayerSelection(admin, "kick", $"{cmd} {targetId} {reason}");
+        ExecuteAndReopenPlayerSelection(admin, "kick", "$cmd $targetId $reason");
     }
 
     private void ExecuteTimedAction(IPlayer admin, IPlayer target, string action, int minutes, string reason)
@@ -306,7 +306,7 @@ public class PlayerManagementHandler : IAdminMenuHandler
             return;
 
         var cmd = CommandAliasUtils.ToSwAlias(cmdName);
-        _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {targetId} {duration} {reason}"));
+        _core.Scheduler.NextTick(() => admin.ExecuteCommand("$cmd $targetId $duration $reason"));
         ReopenDurationMenuWithRetry(admin, target, action, reason);
     }
 
@@ -336,7 +336,7 @@ public class PlayerManagementHandler : IAdminMenuHandler
     {
         var targetId = target.PlayerID;
         var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Warn, "warn");
-        ExecuteAndReopenPlayerSelection(admin, "warn", $"{cmd} {targetId} {reason}");
+        ExecuteAndReopenPlayerSelection(admin, "warn", "$cmd $targetId $reason");
     }
 
     private void ExecuteAndReopenPlayerSelection(IPlayer admin, string action, string command)
@@ -366,5 +366,3 @@ public class PlayerManagementHandler : IAdminMenuHandler
         }
     }
 }
-
-

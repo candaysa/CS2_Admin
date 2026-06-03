@@ -51,8 +51,8 @@ public sealed class JsonFileLocalizer : ILocalizer
             var primaryFile = Path.Combine(directoryPath, $"{normalized}.jsonc");
             var fallbackFile = Path.Combine(directoryPath, "en.jsonc");
 
-            var primary = File.Exists(primaryFile) ? LoadMap(primaryFile) : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            var fallback = File.Exists(fallbackFile) ? LoadMap(fallbackFile) : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var primary = TryLoadMap(directoryPath, $"{normalized}.jsonc");
+            var fallback = TryLoadMap(directoryPath, "en.jsonc");
 
             if (primary.Count == 0 && fallback.Count == 0)
             {
@@ -79,8 +79,10 @@ public sealed class JsonFileLocalizer : ILocalizer
 
             return new JsonFileLocalizer(primary, fallback, diagnostics);
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"[CS2Admin] ERROR in JsonFileLocalizer.TryCreate: {ex.Message}");
+            Console.WriteLine($"[CS2Admin] StackTrace: {ex.StackTrace}");
             return null;
         }
     }
@@ -100,9 +102,37 @@ public sealed class JsonFileLocalizer : ILocalizer
         return key;
     }
 
-    private static Dictionary<string, string> LoadMap(string path)
+    private static Dictionary<string, string> TryLoadMap(string directoryPath, string fileName)
     {
-        var raw = File.ReadAllText(path);
+        var path = Path.Combine(directoryPath, fileName);
+        string? raw = null;
+
+        if (File.Exists(path))
+        {
+            try
+            {
+                raw = File.ReadAllText(path);
+            }
+            catch { }
+        }
+
+        if (raw == null)
+        {
+            var resourceName = $"CS2_Admin.Translations.{fileName}";
+            var asm = System.Reflection.Assembly.GetExecutingAssembly();
+            using var stream = asm.GetManifestResourceStream(resourceName);
+            if (stream != null)
+            {
+                using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
+                raw = reader.ReadToEnd();
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
         var cleaned = RemoveSingleLineComments(raw);
         var document = JsonDocument.Parse(cleaned, new JsonDocumentOptions
         {

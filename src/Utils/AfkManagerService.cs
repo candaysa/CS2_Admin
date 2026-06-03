@@ -251,13 +251,7 @@ public sealed class AfkManagerService
         {
             try
             {
-                using var sound = new SoundEvent
-                {
-                    Name = _config.WarningSound,
-                    SourceEntityIndex = -1
-                };
-                sound.Recipients.AddRecipient(player.PlayerID);
-                sound.Emit();
+                player.ExecuteCommand($"play {_config.WarningSound}");
             }
             catch (Exception ex)
             {
@@ -337,3 +331,5 @@ public sealed class AfkManagerService
         public bool WasAlive { get; set; }
     }
 }
+
+

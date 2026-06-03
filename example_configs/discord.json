@@ -1,0 +1,21 @@
+{
+  "CS2_Discord": {
+    "Version": 4,
+    "ServerName": "",
+    "BotToken": "",
+    "ServerPublicIp": "",
+    "BannerUrl": "",
+    "CustomConnectUrl": "https://cs2browser.net/?search={IP}:{PORT}",
+    "AdminLogChannelId": "",
+    "ChatLogChannelId": "",
+    "ConnectionLogChannelId": "",
+    "CallAdminChannelId": "",
+    "ReportChannelId": "",
+    "AdminTimeChannelId": "",
+    "ServerStatusChannelId": "",
+    "LeaderboardChannelId": "",
+    "ServerStatusUpdateSeconds": 30,
+    "LeaderboardUpdateMinutes": 10,
+    "LeaderboardTopLimit": 10
+  }
+}
