@@ -80,7 +80,7 @@ public class HpCommand : CommandBase
         BroadcastNotification(adminName, "hp_notification", targetName, health);
 
         PlayerUtils.SendNotification(target, Messages,
-            L("hp_personal_html", health),
+            $"<font color='#00ff00'><b>{L("hp_personal_html", health)}</b></font>",
             $" \x02{L("prefix")}\x01 {L("hp_personal_chat", health)}");
 
         AdminLogManager.AddLogAsync("hp", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"health={health}", targetName);

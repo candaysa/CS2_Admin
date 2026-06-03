@@ -112,7 +112,7 @@ public class DiscordInteractionHandler
                 if (newEmbed.TryGetPropertyValue("description", out var descNode) && descNode != null)
                 {
                     var desc = descNode.GetValue<string>();
-                    newEmbed["description"] = $"{desc}\n\n{T("discord_report_resolved_status", "**Status:** ✅ Resolved by <@{0}>", userId ?? "0")}";
+                    newEmbed["description"] = $"{desc}\n\n**Status:** ✅ {T("discord_report_resolved_status", "Resolved by <@{0}>", userId ?? "0")}";
                 }
             }
 

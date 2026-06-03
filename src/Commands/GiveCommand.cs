@@ -72,7 +72,7 @@ public class GiveCommand : CommandBase
         BroadcastNotification(adminName, "give_notification", targetName, itemName);
 
         PlayerUtils.SendNotification(target, Messages,
-            L("give_personal_html", itemName, ResolveVisibleAdminName(target, adminName)),
+            $"<font color='#00ff00'><b>{L("give_personal_html")}</b></font><br><br>{L("label_item")}: <font color='#00ff00'>{itemName}</font><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
             $" \x02{L("prefix")}\x01 {L("give_personal_chat", itemName, ResolveVisibleAdminName(target, adminName))}");
 
         AdminLogManager.AddLogAsync("give", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"item={itemName}", targetName);

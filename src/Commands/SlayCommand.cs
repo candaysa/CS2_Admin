@@ -72,7 +72,7 @@ public class SlayCommand : CommandBase
         foreach (var target in targets)
         {
             PlayerUtils.SendNotification(target, Messages,
-                L("slayed_personal_html", ResolveVisibleAdminName(target, adminName)),
+                $"<font color='#ff0000'><b>{L("slayed_personal_html")}</b></font><br><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
                 $" \x02{prefix}\x01 {L("slayed_personal_chat", ResolveVisibleAdminName(target, adminName))}");
         }
 

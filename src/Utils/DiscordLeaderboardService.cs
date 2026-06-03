@@ -65,7 +65,7 @@ public class DiscordLeaderboardService
 
         var sharedMessageId = await _discordMessageStateDbManager.GetMessageIdAsync(messageKey);
         if (!string.IsNullOrWhiteSpace(sharedMessageId)
-            && await _restClient.UpdateEmbedAsync(_leaderboardChannelId, sharedMessageId, embed))
+            && await _restClient.UpdateEmbedAsync(_leaderboardChannelId, sharedMessageId, embed) == true)
         {
             await _restClient.CleanupDuplicateEmbedsAsync(_leaderboardChannelId, DiscordHelpers.GetEmbedTitle(embed), sharedMessageId);
             return;

@@ -82,7 +82,7 @@ public class GodCommand : CommandBase
             var targetName = target.Controller.PlayerName;
 
             PlayerUtils.SendNotification(target, Messages,
-                L("god_personal_html", stateLabel, ResolveVisibleAdminName(target, adminName)),
+                $"<font color='#9b59b6'><b>{L("god_personal_html", stateLabel)}</b></font><br><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
                 $" \x02{L("prefix")}\x01 {L("god_personal_chat", stateLabel, ResolveVisibleAdminName(target, adminName))}");
         }
 

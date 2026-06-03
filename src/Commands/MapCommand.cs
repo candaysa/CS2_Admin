@@ -72,7 +72,22 @@ public class MapCommand : CommandBase
 
         Core.Scheduler.DelayBySeconds(changeDelaySeconds, () =>
         {
-            Core.Engine.ExecuteCommand($"changelevel {matchedMap}");
+            if (matchedMap.StartsWith("workshop/", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = matchedMap.Split('/');
+                if (parts.Length > 1)
+                {
+                    Core.Engine.ExecuteCommand($"host_workshop_map {parts[1]}");
+                }
+                else
+                {
+                    Core.Engine.ExecuteCommand($"changelevel {matchedMap}");
+                }
+            }
+            else
+            {
+                Core.Engine.ExecuteCommand($"changelevel {matchedMap}");
+            }
         });
 
         AdminLogManager.AddLogAsync("map", adminName, context.Sender?.SteamID ?? 0, null, null, $"map={matchedMap}");

@@ -71,7 +71,7 @@ public class KickCommand : CommandBase
         }
 
         PlayerUtils.SendNotification(target, Messages,
-            L("kicked_personal_html", reason),
+            $"<font color='#ff0000'><b>{L("kicked_personal_html")}</b></font><br><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
             $" \x02{prefix}\x01 {L("kicked_personal_chat", reason)}");
 
         var targetSteamId = target.SteamID;

@@ -262,7 +262,7 @@ public sealed class AfkManagerService
         PlayerUtils.SendNotification(
             player,
             _messagesConfig,
-            L("afk_warning_html", "You will be moved to spectator in {0} seconds for being AFK.", remainingSeconds),
+            $"<font color='#ffcc00'><b>{L("afk_warning_html", "You will be moved to spectator in {0} seconds for being AFK.", remainingSeconds)}</b></font>",
             $" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {L("afk_warning_chat", "You will be moved to spectator in {0} seconds for being AFK.", remainingSeconds)}");
     }
 

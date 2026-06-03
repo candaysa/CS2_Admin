@@ -93,7 +93,7 @@ public class UnwarnCommand : CommandBase
                     PlayerUtils.SendNotification(
                         onlineTarget,
                         Messages,
-                        L("unwarned_personal_html", reason),
+                        $"<font color='#00ff00'><b>{L("unwarned_personal_html")}</b></font><br><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
                         $" \x02{L("prefix")}\x01 {L("unwarned_personal_chat", reason)}");
                 }
             });

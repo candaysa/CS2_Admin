@@ -53,10 +53,11 @@ public class AdminTimeSendCommand : CommandBase
             }
 
             await _discord.SendAdminTimeNotificationAsync(topAdmins);
+            await _adminPlaytimeDbManager.ResetAllAsync();
             await AdminLogManager.AddLogAsync("admintimesend", adminName, adminSteamId, null, null, $"count={topAdmins.Count}");
 
             Core.Scheduler.NextTick(() => Reply(context, "admintime_sent"));
-            Core.Logger.LogInformationIfEnabled("[CS2_Admin] Admin playtime top list sent to Discord by {Admin}", adminName);
+            Core.Logger.LogInformationIfEnabled("[CS2_Admin] Admin playtime top list sent to Discord by {Admin} and playtime counters reset", adminName);
         });
     }
 }

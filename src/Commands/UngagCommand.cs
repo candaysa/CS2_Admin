@@ -111,7 +111,7 @@ public sealed class UngagCommand : CommandBase
                     if (targetPlayer != null)
                     {
                         PlayerUtils.SendNotification(targetPlayer, Messages,
-                            L("ungagged_personal_html", reason),
+                            $"<font color='#00ff00'><b>{L("ungagged_personal_html")}</b></font><br><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
                             $" \x02{L("prefix")}\x01 {L("ungagged_personal_chat", reason)}");
                     }
                 });

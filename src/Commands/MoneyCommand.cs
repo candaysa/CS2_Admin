@@ -85,7 +85,7 @@ public class MoneyCommand : CommandBase
         BroadcastNotification(adminName, "money_set_notification", targetName, amount);
 
         PlayerUtils.SendNotification(target, Messages,
-            L("money_personal_html", amount),
+            $"<font color='#00ff00'><b>{L("money_personal_html", amount)}</b></font>",
             $" \x02{L("prefix")}\x01 {L("money_personal_chat", amount)}");
 
         AdminLogManager.AddLogAsync("money", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"amount={amount}", targetName);

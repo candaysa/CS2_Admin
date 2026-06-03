@@ -57,7 +57,7 @@ public class DiscordRestClient
         return await CreateMessageAsync(channelId, BuildMessagePayload(messageContent, null, null));
     }
 
-    public async Task<bool> UpdateEmbedAsync(string channelId, string messageId, object embed, string? messageContent = null, object[]? components = null, bool allowEveryoneMention = false)
+    public async Task<bool?> UpdateEmbedAsync(string channelId, string messageId, object embed, string? messageContent = null, object[]? components = null, bool allowEveryoneMention = false)
     {
         if (!HasBotConfiguration() || string.IsNullOrWhiteSpace(channelId) || string.IsNullOrWhiteSpace(messageId))
         {
@@ -67,7 +67,7 @@ public class DiscordRestClient
         return await UpdateMessageAsync(channelId, messageId, BuildMessagePayload(messageContent, embed, components, allowEveryoneMention));
     }
 
-    public async Task<bool> UpdateMessageRawAsync(string channelId, string messageId, object payload)
+    public async Task<bool?> UpdateMessageRawAsync(string channelId, string messageId, object payload)
     {
         if (!HasBotConfiguration() || string.IsNullOrWhiteSpace(channelId) || string.IsNullOrWhiteSpace(messageId))
         {
@@ -122,7 +122,7 @@ public class DiscordRestClient
         return false;
     }
 
-    private async Task<bool> UpdateMessageAsync(string channelId, string messageId, object payload)
+    private async Task<bool?> UpdateMessageAsync(string channelId, string messageId, object payload)
     {
         var endpoint = $"{DiscordApiBaseUrl}/channels/{channelId}/messages/{messageId}";
         using var request = BuildDiscordRequest(HttpMethod.Patch, endpoint, payload);
@@ -130,6 +130,11 @@ public class DiscordRestClient
         if (response.IsSuccessStatusCode)
         {
             return true;
+        }
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
         }
 
         await LogDiscordFailureAsync("update message", response);

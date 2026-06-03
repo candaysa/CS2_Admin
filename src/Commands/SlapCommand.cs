@@ -89,7 +89,7 @@ public class SlapCommand : CommandBase
                     return;
 
                 PlayerUtils.SendNotification(liveTarget, Messages,
-                    L("slapped_personal_html", ResolveVisibleAdminName(liveTarget, adminName), damage),
+                    $"<font color='#ffcc00'><b>{L("slapped_personal_html")}</b></font><br><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(liveTarget, adminName)}</font><br>{L("label_damage")}: <font color='#ffffff'>{damage}</font>",
                     $" \x02{prefix}\x01 {L("slapped_personal_chat", ResolveVisibleAdminName(liveTarget, adminName), damage)}");
 
                 var targetName = liveTarget.Controller.PlayerName ?? L("unknown");

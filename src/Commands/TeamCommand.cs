@@ -70,7 +70,7 @@ public class TeamCommand : CommandBase
         target.ChangeTeam(team.Value);
 
         PlayerUtils.SendNotification(target, Messages,
-            L("team_changed_personal_html", teamName, ResolveVisibleAdminName(target, adminName)),
+            $"<font color='#00ccff'><b>{L("team_changed_personal_html")}</b></font><br><br>{L("label_new_team")}: <font color='#00ff00'>{teamName}</font><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
             $" \x02{prefix}\x01 {L("team_changed_personal_chat", teamName, ResolveVisibleAdminName(target, adminName))}");
 
         foreach (var player in Core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))

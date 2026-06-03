@@ -109,7 +109,7 @@ public class FreezeCommand : CommandBase
         foreach (var target in targets)
         {
             PlayerUtils.SendNotification(target, Messages,
-                L("frozen_personal_html", ResolveVisibleAdminName(target, adminName)),
+                $"<font color='#00ccff'><b>{L("frozen_personal_html")}</b></font><br><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
                 $" \x02{L("prefix")}\x01 {L("frozen_personal_chat", ResolveVisibleAdminName(target, adminName))}");
         }
 

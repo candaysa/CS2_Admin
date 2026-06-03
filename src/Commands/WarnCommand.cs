@@ -49,20 +49,14 @@ public class WarnCommand : CommandBase
             return;
         }
 
-        if (args.Length == 0)
+        if (args.Length < 2)
         {
-            if (context.IsSentByPlayer && context.Sender != null)
+            if (args.Length == 0 && context.IsSentByPlayer && context.Sender != null)
             {
                 OpenWarnTargetMenu(context.Sender);
                 return;
             }
 
-            Reply(context, "warn_usage");
-            return;
-        }
-
-        if (args.Length < 2)
-        {
             Reply(context, "warn_usage");
             return;
         }
@@ -113,7 +107,7 @@ public class WarnCommand : CommandBase
                     PlayerUtils.SendNotification(
                         onlineTarget,
                         Messages,
-                        L("warned_personal_html", reason),
+                        $"<font color='#ffd700'><b>{L("warned_personal_html")}</b></font><br><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
                         $" \x02{L("prefix")}\x01 {L("warned_personal_chat", reason)}");
                 }
             });
@@ -255,7 +249,7 @@ public class WarnCommand : CommandBase
                 PlayerUtils.SendNotification(
                     onlineTarget,
                     Messages,
-                    L("warned_personal_html", reason),
+                    $"<font color='#ffd700'><b>{L("warned_personal_html")}</b></font><br><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
                     $" \x02{L("prefix")}\x01 {L("warned_personal_chat", reason)}");
             });
         }

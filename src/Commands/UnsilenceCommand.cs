@@ -118,7 +118,7 @@ public sealed class UnsilenceCommand : CommandBase
                     if (targetPlayer != null)
                     {
                         PlayerUtils.SendNotification(targetPlayer, Messages,
-                            L("unsilenced_personal_html", reason),
+                            $"<font color='#00ff00'><b>{L("unsilenced_personal_html")}</b></font><br><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
                             $" \x02{L("prefix")}\x01 {L("unsilenced_personal_chat", reason)}");
                         targetPlayer.VoiceFlags = VoiceFlagValue.Normal;
                     }

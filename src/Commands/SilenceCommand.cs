@@ -127,7 +127,7 @@ public sealed class SilenceCommand : CommandBase
                     {
                         var durationDisplay = duration <= 0 ? L("permanent") : L("duration_minutes", duration);
                         PlayerUtils.SendNotification(targetPlayer, Messages,
-                            L("silenced_personal_html", durationDisplay, reason),
+                            $"<font color='#ff6600'><b>{L("silenced_personal_html")}</b></font><br><br>{L("label_duration")}: <font color='#ffcc00'>{durationDisplay}</font><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
                             $" \x02{L("prefix")}\x01 {L("silenced_personal_chat", durationText, reason)}");
                         targetPlayer.VoiceFlags = VoiceFlagValue.Muted;
                     }

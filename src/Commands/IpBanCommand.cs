@@ -165,7 +165,7 @@ public class IpBanCommand : CommandBase
                         PlayerUtils.SendNotification(
                             onlineTarget,
                             Messages,
-                            L("banned_personal_html", durationDisplay, reason),
+                            $"<font color='#ff0000'><b>{L("banned_personal_html")}</b></font><br><br>{L("label_duration")}: <font color='#ffcc00'>{durationDisplay}</font><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
                             $" \x02{L("prefix")}\x01 {L("banned_personal_chat", durationText, reason)}");
 
                         var kickDelaySeconds = Messages.BanKickDelaySeconds > 0

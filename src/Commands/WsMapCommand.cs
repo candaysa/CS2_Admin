@@ -94,7 +94,11 @@ public class WsMapCommand : CommandBase
 
         Core.Scheduler.DelayBySeconds(changeDelaySeconds, () =>
         {
-            Core.Engine.ExecuteCommand($"changelevel workshop/{workshopId}");
+            Core.Engine.ExecuteCommand($"ds_workshop_changelevel {workshopId}");
+            Core.Scheduler.DelayBySeconds(0.25f, () =>
+            {
+                Core.Engine.ExecuteCommand($"host_workshop_map {workshopId}");
+            });
         });
 
         AdminLogManager.AddLogAsync("wsmap", adminName, context.Sender?.SteamID ?? 0, null, null, $"workshop_id={workshopId};map_name={mapDisplayName}");

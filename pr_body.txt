@@ -1,0 +1,28 @@
+Auto-Updater (src/Utils/AutoUpdater.cs):
+- JSON deserialization fix for GitHub API snake_case fields
+- Stream-based download + 1-min HttpClient timeout
+- Semver-aware version comparison (prerelease support)
+- Protected files whitelist (config.json, permissions.json, etc.)
+- Error logging with stack trace
+- Swiftly auto-reload via direct DLL overwrite
+
+Language path (src/CS2_Admin.cs):
+- Moved translations to plugins/CS2_Admin/resources/language
+
+AdminTimeSend (src/Commands/AdminTimeSendCommand.cs):
+- !admintimesend now resets playtime counters after sending
+
+Chat tags (ChatTagConfigManager.cs, EventRegistrar.cs):
+- Preset colors for known groups (admin, mod, vip, etc.)
+- Fixed legacy Enabled field overwriting ChatEnabled
+- Fixed duplicate messages (HookResult.Handled -> Stop)
+- Added debug logging for tag resolution
+- CreateDefaultStyle returns proper colors instead of empty strings
+
+Config versions (PluginConfig.cs):
+- All 7 config classes unified to CurrentVersion = 6
+
+Example config cleanup:
+- Removed legacy Enabled:false, set ChatEnabled:true
+
+Tested live in Pterodactyl container, end-to-end verified.

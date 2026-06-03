@@ -120,7 +120,7 @@ public sealed class GagCommand : CommandBase
                     {
                         var durationDisplay = duration <= 0 ? L("permanent") : L("duration_minutes", duration);
                         PlayerUtils.SendNotification(targetPlayer, Messages,
-                            L("gagged_personal_html", durationDisplay, reason),
+                            $"<font color='#ff6600'><b>{L("gagged_personal_html")}</b></font><br><br>{L("label_duration")}: <font color='#ffcc00'>{durationDisplay}</font><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
                             $" \x02{L("prefix")}\x01 {L("gagged_personal_chat", durationText, reason)}");
                     }
                 });

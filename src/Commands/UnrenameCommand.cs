@@ -74,7 +74,7 @@ public class UnrenameCommand : CommandBase
         BroadcastNotification(adminName, "unrename_notification", targetName, originalName);
 
         PlayerUtils.SendNotification(target, Messages,
-            L("unrename_personal_html", originalName, ResolveVisibleAdminName(target, adminName)),
+            $"<font color='#00ff00'><b>{L("unrename_personal_html")}</b></font><br><br>{L("label_original_name")}: <font color='#00ff00'>{originalName}</font><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
             $" \x02{L("prefix")}\x01 {L("unrename_personal_chat", originalName, ResolveVisibleAdminName(target, adminName))}");
 
         AdminLogManager.AddLogAsync("unrename", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"restored_name={originalName}", targetName);

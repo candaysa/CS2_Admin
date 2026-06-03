@@ -151,7 +151,7 @@ public class CS2_Admin : BasePlugin
         var versionAttr = (PluginMetadata)Attribute.GetCustomAttribute(typeof(CS2_Admin), typeof(PluginMetadata));
         if (versionAttr != null)
         {
-            _ = Task.Run(() => global::CS2_Admin.Utils.AutoUpdater.CheckForUpdatesAsync(Core, versionAttr.Version));
+            _ = global::CS2_Admin.Utils.AutoUpdater.CheckForUpdatesAsync(Core, versionAttr.Version);
             StartPeriodicUpdateCheck(versionAttr.Version);
         }
 
@@ -193,8 +193,7 @@ public class CS2_Admin : BasePlugin
     {
         try
         {
-            var configDir = Path.GetDirectoryName(Core.Configuration.GetConfigPath("config.json")) ?? string.Empty;
-            var languageDir = Path.Combine(configDir, "language");
+            var languageDir = Path.Combine(Core.PluginPath, "resources", "language");
             Core.Logger.LogInformationIfEnabled("[CS2Admin] Attempting to load custom localizer from: {Path} | Config Language: {Lang}", languageDir, _config.Language);
             
             // Extract embedded translations to disk if they are missing.
@@ -954,7 +953,7 @@ public class CS2_Admin : BasePlugin
         _periodicUpdateTimer?.Dispose();
         _periodicUpdateTimer = new Timer(_ =>
         {
-            _ = Task.Run(() => global::CS2_Admin.Utils.AutoUpdater.CheckForUpdatesAsync(Core, currentVersion));
+            _ = global::CS2_Admin.Utils.AutoUpdater.CheckForUpdatesAsync(Core, currentVersion);
         }, null, TimeSpan.FromHours(1), TimeSpan.FromHours(1));
     }
 

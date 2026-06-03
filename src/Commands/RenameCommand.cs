@@ -68,7 +68,7 @@ public class RenameCommand : CommandBase
         BroadcastNotification(adminName, "rename_notification", targetName, newName);
 
         PlayerUtils.SendNotification(target, Messages,
-            L("rename_personal_html", newName, ResolveVisibleAdminName(target, adminName)),
+            $"<font color='#ffcc00'><b>{L("rename_personal_html")}</b></font><br><br>{L("label_new_name")}: <font color='#00ff00'>{newName}</font><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
             $" \x02{L("prefix")}\x01 {L("rename_personal_chat", newName, ResolveVisibleAdminName(target, adminName))}");
 
         AdminLogManager.AddLogAsync("rename", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"new_name={newName}", targetName);

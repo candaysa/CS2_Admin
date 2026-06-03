@@ -72,7 +72,7 @@ public class RespawnCommand : CommandBase
         foreach (var target in targets)
         {
             PlayerUtils.SendNotification(target, Messages,
-                L("respawned_personal_html", ResolveVisibleAdminName(target, adminName)),
+                $"<font color='#00ff00'><b>{L("respawned_personal_html")}</b></font><br><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
                 $" \x02{prefix}\x01 {L("respawned_personal_chat", ResolveVisibleAdminName(target, adminName))}");
         }
 
