@@ -42,71 +42,78 @@ public sealed class GagCommand : CommandBase
         _gagPermission = gagPermission;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Gag);
-
-        if (!HasPerm(context, _gagPermission))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Gag);
 
-        if (args.Length < 2)
-        {
-            Reply(context, "gag_usage");
-            return;
-        }
+            if (!HasPerm(context, _gagPermission))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        if (RejectGroupTargets(context, args))
-            return;
+            if (args.Length < 2)
+            {
+                Reply(context, "gag_usage");
+                return;
+            }
 
-        var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], caller: context.Sender);
-        if (targets.Count == 0)
-        {
-            Reply(context, "player_not_found");
-            return;
-        }
+            if (RejectGroupTargets(context, args))
+                return;
 
-        if (!EnsureSinglePunishTarget(context, targets, args[0]))
-            return;
+            var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], caller: context.Sender);
+            if (targets.Count == 0)
+            {
+                Reply(context, "player_not_found");
+                return;
+            }
 
-        if (!SanctionDurationParser.TryParseToMinutes(args[1], out int duration))
-        {
-            Reply(context, "invalid_duration");
-            return;
-        }
+            if (!EnsureSinglePunishTarget(context, targets, args[0]))
+                return;
 
-        var reason = args.Length > 2
-            ? string.Join(" ", args.Skip(2))
-            : L("no_reason");
+            if (!SanctionDurationParser.TryParseToMinutes(args[1], out int duration))
+            {
+                Reply(context, "invalid_duration");
+                return;
+            }
 
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0;
-        var targetSnapshots = targets
-            .Select(t => new PunishTargetSnapshot(
-                t.PlayerID,
-                t.SteamID,
-                t.Controller.PlayerName ?? L("unknown"),
-                t.IPAddress))
-            .ToList();
+            var reason = args.Length > 2
+                ? string.Join(" ", args.Skip(2))
+                : L("no_reason");
 
-        _ = Task.Run(async () =>
-        {
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0;
+            var targetSnapshots = targets
+                .Select(t => new PunishTargetSnapshot(
+                    t.PlayerID,
+                    t.SteamID,
+                    t.Controller.PlayerName ?? L("unknown"),
+                    t.IPAddress))
+                .ToList();
+
             _gagManager.SetAdminContext(adminName, adminSteamId);
             foreach (var target in targetSnapshots)
             {
                 if (!await ValidateCanPunishAsync(context, target.SteamId))
                     continue;
 
-                var existingGag = await _gagManager.GetActiveGagAsync(target.SteamId);
+                var existingGag = await _gagManager.GetActiveGagFreshAsync(target.SteamId);
                 if (existingGag != null)
                 {
                     Core.Scheduler.NextTick(() => Reply(context, "player_already_gagged", target.Name));
                     continue;
                 }
 
-                await _gagManager.AddGagAsync(target.SteamId, duration, reason);
+                _gagManager.InvalidateCache(target.SteamId);
+                var gagOk = await _gagManager.AddGagAsync(target.SteamId, duration, reason);
+                if (!gagOk)
+                {
+                    Core.Scheduler.NextTick(() => Reply(context, "gag_db_error"));
+                    continue;
+                }
+
                 await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
                 Core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug] gag apply steamid={SteamId} duration={Duration} reason={Reason}", target.SteamId, duration, reason);
                 var durationText = duration <= 0 ? L("duration_permanently") : L("duration_for_minutes", duration);
@@ -120,7 +127,7 @@ public sealed class GagCommand : CommandBase
                     {
                         var durationDisplay = duration <= 0 ? L("permanent") : L("duration_minutes", duration);
                         PlayerUtils.SendNotification(targetPlayer, Messages,
-                            L("gagged_personal_html", durationDisplay, reason),
+                            $"<font color='#ff6600'><b>{L("gagged_personal_html")}</b></font><br><br>{L("label_duration")}: <font color='#ffcc00'>{durationDisplay}</font><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
                             $" \x02{L("prefix")}\x01 {L("gagged_personal_chat", durationText, reason)}");
                     }
                 });
@@ -130,7 +137,11 @@ public sealed class GagCommand : CommandBase
                 Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} gagged {Target} for {Duration} minutes. Reason: {Reason}",
                     adminName, target.Name, duration, reason);
             }
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Gag command failed");
+        }
     }
 
     private async Task<bool> ValidateCanPunishAsync(ICommandContext context, ulong targetSteamId)

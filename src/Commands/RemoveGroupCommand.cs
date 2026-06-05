@@ -24,28 +24,28 @@ public class RemoveGroupCommand : CommandBase
     {
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        if (!HasPerm(context, Permissions.RemoveGroup))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            if (!HasPerm(context, Permissions.RemoveGroup))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        var args = NormalizeArgs(context.Args, CommandsConfig.RemoveGroup);
+            var args = NormalizeArgs(context.Args, CommandsConfig.RemoveGroup);
 
-        if (args.Length < 1)
-        {
-            Reply(context, "removegroup_usage");
-            return;
-        }
+            if (args.Length < 1)
+            {
+                Reply(context, "removegroup_usage");
+                return;
+            }
 
-        var name = args[0];
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0;
+            var name = args[0];
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0;
 
-        _ = Task.Run(async () =>
-        {
             var success = await GroupDbManager.RemoveGroupAsync(name);
             Core.Scheduler.NextTick(() =>
             {
@@ -57,6 +57,10 @@ public class RemoveGroupCommand : CommandBase
                 await TryAutoReloadAsync();
                 await AdminLogManager.AddLogAsync("removegroup", adminName, adminSteamId, null, null, $"name={name}");
             }
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] RemoveGroup command failed");
+        }
     }
 }

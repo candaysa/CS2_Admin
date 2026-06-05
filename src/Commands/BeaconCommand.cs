@@ -32,73 +32,78 @@ public class BeaconCommand : CommandBase
         _adminDbManager = adminDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Beacon);
-
-        if (!HasPerm(context, Permissions.Beacon))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Beacon);
 
-        if (args.Length < 1)
-        {
-            Reply(context, "beacon_usage");
-            return;
-        }
-
-        var durationSeconds = 20;
-        var stopRequested = args.Length > 1 && (args[1].Equals("off", StringComparison.OrdinalIgnoreCase) || args[1] == "0");
-
-        if (args.Length > 1 && !stopRequested && int.TryParse(args[1], out var parsedDuration))
-            durationSeconds = Math.Clamp(parsedDuration, 1, 120);
-
-        var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], includeDeadPlayers: true, caller: context.Sender);
-        if (targets.Count == 0)
-        {
-            Reply(context, "no_valid_targets");
-            return;
-        }
-
-        targets = PlayerUtils.FilterTargetsByAccessAsync(Core, _adminDbManager, context, targets, allowSelf: true)
-            .GetAwaiter().GetResult();
-        if (targets.Count == 0)
-        {
-            Reply(context, "no_valid_targets");
-            return;
-        }
-
-        var started = 0;
-        var stopped = 0;
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var prefix = L("prefix");
-
-        foreach (var target in targets)
-        {
-            if (stopRequested)
+            if (!HasPerm(context, Permissions.Beacon))
             {
-                if (_beaconPlayers.Remove(target.PlayerID))
-                    stopped++;
-                continue;
+                Reply(context, "no_permission");
+                return;
             }
 
-            _beaconPlayers.Add(target.PlayerID);
-            StartBeaconEffect(target, durationSeconds);
-            started++;
-        }
+            if (args.Length < 1)
+            {
+                Reply(context, "beacon_usage");
+                return;
+            }
 
-        if (stopRequested)
+            var durationSeconds = 20;
+            var stopRequested = args.Length > 1 && (args[1].Equals("off", StringComparison.OrdinalIgnoreCase) || args[1] == "0");
+
+            if (args.Length > 1 && !stopRequested && int.TryParse(args[1], out var parsedDuration))
+                durationSeconds = Math.Clamp(parsedDuration, 1, 120);
+
+            var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], includeDeadPlayers: true, caller: context.Sender);
+            if (targets.Count == 0)
+            {
+                Reply(context, "no_valid_targets");
+                return;
+            }
+
+            targets = await PlayerUtils.FilterTargetsByAccessAsync(Core, _adminDbManager, context, targets, allowSelf: true);
+            if (targets.Count == 0)
+            {
+                Reply(context, "no_valid_targets");
+                return;
+            }
+
+            var started = 0;
+            var stopped = 0;
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+
+            foreach (var target in targets)
+            {
+                if (stopRequested)
+                {
+                    if (_beaconPlayers.Remove(target.PlayerID))
+                        stopped++;
+                    continue;
+                }
+
+                _beaconPlayers.Add(target.PlayerID);
+                StartBeaconEffect(target, durationSeconds);
+                started++;
+            }
+
+            if (stopRequested)
+            {
+                ReplyRaw(context, L("beacon_stopped", stopped));
+                _ = AdminLogManager.AddLogAsync("beacon", adminName, context.Sender?.SteamID ?? 0, null, null, $"mode=off;targets={stopped}");
+                return;
+            }
+
+            BroadcastNotification(adminName, "beacon_started", started, durationSeconds);
+
+            _ = AdminLogManager.AddLogAsync("beacon", adminName, context.Sender?.SteamID ?? 0, null, null, $"mode=on;targets={started};duration={durationSeconds}");
+            Core.Logger.LogInformation("[CS2_Admin] {Admin} started beacon for {Count} player(s)", adminName, started);
+        }
+        catch (Exception ex)
         {
-            ReplyRaw(context, L("beacon_stopped", stopped));
-            AdminLogManager.AddLogAsync("beacon", adminName, context.Sender?.SteamID ?? 0, null, null, $"mode=off;targets={stopped}");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Beacon command failed");
         }
-
-        BroadcastNotification(adminName, "beacon_started", started, durationSeconds);
-
-        AdminLogManager.AddLogAsync("beacon", adminName, context.Sender?.SteamID ?? 0, null, null, $"mode=on;targets={started};duration={durationSeconds}");
-        Core.Logger.LogInformation("[CS2_Admin] {Admin} started beacon for {Count} player(s)", adminName, started);
     }
 
     private const int BeaconSegments = 16;
@@ -175,7 +180,7 @@ public class BeaconCommand : CommandBase
 
                         using var soundEvent = new SoundEvent(BeaconSound);
                         soundEvent.SourceEntityIndex = -1;
-                        soundEvent.Recipients.AddRecipient(playerId);
+                        soundEvent.Recipients.AddAllPlayers();
                         soundEvent.Emit();
                     }
                 }

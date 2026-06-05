@@ -40,7 +40,7 @@ public class PlayerNameHistoryManager
             return;
         }
 
-        var safeName = SafeName(playerName, steamId);
+            var safeName = SafeName.ForPlayer(playerName, steamId);
         var normalized = NormalizeName(safeName);
         if (!forceWrite && _lastObservedNames.TryGetValue(steamId, out var cached) && string.Equals(cached, normalized, StringComparison.Ordinal))
         {
@@ -100,7 +100,7 @@ public class PlayerNameHistoryManager
             return;
         }
 
-        _lastObservedNames[steamId] = NormalizeName(SafeName(playerName, steamId));
+            _lastObservedNames[steamId] = NormalizeName(SafeName.ForPlayer(playerName, steamId));
     }
 
     public async Task SetCustomNameAsync(ulong steamId, string? playerName)
@@ -110,7 +110,7 @@ public class PlayerNameHistoryManager
             return;
         }
 
-        var safeName = SafeName(playerName, steamId);
+            var safeName = SafeName.ForPlayer(playerName, steamId);
         var now = DateTime.UtcNow;
         try
         {
@@ -220,12 +220,6 @@ public class PlayerNameHistoryManager
             _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error getting original name: {Message}", ex.Message);
             return null;
         }
-    }
-
-    private static string SafeName(string? playerName, ulong steamId)
-    {
-        var safe = string.IsNullOrWhiteSpace(playerName) ? steamId.ToString() : playerName.Trim();
-        return safe.Length <= 64 ? safe : safe[..64];
     }
 
     private static string NormalizeName(string playerName)

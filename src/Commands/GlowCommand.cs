@@ -30,107 +30,125 @@ public class GlowCommand : CommandBase
         _adminDbManager = adminDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Glow);
-
-        if (!HasPerm(context, Permissions.Glow))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Glow);
 
-        if (args.Length < 2)
-        {
-            Reply(context, "glow_usage");
-            return;
-        }
+            if (!HasPerm(context, Permissions.Glow))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        var disableGlow = args[1].Equals("off", StringComparison.OrdinalIgnoreCase);
-        var r = 255;
-        var g = 255;
-        var b = 255;
-        var a = 180;
-
-        if (!disableGlow)
-        {
-            if (args.Length < 4 ||
-                !int.TryParse(args[1], out r) ||
-                !int.TryParse(args[2], out g) ||
-                !int.TryParse(args[3], out b))
+            if (args.Length < 2)
             {
                 Reply(context, "glow_usage");
                 return;
             }
 
-            if (args.Length > 4 && !int.TryParse(args[4], out a))
+            var disableGlow = args[1].Equals("off", StringComparison.OrdinalIgnoreCase);
+            var r = 255;
+            var g = 255;
+            var b = 255;
+            var a = 180;
+
+            if (!disableGlow)
             {
-                Reply(context, "glow_usage");
-                return;
-            }
-
-            r = Math.Clamp(r, 0, 255);
-            g = Math.Clamp(g, 0, 255);
-            b = Math.Clamp(b, 0, 255);
-            a = Math.Clamp(a, 0, 255);
-        }
-
-        var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], includeDeadPlayers: false, caller: context.Sender)
-            .Where(p => p.PlayerPawn?.IsValid == true && p.PlayerPawn.Health > 0)
-            .ToList();
-        if (targets.Count == 0)
-        {
-            Reply(context, "no_valid_targets");
-            return;
-        }
-
-        targets = PlayerUtils.FilterTargetsByAccessAsync(Core, _adminDbManager, context, targets, allowSelf: true)
-            .GetAwaiter().GetResult();
-        if (targets.Count == 0)
-        {
-            Reply(context, "no_valid_targets");
-            return;
-        }
-
-        foreach (var target in targets)
-        {
-            var targetSteamId = target.SteamID;
-            Core.Scheduler.NextTick(() =>
-            {
-                var liveTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSteamId);
-                if (liveTarget?.IsValid != true)
-                    return;
-
-                if (disableGlow)
-                    ClearGlow(liveTarget);
+                if (TryParseColorName(args[1], out var namedColor))
+                {
+                    r = namedColor[0];
+                    g = namedColor[1];
+                    b = namedColor[2];
+                }
+                else if (args.Length >= 4 &&
+                         int.TryParse(args[1], out var ri) &&
+                         int.TryParse(args[2], out var gi) &&
+                         int.TryParse(args[3], out var bi))
+                {
+                    r = ri;
+                    g = gi;
+                    b = bi;
+                }
                 else
-                    ApplyGlow(liveTarget, r, g, b, a);
-            });
-        }
+                {
+                    Reply(context, "glow_usage");
+                    return;
+                }
 
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+                if (args.Length > 4 && !int.TryParse(args[4], out a))
+                {
+                    Reply(context, "glow_usage");
+                    return;
+                }
 
-        if (disableGlow)
-        {
-            if (targets.Count == 1)
-                BroadcastNotification(adminName, "glow_off_notification_single", targets[0].Controller.PlayerName);
+                r = Math.Clamp(r, 0, 255);
+                g = Math.Clamp(g, 0, 255);
+                b = Math.Clamp(b, 0, 255);
+                a = Math.Clamp(a, 0, 255);
+            }
+
+            var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], includeDeadPlayers: false, caller: context.Sender)
+                .Where(p => p.PlayerPawn?.IsValid == true && p.PlayerPawn.Health > 0)
+                .ToList();
+            if (targets.Count == 0)
+            {
+                Reply(context, "no_valid_targets");
+                return;
+            }
+
+            targets = await PlayerUtils.FilterTargetsByAccessAsync(Core, _adminDbManager, context, targets, allowSelf: true);
+            if (targets.Count == 0)
+            {
+                Reply(context, "no_valid_targets");
+                return;
+            }
+
+            foreach (var target in targets)
+            {
+                var targetSteamId = target.SteamID;
+                Core.Scheduler.NextTick(() =>
+                {
+                    var liveTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSteamId);
+                    if (liveTarget?.IsValid != true)
+                        return;
+
+                    if (disableGlow)
+                        ClearGlow(liveTarget);
+                    else
+                        ApplyGlow(liveTarget, r, g, b, a);
+                });
+            }
+
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+
+            if (disableGlow)
+            {
+                if (targets.Count == 1)
+                    BroadcastNotification(adminName, "glow_off_notification_single", targets[0].Controller.PlayerName);
+                else
+                    BroadcastNotification(adminName, "glow_off_notification_multiple", targets.Count);
+            }
             else
-                BroadcastNotification(adminName, "glow_off_notification_multiple", targets.Count);
+            {
+                if (targets.Count == 1)
+                    BroadcastNotification(adminName, "glow_notification_single", targets[0].Controller.PlayerName);
+                else
+                    BroadcastNotification(adminName, "glow_notification_multiple", targets.Count);
+            }
+
+            var details = disableGlow
+                ? $"targets={targets.Count};off=true"
+                : $"targets={targets.Count};rgba={r},{g},{b},{a}";
+
+            _ = AdminLogManager.AddLogAsync("glow", adminName, context.Sender?.SteamID ?? 0, null, null, details);
+            Core.Logger.LogInformation("[CS2_Admin] {Admin} set glow for {Count} player(s)", adminName, targets.Count);
         }
-        else
+        catch (Exception ex)
         {
-            if (targets.Count == 1)
-                BroadcastNotification(adminName, "glow_notification_single", targets[0].Controller.PlayerName);
-            else
-                BroadcastNotification(adminName, "glow_notification_multiple", targets.Count);
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Glow command failed");
         }
-
-        var details = disableGlow
-            ? $"targets={targets.Count};off=true"
-            : $"targets={targets.Count};rgba={r},{g},{b},{a}";
-
-        AdminLogManager.AddLogAsync("glow", adminName, context.Sender?.SteamID ?? 0, null, null, details);
-        Core.Logger.LogInformation("[CS2_Admin] {Admin} set glow for {Count} player(s)", adminName, targets.Count);
     }
 
     private void ApplyGlow(IPlayer target, int r, int g, int b, int a)
@@ -151,6 +169,27 @@ public class GlowCommand : CommandBase
 
         pawn.Render = new(255, 255, 255, 255);
         pawn.RenderUpdated();
+    }
+
+    private static bool TryParseColorName(string input, out int[] rgb)
+    {
+        rgb = new int[3];
+        switch (input.ToLowerInvariant())
+        {
+            case "red": rgb = new[] { 255, 0, 0 }; return true;
+            case "green": rgb = new[] { 0, 255, 0 }; return true;
+            case "blue": rgb = new[] { 0, 100, 255 }; return true;
+            case "yellow": rgb = new[] { 255, 255, 0 }; return true;
+            case "cyan": rgb = new[] { 0, 255, 255 }; return true;
+            case "magenta": rgb = new[] { 255, 0, 255 }; return true;
+            case "white": rgb = new[] { 255, 255, 255 }; return true;
+            case "orange": rgb = new[] { 255, 140, 0 }; return true;
+            case "purple": rgb = new[] { 160, 32, 240 }; return true;
+            case "pink": rgb = new[] { 255, 105, 180 }; return true;
+            case "lime": rgb = new[] { 0, 255, 128 }; return true;
+            case "turquoise": rgb = new[] { 64, 224, 208 }; return true;
+            default: return false;
+        }
     }
 }
 

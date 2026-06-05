@@ -410,20 +410,25 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
         var builder = _core.MenusAPI.CreateBuilder();
         builder.Design.SetMenuTitle(T("menu_select_item", "Select Item"));
 
-        var items = new[]
+        var items = new (string Display, string Item)[]
         {
-            "weapon_ak47",
-            "weapon_m4a1",
-            "weapon_awp",
-            "weapon_deagle",
-            "weapon_hegrenade",
-            "item_assaultsuit"
+            ("AK-47", "weapon_ak47"),
+            ("M4A1", "weapon_m4a1"),
+            ("AWP", "weapon_awp"),
+            ("Deagle", "weapon_deagle"),
+            ("SSG 08", "weapon_ssg08"),
+            ("Flash", "weapon_flashbang"),
+            ("HE Grenade", "weapon_hegrenade"),
+            ("Smoke", "weapon_smokegrenade"),
+            ("Molotov", "weapon_molotov"),
+            ("Defuse Kit", "item_defuser"),
+            ("Assault Suit", "item_assaultsuit")
         };
 
-        foreach (var item in items)
+        foreach (var (display, item) in items)
         {
             var current = item;
-            var option = new ButtonMenuOption(current) { CloseAfterClick = false };
+            var option = new ButtonMenuOption(display) { CloseAfterClick = false };
             option.Click += (_, args) =>
             {
                 var caller = args.Player;

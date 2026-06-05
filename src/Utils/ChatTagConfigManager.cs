@@ -81,7 +81,9 @@ public class ChatTagConfigManager
                     continue;
                 }
 
-                Config.Groups[name] = CreateDefaultStyle();
+                // Yeni eklenen grup için preset renk ata (admin=kırmızı, mod=mavi vs.)
+                // GetPresetStyle zaten tüm normalizasyonu yapıyor.
+                Config.Groups[name] = GetPresetStyle(name);
                 changed = true;
             }
 
@@ -109,15 +111,42 @@ public class ChatTagConfigManager
             return CreateDefaultStyle();
         }
 
+        var key = groupName.Trim();
+
         lock (_sync)
         {
-            if (Config.Groups.TryGetValue(groupName.Trim(), out var style))
+            if (Config.Groups.TryGetValue(key, out var style))
             {
                 return NormalizeStyle(style);
             }
         }
 
-        return CreateDefaultStyle();
+        // Config'de tanımsız — bilinen grup ise preset renk ata, değilse default
+        return GetPresetStyle(key);
+    }
+
+    // Bilinen yaygın grup adları için hazır renk paleti.
+    // Config'de tanımsız olsalar bile chat'te renkli tag gözükmesini sağlar.
+    private static ChatTagGroupStyle GetPresetStyle(string groupName)
+    {
+        return groupName.ToLowerInvariant() switch
+        {
+            "owner" or "headadmin" or "founder"
+                => new ChatTagGroupStyle { ChatColor = "[white]",   TagColor = "[red]",       NameColor = "[gold]" },
+            "admin" or "administrator"
+                => new ChatTagGroupStyle { ChatColor = "[white]",   TagColor = "[darkred]",   NameColor = "[red]" },
+            "senioradmin" or "sradmin" or "srmod"
+                => new ChatTagGroupStyle { ChatColor = "[white]",   TagColor = "[purple]",    NameColor = "[lightpurple]" },
+            "moderator" or "mod"
+                => new ChatTagGroupStyle { ChatColor = "[white]",   TagColor = "[blue]",      NameColor = "[lightblue]" },
+            "helper" or "support"
+                => new ChatTagGroupStyle { ChatColor = "[white]",   TagColor = "[green]",     NameColor = "[lime]" },
+            "vip" or "vip+"
+                => new ChatTagGroupStyle { ChatColor = "[white]",   TagColor = "[gold]",      NameColor = "[yellow]" },
+            "tester"
+                => new ChatTagGroupStyle { ChatColor = "[white]",   TagColor = "[olive]",     NameColor = "[lightyellow]" },
+            _ => CreateDefaultStyle()
+        };
     }
 
     public void Save()
@@ -136,10 +165,10 @@ public class ChatTagConfigManager
     {
         config.Version = ChatTagsFileConfig.CurrentVersion;
         config.PlayerTag = string.IsNullOrWhiteSpace(config.PlayerTag) ? "PLAYER" : config.PlayerTag.Trim();
-        // Keep legacy "Enabled" and new "ChatEnabled" in sync.
+        // Legacy "Enabled" alanı kaldırıldı. Eski config'lerdeki "Enabled" artık
+        // "ChatEnabled"ı ezmeyecek — sadece null yapılarak temizlenir.
         if (config.Enabled.HasValue)
         {
-            config.ChatEnabled = config.Enabled.Value;
             config.Enabled = null;
         }
 
@@ -211,17 +240,25 @@ public class ChatTagConfigManager
 
     private static ChatTagGroupStyle CreateDefaultStyle()
     {
+        // Config'de tanımsız ve bilinen grup da değilse bu renkler kullanılır.
+        // Boş bırakırsak chat'te "[ ]" parantezleri renksiz ve çirkin gözükür.
         return new ChatTagGroupStyle
         {
-            ChatColor = string.Empty,
-            TagColor = string.Empty,
-            NameColor = string.Empty
+            ChatColor = "[white]",
+            TagColor = "[green]",
+            NameColor = "[default]"
         };
     }
 
     private static bool RequiresNormalizationPersist(ChatTagsFileConfig config)
     {
         if (config.Version != ChatTagsFileConfig.CurrentVersion)
+        {
+            return true;
+        }
+
+        // Legacy "Enabled" alanı hâlâ set edilmiş — temizlenmesi için persist gerekli
+        if (config.Enabled != null)
         {
             return true;
         }

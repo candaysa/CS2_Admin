@@ -78,12 +78,12 @@ public class AdminLogManager
 
             connection.Insert(new AdminLog
             {
-                Action = action,
-                AdminName = adminName,
+                Action = SafeName.ForReason(action, 64),
+                AdminName = SafeName.ForPlayer(adminName, adminSteamId),
                 AdminSteamId = adminSteamId,
                 TargetSteamId = targetSteamId,
                 TargetIp = targetIp,
-                Details = details,
+                Details = SafeName.ForReason(details, 4096),
                 ServerId = serverId,
                 ServerIp = ServerIdentity.GetIp(_core),
                 ServerPort = ServerIdentity.GetPort(_core),
@@ -96,11 +96,11 @@ public class AdminLogManager
                 {
                     Action = NormalizeAction(action),
                     TargetSteamId = targetSteamId is > 0 ? targetSteamId : null,
-                    TargetName = TrimToLength(targetName, 64),
+                    TargetName = SafeName.ForPlayer(targetName, targetSteamId ?? 0),
                     TargetUserId = targetUserId,
-                    AdminName = TrimToLength(adminName, 64) ?? string.Empty,
+                    AdminName = SafeName.ForPlayer(adminName, adminSteamId),
                     AdminSteamId = adminSteamId == 0 ? null : adminSteamId,
-                    Reason = TrimToLength(reason ?? ExtractReason(details), 2048),
+                    Reason = SafeName.ForReason(reason ?? ExtractReason(details), 2048),
                     ServerId = string.IsNullOrWhiteSpace(serverId) ? string.Empty : serverId,
                     CreatedAt = now
                 });

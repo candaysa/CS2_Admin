@@ -260,7 +260,8 @@ CS2_Admin natively ties into Swiftly's permission system. Below are all the comm
 | `!unfreeze <target>` | `admin.cheats` | Unfreezes a player |
 | `!resize <target> <scale>` | `admin.cheats` | Changes the physical size of a player |
 | `!blind <target> <amount>` | `admin.cheats` | Blinds a player's screen |
-| `!glow <target> <r> <g> <b> <a>`| `admin.cheats` | Applies an outline glow to a player |
+| `!glow <target> <color\|r> <g> <b> [a]`| `admin.cheats` | Applies an outline glow to a player. Use a color name (red, green, blue, yellow, cyan, magenta, white, orange, purple, pink, lime, turquoise) or RGB values |
+| `!rgb <target> [duration]` | `admin.cheats` | Applies a cycling rainbow glow (default 30s, max 300s). Use `off` to stop |
 | `!beacon <target>` | `admin.cheats` | Places a pinging beacon ring around a player |
 | `!burn <target> <time>` | `admin.cheats` | Sets a player on fire |
 | `!disarm <target>` | `admin.cheats` | Strips all weapons from a player |

@@ -29,87 +29,93 @@ public class SpeedCommand : CommandBase
         _adminDbManager = adminDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Speed);
-
-        if (!HasPerm(context, Permissions.Speed))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Speed);
 
-        if (args.Length < 2 || !float.TryParse(args[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var multiplier))
-        {
-            Reply(context, "speed_usage");
-            return;
-        }
-
-        multiplier = Math.Clamp(multiplier, 0.1f, 10.0f);
-
-        var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], includeDeadPlayers: false, caller: context.Sender);
-        if (targets.Count == 0)
-        {
-            Reply(context, "no_valid_targets");
-            return;
-        }
-
-        targets = PlayerUtils.FilterTargetsByAccessAsync(Core, _adminDbManager, context, targets, allowSelf: true)
-            .GetAwaiter().GetResult();
-        if (targets.Count == 0)
-        {
-            Reply(context, "no_valid_targets");
-            return;
-        }
-
-        var applied = 0;
-        foreach (var target in targets)
-        {
-            var pawn = target.PlayerPawn;
-            if (pawn?.IsValid != true)
-                continue;
-
-            var playerId = target.PlayerID;
-
-            if (Math.Abs(multiplier - 1.0f) < 0.01f)
+            if (!HasPerm(context, Permissions.Speed))
             {
-                // Remove override; enforcer loop will stop on its own
-                _speedOverrides.Remove(playerId);
-            }
-            else
-            {
-                // Update the override value. If an enforcer is already running for this player,
-                // the old one will detect the value change and stop automatically.
-                _speedOverrides[playerId] = multiplier;
-                StartSpeedEnforcer(target.SteamID, playerId, multiplier);
+                Reply(context, "no_permission");
+                return;
             }
 
-            try
+            if (args.Length < 2 || !float.TryParse(args[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var multiplier))
             {
-                pawn.VelocityModifier = multiplier;
+                Reply(context, "speed_usage");
+                return;
             }
-            catch { }
 
-            applied++;
+            multiplier = Math.Clamp(multiplier, 0.1f, 10.0f);
 
-            PlayerUtils.SendNotification(target, Messages,
-                $"<font color='#00ff88'><b>SPEED</b></font><br><br>Değer: <font color='#00ff88'>{multiplier.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}x</font>",
-                $" \x02{L("prefix")}\x01 {L("speed_personal_chat", multiplier.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))}");
+            var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], includeDeadPlayers: false, caller: context.Sender);
+            if (targets.Count == 0)
+            {
+                Reply(context, "no_valid_targets");
+                return;
+            }
+
+            targets = await PlayerUtils.FilterTargetsByAccessAsync(Core, _adminDbManager, context, targets, allowSelf: true);
+            if (targets.Count == 0)
+            {
+                Reply(context, "no_valid_targets");
+                return;
+            }
+
+            var applied = 0;
+            foreach (var target in targets)
+            {
+                var pawn = target.PlayerPawn;
+                if (pawn?.IsValid != true)
+                    continue;
+
+                var playerId = target.PlayerID;
+
+                if (Math.Abs(multiplier - 1.0f) < 0.01f)
+                {
+                    _speedOverrides.Remove(playerId);
+                }
+                else
+                {
+                    _speedOverrides[playerId] = multiplier;
+                    StartSpeedEnforcer(target.SteamID, playerId, multiplier);
+                }
+
+                try
+                {
+                    pawn.VelocityModifier = multiplier;
+                }
+                catch (Exception ex)
+                {
+                    Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] VelocityModifier set failed for {SteamId}", target.SteamID);
+                }
+
+                applied++;
+
+                PlayerUtils.SendNotification(target, Messages,
+                    $"<font color='#00ff88'><b>SPEED</b></font><br><br>Değer: <font color='#00ff88'>{multiplier.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}x</font>",
+                    $" \x02{L("prefix")}\x01 {L("speed_personal_chat", multiplier.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))}");
+            }
+
+            if (applied == 0)
+            {
+                Reply(context, "no_valid_targets");
+                return;
+            }
+
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+
+            string targetLabel = targets.Count == 1 ? targets[0].Controller.PlayerName : applied.ToString();
+            BroadcastNotification(adminName, "speed_notification", targetLabel, multiplier.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+
+            _ = AdminLogManager.AddLogAsync("speed", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={applied};multiplier={multiplier.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}");
+            Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} set speed of {Count} player(s) to {Multiplier}", adminName, applied, multiplier);
         }
-
-        if (applied == 0)
+        catch (Exception ex)
         {
-            Reply(context, "no_valid_targets");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Speed command failed");
         }
-
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-
-        string targetLabel = targets.Count == 1 ? targets[0].Controller.PlayerName : applied.ToString();
-        BroadcastNotification(adminName, "speed_notification", targetLabel, multiplier.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
-
-        AdminLogManager.AddLogAsync("speed", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={applied};multiplier={multiplier.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}");
-        Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} set speed of {Count} player(s) to {Multiplier}", adminName, applied, multiplier);
     }
 
     private void StartSpeedEnforcer(ulong steamId, int playerId, float multiplier)
@@ -131,7 +137,10 @@ public class SpeedCommand : CommandBase
             {
                 player.PlayerPawn.VelocityModifier = multiplier;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] VelocityModifier enforcer failed for {SteamId}", steamId);
+            }
 
             Core.Scheduler.NextTick(Enforce);
         }

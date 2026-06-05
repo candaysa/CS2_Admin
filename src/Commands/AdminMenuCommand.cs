@@ -1,5 +1,6 @@
 using CS2_Admin.Menu;
 using CS2_Admin.Services;
+using CS2_Admin.Utils;
 using CS2_Admin.Config;
 using CS2_Admin.Database;
 using SwiftlyS2.Shared;
@@ -28,21 +29,28 @@ public class AdminMenuCommand : CommandBase
         _menuManager = menuManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        if (context.Sender == null)
+        try
         {
-            ReplyRaw(context, "admin <addadmin|editadmin|removeadmin|listadmins|addgroup|editgroup|removegroup|listgroups|adminreload>");
-            return;
-        }
+            if (context.Sender == null)
+            {
+                ReplyRaw(context, "admin <addadmin|editadmin|removeadmin|listadmins|addgroup|editgroup|removegroup|listgroups|adminreload>");
+                return;
+            }
 
-        if (!HasPerm(context, Permissions.AdminMenu))
+            if (!HasPerm(context, Permissions.AdminMenu))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
+
+            OpenAdminMenuDebounced(context.Sender);
+        }
+        catch (Exception ex)
         {
-            Reply(context, "no_permission");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] AdminMenu command failed");
         }
-
-        OpenAdminMenuDebounced(context.Sender);
     }
 
     private void OpenAdminMenuDebounced(IPlayer sender)

@@ -30,35 +30,42 @@ public class AsayCommand : CommandBase
         _discord = discord;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Asay);
-
-        if (!HasPerm(context, Permissions.Asay))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Asay);
 
-        if (args.Length < 1)
+            if (!HasPerm(context, Permissions.Asay))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
+
+            if (args.Length < 1)
+            {
+                Reply(context, "asay_usage");
+                return;
+            }
+
+            var messageText = string.Join(" ", args);
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var msg = $" \x04[AdminChat]\x01 \x10{adminName}\x01: {messageText}";
+
+            int notified = 0;
+            foreach (var p in GetOnlineAdmins(Permissions.Asay))
+            {
+                notified++;
+                p.SendChat(msg);
+            }
+
+            _ = AdminLogManager.AddLogAsync("asay", adminName, context.Sender?.SteamID ?? 0, null, null, $"message={messageText}");
+            Core.Logger.LogInformationIfEnabled("[CS2_Admin] ASAY from {Admin} delivered to {Count} admins: {Message}", adminName, notified, messageText);
+        }
+        catch (Exception ex)
         {
-            Reply(context, "asay_usage");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Asay command failed");
         }
-
-        var messageText = string.Join(" ", args);
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var msg = $" \x04[AdminChat]\x01 \x10{adminName}\x01: {messageText}";
-
-        int notified = 0;
-        foreach (var p in GetOnlineAdmins(Permissions.Asay))
-        {
-            notified++;
-            p.SendChat(msg);
-        }
-
-        AdminLogManager.AddLogAsync("asay", adminName, context.Sender?.SteamID ?? 0, null, null, $"message={messageText}");
-        Core.Logger.LogInformationIfEnabled("[CS2_Admin] ASAY from {Admin} delivered to {Count} admins: {Message}", adminName, notified, messageText);
     }
 
     private IEnumerable<IPlayer> GetOnlineAdmins(string permission)

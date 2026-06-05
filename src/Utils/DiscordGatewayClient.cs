@@ -43,8 +43,9 @@ public class DiscordGatewayClient
             _socket?.Abort();
             _socket?.Dispose();
         }
-        catch
+        catch (Exception ex)
         {
+            _core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Discord gateway socket dispose failed");
         }
 
         _socket = null;
@@ -120,8 +121,9 @@ public class DiscordGatewayClient
                 {
                     await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "closed", cancellationToken);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    _core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Discord gateway close failed");
                 }
 
                 return null;
@@ -198,8 +200,9 @@ public class DiscordGatewayClient
                 {
                     await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "reconnect", cancellationToken);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    _core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Discord gateway reconnect close failed");
                 }
                 break;
             case 11:

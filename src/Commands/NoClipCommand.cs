@@ -28,58 +28,65 @@ public class NoClipCommand : CommandBase
         _adminDbManager = adminDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.NoClip);
-
-        if (!HasPerm(context, Permissions.NoClip))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.NoClip);
 
-        if (args.Length < 1)
+            if (!HasPerm(context, Permissions.NoClip))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
+
+            if (args.Length < 1)
+            {
+                Reply(context, "noclip_usage");
+                return;
+            }
+
+            var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
+            if (target == null)
+            {
+                Reply(context, "player_not_found");
+                return;
+            }
+
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var targetName = target.Controller.PlayerName;
+
+            bool isEnabled = _noclipPlayers.Contains(target.PlayerID);
+
+            if (isEnabled)
+            {
+                PlayerUtils.SetNoclip(Core, target, false);
+                _noclipPlayers.Remove(target.PlayerID);
+            }
+            else
+            {
+                PlayerUtils.SetNoclip(Core, target, true);
+                _noclipPlayers.Add(target.PlayerID);
+            }
+
+            var stateLabel = !isEnabled ? L("noclip_on") : L("noclip_off");
+
+            var senderIsTarget = context.Sender != null && context.Sender.SteamID == target.SteamID;
+            if (!senderIsTarget)
+            {
+                PlayerUtils.SendNotification(target, Messages,
+                    $"<font color='#00ccff'><b>{L("noclip_toggled_personal_html", stateLabel)}</b></font><br><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
+                    $" \x02{L("prefix")}\x01 {L("noclip_toggled_personal_chat", stateLabel, ResolveVisibleAdminName(target, adminName))}");
+            }
+
+            BroadcastNotification(adminName, "noclip_toggled_notification", stateLabel, targetName);
+
+            _ = AdminLogManager.AddLogAsync("noclip", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"state={(!isEnabled ? "on" : "off")}", target.Controller.PlayerName);
+        }
+        catch (Exception ex)
         {
-            Reply(context, "noclip_usage");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] NoClip command failed");
         }
-
-        var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
-        if (target == null)
-        {
-            Reply(context, "player_not_found");
-            return;
-        }
-
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var targetName = target.Controller.PlayerName;
-
-        bool isEnabled = _noclipPlayers.Contains(target.PlayerID);
-
-        if (isEnabled)
-        {
-            PlayerUtils.SetNoclip(Core, target, false);
-            _noclipPlayers.Remove(target.PlayerID);
-        }
-        else
-        {
-            PlayerUtils.SetNoclip(Core, target, true);
-            _noclipPlayers.Add(target.PlayerID);
-        }
-
-        var stateLabel = !isEnabled ? L("noclip_on") : L("noclip_off");
-
-        var senderIsTarget = context.Sender != null && context.Sender.SteamID == target.SteamID;
-        if (!senderIsTarget)
-        {
-            PlayerUtils.SendNotification(target, Messages,
-                L("noclip_toggled_personal_html", stateLabel, ResolveVisibleAdminName(target, adminName)),
-                $" \x02{L("prefix")}\x01 {L("noclip_toggled_personal_chat", stateLabel, ResolveVisibleAdminName(target, adminName))}");
-        }
-
-        BroadcastNotification(adminName, "noclip_toggled_notification", stateLabel, targetName);
-
-        _ = AdminLogManager.AddLogAsync("noclip", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"state={(!isEnabled ? "on" : "off")}", target.Controller.PlayerName);
     }
 }
 

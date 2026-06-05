@@ -62,40 +62,47 @@ public class AddBanCommand : CommandBase
         _sanctionStateService = sanctionStateService;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.AddBan);
-
-        if (!HasPerm(context, Permissions.AddBan))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.AddBan);
 
-        if (args.Length < 2)
+            if (!HasPerm(context, Permissions.AddBan))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
+
+            if (args.Length < 2)
+            {
+                Reply(context, "addban_usage");
+                return;
+            }
+
+            if (!PlayerUtils.TryParseSteamId(args[0], out var targetSteamId))
+            {
+                Reply(context, "invalid_steamid");
+                return;
+            }
+
+            if (!SanctionDurationParser.TryParseToMinutes(args[1], out var duration))
+            {
+                Reply(context, "invalid_duration");
+                return;
+            }
+
+            var reason = args.Length > 2 ? string.Join(" ", args.Skip(2)) : L("no_reason");
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0;
+            var isGlobal = ResolveGlobalMode();
+
+            await AddOfflineSteamBanAsync(context, targetSteamId, duration, reason, adminName, adminSteamId, isGlobal);
+        }
+        catch (Exception ex)
         {
-            Reply(context, "addban_usage");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] AddBan command failed");
         }
-
-        if (!PlayerUtils.TryParseSteamId(args[0], out var targetSteamId))
-        {
-            Reply(context, "invalid_steamid");
-            return;
-        }
-
-        if (!SanctionDurationParser.TryParseToMinutes(args[1], out var duration))
-        {
-            Reply(context, "invalid_duration");
-            return;
-        }
-
-        var reason = args.Length > 2 ? string.Join(" ", args.Skip(2)) : L("no_reason");
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0;
-        var isGlobal = ResolveGlobalMode();
-
-        _ = AddOfflineSteamBanAsync(context, targetSteamId, duration, reason, adminName, adminSteamId, isGlobal);
     }
 
     private bool ResolveGlobalMode()
@@ -117,7 +124,7 @@ public class AddBanCommand : CommandBase
         ulong adminSteamId,
         bool isGlobal)
     {
-        var existingBan = await _banManager.GetActiveBanAsync(targetSteamId, null, _multiServerConfig.Enabled);
+        var existingBan = await _banManager.GetActiveBanFreshAsync(targetSteamId, null, _multiServerConfig.Enabled);
         if (existingBan != null)
         {
             Core.Scheduler.NextTick(() => Reply(context, "steamid_already_banned", targetSteamId));

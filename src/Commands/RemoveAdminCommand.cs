@@ -24,33 +24,33 @@ public class RemoveAdminCommand : CommandBase
     {
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        if (!HasPerm(context, Permissions.RemoveAdmin))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            if (!HasPerm(context, Permissions.RemoveAdmin))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        var args = NormalizeArgs(context.Args, CommandsConfig.RemoveAdmin);
+            var args = NormalizeArgs(context.Args, CommandsConfig.RemoveAdmin);
 
-        if (args.Length < 1)
-        {
-            Reply(context, "removeadmin_usage");
-            return;
-        }
+            if (args.Length < 1)
+            {
+                Reply(context, "removeadmin_usage");
+                return;
+            }
 
-        if (!PlayerUtils.TryParseSteamId(args[0], out var targetSteamId))
-        {
-            Reply(context, "invalid_steamid");
-            return;
-        }
+            if (!PlayerUtils.TryParseSteamId(args[0], out var targetSteamId))
+            {
+                Reply(context, "invalid_steamid");
+                return;
+            }
 
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0;
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0;
 
-        _ = Task.Run(async () =>
-        {
             var existingAdmin = await AdminDbManager.GetAdminAsync(targetSteamId);
             var success = await AdminDbManager.RemoveAdminAsync(targetSteamId);
             Core.Scheduler.NextTick(() =>
@@ -65,7 +65,11 @@ public class RemoveAdminCommand : CommandBase
                 await ApplyTagToOnlinePlayerAsync(targetSteamId);
                 await AdminLogManager.AddLogAsync("removeadmin", adminName, adminSteamId, targetSteamId, null, "", existingAdmin?.Name);
             }
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] RemoveAdmin command failed");
+        }
     }
 
     private void NotifyOnlinePlayer(ulong steamId, string message)

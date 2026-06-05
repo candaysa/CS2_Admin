@@ -5,7 +5,6 @@ using Dommel;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
 using System.Collections.Concurrent;
-using System.Text.RegularExpressions;
 
 namespace CS2_Admin.Database;
 
@@ -75,7 +74,7 @@ public class PlayerSessionManager
             {
                 if (onlineBySteamId.TryGetValue(session.SteamId, out var online))
                 {
-                    session.PlayerName = SafeName(online.PlayerName, session.SteamId);
+                    session.PlayerName = SafeName.ForPlayer(online.PlayerName, session.SteamId);
                     session.LastUserId = online.PlayerId;
                     session.LastIp = NormalizeIpAddress(online.IpAddress);
                     session.UpdatedAt = now;
@@ -108,7 +107,7 @@ public class PlayerSessionManager
 
         var serverId = GetServerId();
         var now = connectedAtUtc ?? DateTime.UtcNow;
-        var safeName = SafeName(playerName, steamId);
+            var safeName = SafeName.ForPlayer(playerName, steamId);
         var normalizedIp = NormalizeIpAddress(ipAddress);
 
         try
@@ -168,7 +167,7 @@ public class PlayerSessionManager
                 return;
             }
 
-            session.PlayerName = SafeName(playerName, steamId);
+            session.PlayerName = SafeName.ForPlayer(playerName, steamId);
             session.LastUserId = playerId;
             session.LastIp = NormalizeIpAddress(ipAddress);
             session.UpdatedAt = now;
@@ -201,7 +200,7 @@ public class PlayerSessionManager
                 return;
             }
 
-            session.PlayerName = SafeName(playerName, steamId);
+            session.PlayerName = SafeName.ForPlayer(playerName, steamId);
             session.LastUserId = playerId;
             session.LastIp = NormalizeIpAddress(ipAddress);
             CloseSessionRecord(connection, session, now, playerId, session.LastIp);
@@ -320,7 +319,7 @@ public class PlayerSessionManager
                 .Where(row => row.SteamId != 0 && row.DisconnectedAt.HasValue)
                 .Select(row => new RecentPlayerInfo(
                     row.SteamId,
-                    SafeName(row.PlayerName, row.SteamId),
+                    SafeName.ForPlayer(row.PlayerName, row.SteamId),
                     row.LastIp ?? string.Empty,
                     row.DisconnectedAt!.Value))
                 .ToList();
@@ -379,18 +378,6 @@ public class PlayerSessionManager
     {
         var serverId = ServerIdentity.GetServerId(_core);
         return string.IsNullOrWhiteSpace(serverId) ? string.Empty : serverId.Trim();
-    }
-
-    private static string SafeName(string? playerName, ulong steamId)
-    {
-        var safe = string.IsNullOrWhiteSpace(playerName) ? steamId.ToString() : playerName.Trim();
-        safe = Regex.Replace(safe, @"[^\u0000-\uFFFF]", string.Empty);
-        if (string.IsNullOrWhiteSpace(safe))
-        {
-            safe = steamId.ToString();
-        }
-
-        return safe.Length <= 64 ? safe : safe[..64];
     }
 
     private static string? NormalizeIpAddress(string? ipAddress)

@@ -66,9 +66,19 @@ public class IpBanCommand : CommandBase
         _sanctionStateService = sanctionStateService;
     }
 
-    public override void Execute(ICommandContext context) => HandleOnlineBan(context, true);
+    public override async void Execute(ICommandContext context)
+    {
+        try
+        {
+            await HandleOnlineBanAsync(context, true);
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] IpBan command failed");
+        }
+    }
 
-    private void HandleOnlineBan(ICommandContext context, bool ipMode)
+    private async Task HandleOnlineBanAsync(ICommandContext context, bool ipMode)
     {
         var args = NormalizeArgs(context.Args, ipMode ? CommandsConfig.IpBan : CommandsConfig.Ban);
 
@@ -107,147 +117,163 @@ public class IpBanCommand : CommandBase
                 resolvedTarget.Controller.PlayerName ?? L("unknown"),
                 resolvedTarget.IPAddress);
 
-        _ = Task.Run(async () =>
+        if (targetSnapshot != null)
         {
-            if (targetSnapshot != null)
+            if (shouldBanIp && string.IsNullOrWhiteSpace(targetSnapshot.IpAddress))
             {
-                if (shouldBanIp && string.IsNullOrWhiteSpace(targetSnapshot.IpAddress))
-                {
-                    Core.Scheduler.NextTick(() => Reply(context, "lastban_no_ip"));
-                    return;
-                }
-
-                if (!await ValidateCanPunishAsync(context, targetSnapshot.SteamId))
-                {
-                    return;
-                }
-
-                _banManager.SetAdminContext(adminName, adminSteamId);
-
-                var steamApplied = false;
-                var ipApplied = false;
-
-                if (shouldBanSteam)
-                {
-                    var existingSteam = await _banManager.GetActiveBanAsync(targetSnapshot.SteamId, null, _multiServerConfig.Enabled);
-                    if (existingSteam == null)
-                    {
-                        steamApplied = await _banManager.AddBanAsync(targetSnapshot.SteamId, targetSnapshot.Name, duration, reason, isGlobal);
-                    }
-                }
-
-                if (shouldBanIp)
-                {
-                    var existingIp = await _banManager.GetActiveBanAsync(0, targetSnapshot.IpAddress, _multiServerConfig.Enabled);
-                    if (existingIp == null)
-                    {
-                        ipApplied = await _banManager.AddIpBanAsync(targetSnapshot.IpAddress!, targetSnapshot.Name, duration, reason, isGlobal, targetSnapshot.SteamId);
-                    }
-                }
-
-                if (!steamApplied && !ipApplied)
-                {
-                    Core.Scheduler.NextTick(() => Reply(context, "player_already_banned", targetSnapshot.Name));
-                    return;
-                }
-
-                await _sanctionStateService.RefreshAsync(targetSnapshot.SteamId, targetSnapshot.IpAddress);
-
-                var durationText = duration <= 0 ? L("duration_permanently") : L("duration_for_minutes", duration);
-                Core.Scheduler.NextTick(() =>
-                {
-                    BroadcastNotification(adminName, "banned_notification", targetSnapshot.Name, durationText, reason);
-
-                    var onlineTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSnapshot.SteamId);
-                    if (onlineTarget != null)
-                    {
-                        var durationDisplay = duration <= 0 ? L("permanent") : L("duration_minutes", duration);
-                        PlayerUtils.SendNotification(
-                            onlineTarget,
-                            Messages,
-                            L("banned_personal_html", durationDisplay, reason),
-                            $" \x02{L("prefix")}\x01 {L("banned_personal_chat", durationText, reason)}");
-
-                        var kickDelaySeconds = Messages.BanKickDelaySeconds > 0
-                            ? Messages.BanKickDelaySeconds
-                            : Math.Max(1f, Messages.CenterHtmlDurationMs / 1000f);
-
-                        Core.Scheduler.DelayBySeconds(kickDelaySeconds, () =>
-                        {
-                            var playerToKick = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSnapshot.SteamId);
-                            playerToKick?.Kick($"Banned: {reason}", ENetworkDisconnectionReason.NETWORK_DISCONNECT_BANADDED);
-                        });
-                    }
-                });
-
-                var actionName = shouldBanSteam && shouldBanIp
-                    ? "ban_both"
-                    : shouldBanIp ? "ipban" : "ban";
-                await AdminLogManager.AddLogAsync(
-                    actionName,
-                    adminName,
-                    adminSteamId,
-                    targetSnapshot.SteamId,
-                    targetSnapshot.IpAddress,
-                    $"duration={duration};global={isGlobal};reason={reason};ban_type={_banType};steam_applied={steamApplied};ip_applied={ipApplied}",
-                    targetSnapshot.Name,
-                    targetSnapshot.PlayerId,
-                    reason);
+                Core.Scheduler.NextTick(() => Reply(context, "lastban_no_ip"));
                 return;
             }
 
-            if (!ipMode && PlayerUtils.TryParseSteamId(targetArg, out var offlineSteamId))
+            if (!await ValidateCanPunishAsync(context, targetSnapshot.SteamId))
             {
-                if (!shouldBanSteam && shouldBanIp)
+                return;
+            }
+
+            _banManager.SetAdminContext(adminName, adminSteamId);
+
+            var steamApplied = false;
+            var ipApplied = false;
+            var steamDbError = false;
+            var ipDbError = false;
+
+            if (shouldBanSteam)
+            {
+                var existingSteam = await _banManager.GetActiveBanFreshAsync(targetSnapshot.SteamId, null, _multiServerConfig.Enabled);
+                if (existingSteam == null)
+                {
+                    _banManager.InvalidateCache(targetSnapshot.SteamId, null);
+                    steamApplied = await _banManager.AddBanAsync(targetSnapshot.SteamId, targetSnapshot.Name, duration, reason, isGlobal);
+                    if (!steamApplied)
+                    {
+                        steamDbError = true;
+                    }
+                }
+            }
+
+            if (shouldBanIp)
+            {
+                var existingIp = await _banManager.GetActiveBanFreshAsync(0, targetSnapshot.IpAddress, _multiServerConfig.Enabled);
+                if (existingIp == null)
+                {
+                    _banManager.InvalidateCache(0, targetSnapshot.IpAddress);
+                    ipApplied = await _banManager.AddIpBanAsync(targetSnapshot.IpAddress!, targetSnapshot.Name, duration, reason, isGlobal, targetSnapshot.SteamId);
+                    if (!ipApplied)
+                    {
+                        ipDbError = true;
+                    }
+                }
+            }
+
+            if (!steamApplied && !ipApplied)
+            {
+                if (steamDbError || ipDbError)
+                {
+                    Core.Scheduler.NextTick(() => Reply(context, "ban_db_error"));
+                }
+                else
+                {
+                    Core.Scheduler.NextTick(() => Reply(context, "player_already_banned", targetSnapshot.Name));
+                }
+                return;
+            }
+
+            await _sanctionStateService.RefreshAsync(targetSnapshot.SteamId, targetSnapshot.IpAddress);
+
+            var durationText = duration <= 0 ? L("duration_permanently") : L("duration_for_minutes", duration);
+            Core.Scheduler.NextTick(() =>
+            {
+                BroadcastNotification(adminName, "banned_notification", targetSnapshot.Name, durationText, reason);
+
+                var onlineTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSnapshot.SteamId);
+                if (onlineTarget != null)
+                {
+                    var durationDisplay = duration <= 0 ? L("permanent") : L("duration_minutes", duration);
+                    PlayerUtils.SendNotification(
+                        onlineTarget,
+                        Messages,
+                        $"<font color='#ff0000'><b>{L("banned_personal_html")}</b></font><br><br>{L("label_duration")}: <font color='#ffcc00'>{durationDisplay}</font><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
+                        $" \x02{L("prefix")}\x01 {L("banned_personal_chat", durationText, reason)}");
+
+                    var kickDelaySeconds = Messages.BanKickDelaySeconds > 0
+                        ? Messages.BanKickDelaySeconds
+                        : Math.Max(1f, Messages.CenterHtmlDurationMs / 1000f);
+
+                    Core.Scheduler.DelayBySeconds(kickDelaySeconds, () =>
+                    {
+                        var playerToKick = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSnapshot.SteamId);
+                        playerToKick?.Kick($"Banned: {reason}", ENetworkDisconnectionReason.NETWORK_DISCONNECT_BANADDED);
+                    });
+                }
+            });
+
+            var actionName = shouldBanSteam && shouldBanIp
+                ? "ban_both"
+                : shouldBanIp ? "ipban" : "ban";
+            await AdminLogManager.AddLogAsync(
+                actionName,
+                adminName,
+                adminSteamId,
+                targetSnapshot.SteamId,
+                targetSnapshot.IpAddress,
+                $"duration={duration};global={isGlobal};reason={reason};ban_type={_banType};steam_applied={steamApplied};ip_applied={ipApplied}",
+                targetSnapshot.Name,
+                targetSnapshot.PlayerId,
+                reason);
+            return;
+        }
+
+        if (!ipMode && PlayerUtils.TryParseSteamId(targetArg, out var offlineSteamId))
+        {
+            if (!shouldBanSteam && shouldBanIp)
+            {
+                Core.Scheduler.NextTick(() =>
+                {
+                    ReplyRaw(context, T("ban_type_requires_ip_target", "BanMode is IP-only. Use target IP with !ban/!ipban."));
+                });
+                return;
+            }
+
+            await AddOfflineSteamBanAsync(context, offlineSteamId, duration, reason, adminName, adminSteamId, isGlobal);
+
+            if (shouldBanIp)
+            {
+                var knownIps = await _playerIpDbManager.GetAllKnownIpsAsync(offlineSteamId);
+                var appliedCount = 0;
+                foreach (var knownIp in knownIps.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    var added = await AddOfflineIpBanAsync(context, knownIp, duration, reason, adminName, adminSteamId, isGlobal, notifyResult: false);
+                    if (added)
+                    {
+                        appliedCount++;
+                    }
+                }
+
+                if (appliedCount > 0)
                 {
                     Core.Scheduler.NextTick(() =>
                     {
-                        ReplyRaw(context, T("ban_type_requires_ip_target", "BanMode is IP-only. Use target IP with !ban/!ipban."));
+                        ReplyRaw(context, T("ban_type_known_ips_applied", "Applied IP bans for {0} known IP(s).", appliedCount));
                     });
-                    return;
                 }
-
-                await AddOfflineSteamBanAsync(context, offlineSteamId, duration, reason, adminName, adminSteamId, isGlobal);
-
-                if (shouldBanIp)
-                {
-                    var knownIps = await _playerIpDbManager.GetAllKnownIpsAsync(offlineSteamId);
-                    var appliedCount = 0;
-                    foreach (var knownIp in knownIps.Distinct(StringComparer.OrdinalIgnoreCase))
-                    {
-                        var added = await AddOfflineIpBanAsync(context, knownIp, duration, reason, adminName, adminSteamId, isGlobal, notifyResult: false);
-                        if (added)
-                        {
-                            appliedCount++;
-                        }
-                    }
-
-                    if (appliedCount > 0)
-                    {
-                        Core.Scheduler.NextTick(() =>
-                        {
-                            ReplyRaw(context, T("ban_type_known_ips_applied", "Applied IP bans for {0} known IP(s).", appliedCount));
-                        });
-                    }
-                }
-
-                return;
             }
 
-            if (shouldBanIp && TryNormalizeIpTarget(targetArg, out var normalizedIp))
-            {
-                await AddOfflineIpBanAsync(context, normalizedIp, duration, reason, adminName, adminSteamId, isGlobal);
-                return;
-            }
+            return;
+        }
 
-            if (ipMode)
-            {
-                await AddOfflineIpBanAsync(context, targetArg, duration, reason, adminName, adminSteamId, isGlobal);
-                return;
-            }
+        if (shouldBanIp && TryNormalizeIpTarget(targetArg, out var normalizedIp))
+        {
+            await AddOfflineIpBanAsync(context, normalizedIp, duration, reason, adminName, adminSteamId, isGlobal);
+            return;
+        }
 
-            Core.Scheduler.NextTick(() => Reply(context, "player_not_found"));
-        });
+        if (ipMode)
+        {
+            await AddOfflineIpBanAsync(context, targetArg, duration, reason, adminName, adminSteamId, isGlobal);
+            return;
+        }
+
+        Core.Scheduler.NextTick(() => Reply(context, "player_not_found"));
     }
 
     private bool ResolveGlobalMode()
@@ -321,7 +347,7 @@ public class IpBanCommand : CommandBase
         ulong adminSteamId,
         bool isGlobal)
     {
-        var existingBan = await _banManager.GetActiveBanAsync(targetSteamId, null, _multiServerConfig.Enabled);
+        var existingBan = await _banManager.GetActiveBanFreshAsync(targetSteamId, null, _multiServerConfig.Enabled);
         if (existingBan != null)
         {
             Core.Scheduler.NextTick(() => Reply(context, "steamid_already_banned", targetSteamId));
@@ -332,7 +358,7 @@ public class IpBanCommand : CommandBase
         var ok = await _banManager.AddBanAsync(targetSteamId, targetSteamId.ToString(), duration, reason, isGlobal);
         if (!ok)
         {
-            Core.Scheduler.NextTick(() => Reply(context, "addban_failed"));
+            Core.Scheduler.NextTick(() => Reply(context, "ban_db_error"));
             return;
         }
 
@@ -364,7 +390,7 @@ public class IpBanCommand : CommandBase
             return false;
         }
 
-        var existing = await _banManager.GetActiveBanAsync(0, normalizedIp, _multiServerConfig.Enabled);
+        var existing = await _banManager.GetActiveBanFreshAsync(0, normalizedIp, _multiServerConfig.Enabled);
         if (existing != null)
         {
             if (notifyResult)
@@ -382,7 +408,7 @@ public class IpBanCommand : CommandBase
             {
                 ReplyRaw(context, ok
                     ? T("ipban_success", "IP {0} banned successfully.", normalizedIp)
-                    : T("ipban_failed", "Failed to ban IP {0}.", normalizedIp));
+                    : T("ban_db_error", "Failed to apply ban: database error. Check server console."));
             });
         }
 

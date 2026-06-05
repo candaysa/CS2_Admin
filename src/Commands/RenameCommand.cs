@@ -30,48 +30,54 @@ public class RenameCommand : CommandBase
         _playerNameHistoryManager = playerNameHistoryManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Rename);
-
-        if (!HasPerm(context, Permissions.Rename))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Rename);
 
-        if (args.Length < 2)
+            if (!HasPerm(context, Permissions.Rename))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
+
+            if (args.Length < 2)
+            {
+                Reply(context, "rename_usage");
+                return;
+            }
+
+            var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
+            if (target == null)
+            {
+                Reply(context, "player_not_found");
+                return;
+            }
+
+            var canTarget = await PlayerUtils.CanAdminTargetAsync(Core, _adminDbManager, context, target.SteamID, allowSelf: true);
+            if (!canTarget)
+                return;
+
+            var newName = string.Join(" ", args.Skip(1));
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var targetName = target.Controller.PlayerName;
+
+            target.Controller.PlayerName = newName;
+            await _playerNameHistoryManager.SetCustomNameAsync(target.SteamID, newName);
+
+            BroadcastNotification(adminName, "rename_notification", targetName, newName);
+
+            PlayerUtils.SendNotification(target, Messages,
+                $"<font color='#ffcc00'><b>{L("rename_personal_html")}</b></font><br><br>{L("label_new_name")}: <font color='#00ff00'>{newName}</font><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
+                $" \x02{L("prefix")}\x01 {L("rename_personal_chat", newName, ResolveVisibleAdminName(target, adminName))}");
+
+            _ = AdminLogManager.AddLogAsync("rename", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"new_name={newName}", targetName);
+            Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} renamed {Target} to {NewName}", adminName, targetName, newName);
+        }
+        catch (Exception ex)
         {
-            Reply(context, "rename_usage");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Rename command failed");
         }
-
-        var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
-        if (target == null)
-        {
-            Reply(context, "player_not_found");
-            return;
-        }
-
-        var canTarget = PlayerUtils.CanAdminTargetAsync(Core, _adminDbManager, context, target.SteamID, allowSelf: true)
-            .GetAwaiter().GetResult();
-        if (!canTarget)
-            return;
-
-        var newName = string.Join(" ", args.Skip(1));
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var targetName = target.Controller.PlayerName;
-
-        target.Controller.PlayerName = newName;
-        _playerNameHistoryManager.SetCustomNameAsync(target.SteamID, newName).GetAwaiter().GetResult();
-
-        BroadcastNotification(adminName, "rename_notification", targetName, newName);
-
-        PlayerUtils.SendNotification(target, Messages,
-            L("rename_personal_html", newName, ResolveVisibleAdminName(target, adminName)),
-            $" \x02{L("prefix")}\x01 {L("rename_personal_chat", newName, ResolveVisibleAdminName(target, adminName))}");
-
-        AdminLogManager.AddLogAsync("rename", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"new_name={newName}", targetName);
-        Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} renamed {Target} to {NewName}", adminName, targetName, newName);
     }
 }

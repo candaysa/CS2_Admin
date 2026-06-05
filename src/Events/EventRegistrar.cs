@@ -32,14 +32,15 @@ public class EventRegistrar
     private readonly PlayerSessionManager _playerSessionManager;
     private readonly DiscordBotService? _discord;
 
-    private readonly Dictionary<int, DateTime> _gagWarnTimestamps = new();
+    private readonly ConcurrentDictionary<int, DateTime> _gagWarnTimestamps = new();
     private readonly ConcurrentDictionary<int, byte> _connectNotificationsSent = new();
     private Guid _chatHookGuid = Guid.Empty;
     private CancellationTokenSource? _expiryCheckCts;
     private CancellationTokenSource? _banEnforceCts;
     private volatile bool _databaseReady;
     private int _isBanEnforcementRunning;
-    private readonly Dictionary<ulong, string> _lastKnownAdminTags = new();
+    private readonly ConcurrentDictionary<ulong, string> _lastKnownAdminTags = new();
+    private readonly HashSet<string> _commandAliases;
 
     private Action<IOnClientPutInServerEvent>? _onClientPutInServer;
     private Action<IOnClientSteamAuthorizeEvent>? _onClientSteamAuthorize;
@@ -63,7 +64,8 @@ public class EventRegistrar
         ChatTagConfigManager chatTagConfigManager,
         PlayerNameHistoryManager playerNameHistoryManager,
         PlayerSessionManager playerSessionManager,
-        DiscordBotService? discord)
+        DiscordBotService? discord,
+        CommandsConfig? commandsConfig = null)
     {
         _core = core;
         _banManager = banManager;
@@ -80,6 +82,7 @@ public class EventRegistrar
         _playerNameHistoryManager = playerNameHistoryManager;
         _playerSessionManager = playerSessionManager;
         _discord = discord;
+        _commandAliases = CommandAliasResolver.BuildSet(commandsConfig);
     }
 
     public void SetDatabaseReady(bool ready) => _databaseReady = ready;
@@ -148,8 +151,11 @@ public class EventRegistrar
         if (!string.IsNullOrWhiteSpace(text))
             _ = _discord?.SendChatNotificationAsync(player, text, teamOnly);
 
-        if (!string.IsNullOrWhiteSpace(text) && (text.StartsWith("!") || text.StartsWith("/")))
+        if (!string.IsNullOrWhiteSpace(text) && (text.StartsWith("!") || text.StartsWith("/"))
+            && CommandAliasResolver.IsCommandPrefix(_commandAliases, text))
+        {
             return HookResult.Handled;
+        }
 
         var steamId = player.SteamID;
 
@@ -197,8 +203,26 @@ public class EventRegistrar
 
         if (_chatTagConfigManager.Config.ChatEnabled && !string.IsNullOrWhiteSpace(text))
         {
+            if (DebugSettings.LoggingEnabled)
+            {
+                var preTag = ResolveChatGroupTag(player);
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2Admin][Debug][ChatTag] sender={Name} steamid={SteamId} teamOnly={TeamOnly} resolvedTag='{Tag}' chatEnabled={Enabled} text='{Text}'",
+                    player.Controller.PlayerName, steamId, teamOnly, preTag, _chatTagConfigManager.Config.ChatEnabled, text);
+            }
             BroadcastFormattedChat(player, text, teamOnly);
-            return HookResult.Handled;
+            // Stop kullanmamız gerek — Handled oyunun default chat mesajını engellemez,
+            // böylece hem "[ Owner ] SSonic: ." hem de oyunun "[HERKES] SSonic [İZLEYİCİ]: ."
+            // mesajı aynı anda gözükür (duplicate).
+            return HookResult.Stop;
+        }
+
+        if (DebugSettings.LoggingEnabled && !string.IsNullOrWhiteSpace(text))
+        {
+            _core.Logger.LogInformationIfEnabled(
+                "[CS2Admin][Debug][ChatTag] chat tag broadcast SKIPPED | sender={Name} steamid={SteamId} reason='{Reason}'",
+                player.Controller.PlayerName, steamId,
+                !_chatTagConfigManager.Config.ChatEnabled ? "ChatEnabled=false in tags.json" : "empty text");
         }
 
         return HookResult.Continue;
@@ -218,6 +242,13 @@ public class EventRegistrar
         var scopePrefix = teamOnly ? $"{style.ChatColor}{LocalizerHelper.Get(_core, "chat_team_prefix")} " : string.Empty;
         var formatted = $" \x01{scopePrefix}{style.ChatColor}[ {style.TagColor}{groupTag} {style.ChatColor}] {style.NameColor}{senderName}{style.ChatColor}: {text}";
         var senderTeam = sender.Controller.TeamNum;
+
+        if (DebugSettings.LoggingEnabled)
+        {
+            _core.Logger.LogInformationIfEnabled(
+                "[CS2Admin][Debug][ChatTag] broadcast | sender={Name} teamOnly={TeamOnly} groupTag='{Tag}' chatColor='{Chat}' tagColor='{TagC}' nameColor='{NameC}' targets={Targets} formatted='{Formatted}'",
+                senderName, teamOnly, groupTag, style.ChatColor, style.TagColor, style.NameColor, teamOnly ? "team" : "all", formatted);
+        }
 
         foreach (var target in _core.PlayerManager.GetAllPlayers().Where(p => p.IsValid && !p.IsFakeClient))
         {
@@ -241,12 +272,18 @@ public class EventRegistrar
         try
         {
             var admin = _adminDbManager.GetAdminFromCache(steamId);
+            if (DebugSettings.LoggingEnabled)
+            {
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2Admin][Debug][ChatTag] resolve | steamid={SteamId} cacheHit={Cache} groupList={Groups}",
+                    steamId, admin != null, admin?.GroupList != null ? string.Join(",", admin.GroupList) : "-");
+            }
             if (admin != null)
             {
                 string primaryGroup = string.Empty;
                 if (admin.GroupList.Count > 0)
                     primaryGroup = _groupDbManager.GetPrimaryGroupNameSync(admin.GroupList) ?? admin.GroupList[0];
-                
+
                 if (!string.IsNullOrWhiteSpace(primaryGroup))
                 {
                     var resolved = primaryGroup.Trim();
@@ -255,22 +292,29 @@ public class EventRegistrar
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Non-fatal: continue with secondary resolvers.
+            if (DebugSettings.LoggingEnabled)
+                _core.Logger.LogWarningIfEnabled("[CS2Admin][Debug][ChatTag] resolve-cache-error | steamid={SteamId} err={Msg}", steamId, ex.Message);
         }
 
         var fromScoreboard = ExtractTagFromScoreboard(player.Controller.Clan);
         if (!string.IsNullOrWhiteSpace(fromScoreboard))
         {
+            if (DebugSettings.LoggingEnabled)
+                _core.Logger.LogInformationIfEnabled("[CS2Admin][Debug][ChatTag] resolve-from-scoreboard | steamid={SteamId} tag='{Tag}'", steamId, fromScoreboard);
             return fromScoreboard;
         }
 
         if (_core.Permission.PlayerHasPermission(steamId, _permissions.AdminRoot))
         {
+            if (DebugSettings.LoggingEnabled)
+                _core.Logger.LogInformationIfEnabled("[CS2Admin][Debug][ChatTag] resolve-from-adminroot | steamid={SteamId}", steamId);
             return "ADMIN";
         }
 
+        if (DebugSettings.LoggingEnabled)
+            _core.Logger.LogInformationIfEnabled("[CS2Admin][Debug][ChatTag] resolve-fallback | steamid={SteamId} tag='{Tag}'", steamId, _chatTagConfigManager.Config.PlayerTag);
         return _chatTagConfigManager.Config.PlayerTag;
     }
 
@@ -340,7 +384,7 @@ public class EventRegistrar
                 player.VoiceFlags = VoiceFlagValue.Normal;
                 _muteManager.ClearCache();
                 _sanctionStateService.Invalidate(steamId);
-                _gagWarnTimestamps.Remove(playerId);
+                _gagWarnTimestamps.TryRemove(playerId, out _);
             }
 
             var cachedGag = _sanctionStateService.GetCachedGag(steamId) ?? _gagManager.GetActiveGagFromCache(steamId);
@@ -349,7 +393,7 @@ public class EventRegistrar
                 player.SendChat($" \x04{LocalizerHelper.Get(_core, "prefix")}\x01 {LocalizerHelper.Get(_core, "gag_expired")}");
                 _gagManager.ClearCache();
                 _sanctionStateService.Invalidate(steamId);
-                _gagWarnTimestamps.Remove(playerId);
+                _gagWarnTimestamps.TryRemove(playerId, out _);
             }
         }
 

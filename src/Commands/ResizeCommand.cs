@@ -30,59 +30,64 @@ public class ResizeCommand : CommandBase
         _adminDbManager = adminDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Resize);
-
-        if (!HasPerm(context, Permissions.Resize))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Resize);
 
-        if (args.Length < 2 || !float.TryParse(args[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var scale))
+            if (!HasPerm(context, Permissions.Resize))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
+
+            if (args.Length < 2 || !float.TryParse(args[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var scale))
+            {
+                Reply(context, "resize_usage");
+                return;
+            }
+
+            scale = Math.Clamp(scale, 0.2f, 3.0f);
+
+            var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], includeDeadPlayers: true, caller: context.Sender);
+            if (targets.Count == 0)
+            {
+                Reply(context, "no_valid_targets");
+                return;
+            }
+
+            targets = await PlayerUtils.FilterTargetsByAccessAsync(Core, _adminDbManager, context, targets, allowSelf: true);
+            if (targets.Count == 0)
+            {
+                Reply(context, "no_valid_targets");
+                return;
+            }
+
+            var applied = 0;
+            foreach (var target in targets)
+            {
+                if (TrySetPlayerScale(target, scale))
+                    applied++;
+            }
+
+            if (applied == 0)
+            {
+                Reply(context, "resize_not_supported");
+                return;
+            }
+
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+
+            BroadcastNotification(adminName, "resize_notification", applied, scale.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+
+            _ = AdminLogManager.AddLogAsync("resize", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={applied};scale={scale.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}");
+            Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} resized {Count} player(s) to {Scale}", adminName, applied, scale);
+        }
+        catch (Exception ex)
         {
-            Reply(context, "resize_usage");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Resize command failed");
         }
-
-        scale = Math.Clamp(scale, 0.2f, 3.0f);
-
-        var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], includeDeadPlayers: true, caller: context.Sender);
-        if (targets.Count == 0)
-        {
-            Reply(context, "no_valid_targets");
-            return;
-        }
-
-        targets = PlayerUtils.FilterTargetsByAccessAsync(Core, _adminDbManager, context, targets, allowSelf: true)
-            .GetAwaiter().GetResult();
-        if (targets.Count == 0)
-        {
-            Reply(context, "no_valid_targets");
-            return;
-        }
-
-        var applied = 0;
-        foreach (var target in targets)
-        {
-            if (TrySetPlayerScale(target, scale))
-                applied++;
-        }
-
-        if (applied == 0)
-        {
-            Reply(context, "resize_not_supported");
-            return;
-        }
-
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var prefix = L("prefix");
-
-        BroadcastNotification(adminName, "resize_notification", applied, scale.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
-
-        AdminLogManager.AddLogAsync("resize", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={applied};scale={scale.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}");
-        Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} resized {Count} player(s) to {Scale}", adminName, applied, scale);
     }
 
     private bool TrySetPlayerScale(IPlayer player, float scale)
@@ -108,7 +113,10 @@ public class ResizeCommand : CommandBase
                     return true;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] TrySetPlayerScale reflection fallback failed for {SteamId}", player.SteamID);
+            }
         }
 
         return false;

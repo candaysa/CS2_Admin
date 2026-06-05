@@ -2,7 +2,7 @@
   "CS2AdminTags": {
     "Version": 4,
     "ScoreboardEnabled": true,
-    "ChatEnabled": false,
+    "ChatEnabled": true,
     "PlayerTag": "PLAYER",
     "ShowAdminName": true,
     "SupportedColors": [
@@ -28,7 +28,6 @@
       "[purple]",
       "[magenta]"
     ],
-    "Enabled": false,
     "Groups": {
       "Owner": {
         "ChatColor": "",

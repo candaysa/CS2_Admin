@@ -31,59 +31,66 @@ public class UnfreezeCommand : CommandBase
         _adminDbManager = adminDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Unfreeze);
-
-        if (!HasPerm(context, Permissions.Unfreeze))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Unfreeze);
 
-        if (args.Length < 1)
+            if (!HasPerm(context, Permissions.Unfreeze))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
+
+            if (args.Length < 1)
+            {
+                Reply(context, "unfreeze_usage");
+                return;
+            }
+
+            var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], caller: context.Sender);
+            if (targets.Count == 0)
+            {
+                Reply(context, "no_valid_targets");
+                return;
+            }
+
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+
+            foreach (var target in targets)
+            {
+                PlayerUtils.Unfreeze(target);
+                var playerId = target.PlayerID;
+                _frozenPlayers.Remove(playerId);
+                _freezeVisualPlayers.Remove(playerId);
+                RestoreFreezeVisuals(playerId);
+            }
+
+            foreach (var target in targets)
+            {
+                PlayerUtils.SendNotification(target, Messages,
+                    $"<font color='#00ff00'><b>{L("unfrozen_personal_html")}</b></font><br><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
+                    $" \x02{L("prefix")}\x01 {L("unfrozen_personal_chat", ResolveVisibleAdminName(target, adminName))}");
+            }
+
+            if (targets.Count == 1)
+            {
+                var targetName = targets[0].Controller.PlayerName;
+                BroadcastNotification(adminName, "unfreeze_notification_single", targetName);
+            }
+            else
+            {
+                BroadcastNotification(adminName, "unfreeze_notification_multiple", targets.Count);
+            }
+
+            var unfreezeTargetSteamIds = string.Join(",", targets.Select(t => t.SteamID));
+            _ = AdminLogManager.AddLogAsync("unfreeze", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={unfreezeTargetSteamIds};count={targets.Count}");
+        }
+        catch (Exception ex)
         {
-            Reply(context, "unfreeze_usage");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Unfreeze command failed");
         }
-
-        var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], caller: context.Sender);
-        if (targets.Count == 0)
-        {
-            Reply(context, "no_valid_targets");
-            return;
-        }
-
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-
-        foreach (var target in targets)
-        {
-            PlayerUtils.Unfreeze(target);
-            var playerId = target.PlayerID;
-            _frozenPlayers.Remove(playerId);
-            _freezeVisualPlayers.Remove(playerId);
-            RestoreFreezeVisuals(playerId);
-        }
-
-        foreach (var target in targets)
-        {
-            PlayerUtils.SendNotification(target, Messages,
-                L("unfrozen_personal_html", ResolveVisibleAdminName(target, adminName)),
-                $" \x02{L("prefix")}\x01 {L("unfrozen_personal_chat", ResolveVisibleAdminName(target, adminName))}");
-        }
-
-        if (targets.Count == 1)
-        {
-            var targetName = targets[0].Controller.PlayerName;
-            BroadcastNotification(adminName, "unfreeze_notification_single", targetName);
-        }
-        else
-        {
-            BroadcastNotification(adminName, "unfreeze_notification_multiple", targets.Count);
-        }
-
-        var unfreezeTargetSteamIds = string.Join(",", targets.Select(t => t.SteamID));
-        _ = AdminLogManager.AddLogAsync("unfreeze", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={unfreezeTargetSteamIds};count={targets.Count}");
     }
 
     private void RestoreFreezeVisuals(int playerId)

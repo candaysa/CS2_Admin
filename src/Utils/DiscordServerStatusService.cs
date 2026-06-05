@@ -98,14 +98,23 @@ public class DiscordServerStatusService
                 ? dbMessageId
                 : _serverStatusMessageId;
 
-            if (!string.IsNullOrWhiteSpace(previousMessageId)
-                && await _restClient.UpdateEmbedAsync(_serverStatusChannelId, previousMessageId, embed))
+            if (!string.IsNullOrWhiteSpace(previousMessageId))
             {
-                if (_serverStatusMessageId != previousMessageId)
+                var updateResult = await _restClient.UpdateEmbedAsync(_serverStatusChannelId, previousMessageId, embed);
+                if (updateResult == true)
                 {
-                    _serverStatusMessageId = previousMessageId;
+                    if (_serverStatusMessageId != previousMessageId)
+                    {
+                        _serverStatusMessageId = previousMessageId;
+                    }
+                    return;
                 }
-                return;
+                
+                if (updateResult == false)
+                {
+                    // Rate limited or other error, do not create a new duplicate message
+                    return;
+                }
             }
 
             var newMessageId = await _restClient.SendEmbedAsync(_serverStatusChannelId, embed);
@@ -122,6 +131,10 @@ public class DiscordServerStatusService
                 {
                     await _restClient.DeleteMessageAsync(_serverStatusChannelId, previousMessageId);
                 }
+                
+                var displayName = string.IsNullOrWhiteSpace(status.ServerName) ? status.ButtonLabel : status.ServerName;
+                var title = DiscordHelpers.EscapeMarkdown(DiscordHelpers.TrimLabel(displayName));
+                _core.Scheduler.DelayBySeconds(5f, () => _ = _restClient.CleanupDuplicateEmbedsAsync(_serverStatusChannelId, title, newMessageId));
             }
         }
         catch (Exception ex)
@@ -187,8 +200,8 @@ public class DiscordServerStatusService
         var bannerUrl = _bannerUrl;
 
         var statusText = isOnline
-            ? T("discord_server_status_online", "Online 🟢")
-            : T("discord_server_status_offline", "Offline 🔴");
+            ? $"{T("discord_server_status_online", "Online")} 🟢"
+            : $"{T("discord_server_status_offline", "Offline")} 🔴";
         var statusColor = isOnline ? 0x2ECC71 : 0xE74C3C;
         var mapName = string.IsNullOrWhiteSpace(status.MapName) ? T("discord_server_status_unknown_map", "unknown") : status.MapName;
 
@@ -198,13 +211,13 @@ public class DiscordServerStatusService
             color = statusColor,
             fields = new[]
             {
-                new { name = T("discord_server_status_map_field", "🗺️ Map"), value = DiscordHelpers.EscapeMarkdown(mapName), inline = true },
-                new { name = T("discord_server_status_players_field", "👥 Players"), value = $"{status.PlayerCount}/{status.MaxPlayers}", inline = true },
+                new { name = $"🗺️ {T("discord_server_status_map_field", "Map")}", value = DiscordHelpers.EscapeMarkdown(mapName), inline = true },
+                new { name = $"👥 {T("discord_server_status_players_field", "Players")}", value = $"{status.PlayerCount}/{status.MaxPlayers}", inline = true },
                 new { name = "\u200B", value = "\u200B", inline = true },
-                new { name = T("discord_server_status_ip_field", "🌐 IP Address"), value = $"{status.ServerIp}:{status.ServerPort}", inline = true },
-                new { name = T("discord_server_status_status_field", "📊 Status"), value = statusText, inline = true },
+                new { name = $"🌐 {T("discord_server_status_ip_field", "IP Address")}", value = $"{status.ServerIp}:{status.ServerPort}", inline = true },
+                new { name = $"📊 {T("discord_server_status_status_field", "Status")}", value = statusText, inline = true },
                 new { name = "\u200B", value = "\u200B", inline = true },
-                new { name = T("discord_server_status_connect_field", "⌨️ Quick Connect"), value = $"```\nconnect {status.ServerIp}:{status.ServerPort}\n```", inline = false }
+                new { name = $"⌨️ {T("discord_server_status_connect_field", "Quick Connect")}", value = $"```\nconnect {status.ServerIp}:{status.ServerPort}\n```", inline = false }
             },
             image = string.IsNullOrWhiteSpace(bannerUrl) ? null : new { url = bannerUrl },
             footer = new { text = T("discord_last_update_footer", "Last update | {0} UTC", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss")) },

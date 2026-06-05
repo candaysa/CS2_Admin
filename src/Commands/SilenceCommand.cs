@@ -42,57 +42,57 @@ public sealed class SilenceCommand : CommandBase
         _silencePermission = silencePermission;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Silence);
-
-        if (!HasPerm(context, _silencePermission))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Silence);
 
-        if (args.Length < 2)
-        {
-            Reply(context, "silence_usage");
-            return;
-        }
+            if (!HasPerm(context, _silencePermission))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        if (RejectGroupTargets(context, args))
-            return;
+            if (args.Length < 2)
+            {
+                Reply(context, "silence_usage");
+                return;
+            }
 
-        var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], caller: context.Sender);
-        if (targets.Count == 0)
-        {
-            Reply(context, "player_not_found");
-            return;
-        }
+            if (RejectGroupTargets(context, args))
+                return;
 
-        if (!EnsureSinglePunishTarget(context, targets, args[0]))
-            return;
+            var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], caller: context.Sender);
+            if (targets.Count == 0)
+            {
+                Reply(context, "player_not_found");
+                return;
+            }
 
-        if (!SanctionDurationParser.TryParseToMinutes(args[1], out int duration))
-        {
-            Reply(context, "invalid_duration");
-            return;
-        }
+            if (!EnsureSinglePunishTarget(context, targets, args[0]))
+                return;
 
-        var reason = args.Length > 2
-            ? string.Join(" ", args.Skip(2))
-            : L("no_reason");
+            if (!SanctionDurationParser.TryParseToMinutes(args[1], out int duration))
+            {
+                Reply(context, "invalid_duration");
+                return;
+            }
 
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0;
-        var targetSnapshots = targets
-            .Select(t => new PunishTargetSnapshot(
-                t.PlayerID,
-                t.SteamID,
-                t.Controller.PlayerName ?? L("unknown"),
-                t.IPAddress))
-            .ToList();
+            var reason = args.Length > 2
+                ? string.Join(" ", args.Skip(2))
+                : L("no_reason");
 
-        _ = Task.Run(async () =>
-        {
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0;
+            var targetSnapshots = targets
+                .Select(t => new PunishTargetSnapshot(
+                    t.PlayerID,
+                    t.SteamID,
+                    t.Controller.PlayerName ?? L("unknown"),
+                    t.IPAddress))
+                .ToList();
+
             _muteManager.SetAdminContext(adminName, adminSteamId);
             _gagManager.SetAdminContext(adminName, adminSteamId);
             foreach (var target in targetSnapshots)
@@ -100,8 +100,8 @@ public sealed class SilenceCommand : CommandBase
                 if (!await ValidateCanPunishAsync(context, target.SteamId))
                     continue;
 
-                var existingMute = await _muteManager.GetActiveMuteAsync(target.SteamId);
-                var existingGag = await _gagManager.GetActiveGagAsync(target.SteamId);
+                var existingMute = await _muteManager.GetActiveMuteFreshAsync(target.SteamId);
+                var existingGag = await _gagManager.GetActiveGagFreshAsync(target.SteamId);
 
                 if (existingMute != null && existingGag != null)
                 {
@@ -109,10 +109,25 @@ public sealed class SilenceCommand : CommandBase
                     continue;
                 }
 
+                var dbError = false;
                 if (existingMute == null)
-                    await _muteManager.AddMuteAsync(target.SteamId, duration, reason);
+                {
+                    _muteManager.InvalidateCache(target.SteamId);
+                    var muteOk = await _muteManager.AddMuteAsync(target.SteamId, duration, reason);
+                    if (!muteOk) dbError = true;
+                }
                 if (existingGag == null)
-                    await _gagManager.AddGagAsync(target.SteamId, duration, reason);
+                {
+                    _gagManager.InvalidateCache(target.SteamId);
+                    var gagOk = await _gagManager.AddGagAsync(target.SteamId, duration, reason);
+                    if (!gagOk) dbError = true;
+                }
+
+                if (dbError)
+                {
+                    Core.Scheduler.NextTick(() => Reply(context, "silence_db_error"));
+                    continue;
+                }
 
                 await _sanctionStateService.RefreshAsync(target.SteamId, target.IpAddress);
 
@@ -127,7 +142,7 @@ public sealed class SilenceCommand : CommandBase
                     {
                         var durationDisplay = duration <= 0 ? L("permanent") : L("duration_minutes", duration);
                         PlayerUtils.SendNotification(targetPlayer, Messages,
-                            L("silenced_personal_html", durationDisplay, reason),
+                            $"<font color='#ff6600'><b>{L("silenced_personal_html")}</b></font><br><br>{L("label_duration")}: <font color='#ffcc00'>{durationDisplay}</font><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
                             $" \x02{L("prefix")}\x01 {L("silenced_personal_chat", durationText, reason)}");
                         targetPlayer.VoiceFlags = VoiceFlagValue.Muted;
                     }
@@ -138,7 +153,11 @@ public sealed class SilenceCommand : CommandBase
                 Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} silenced {Target} for {Duration} minutes. Reason: {Reason}",
                     adminName, target.Name, duration, reason);
             }
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Silence command failed");
+        }
     }
 
     private async Task<bool> ValidateCanPunishAsync(ICommandContext context, ulong targetSteamId)

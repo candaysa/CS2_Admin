@@ -49,7 +49,7 @@ public class DiscordBotService
     private readonly DiscordInteractionHandler _interactionHandler;
     private readonly DiscordGatewayClient? _gatewayClient;
 
-    public DiscordBotService(ISwiftlyCore core, DiscordFileConfig config)
+    public DiscordBotService(ISwiftlyCore core, DiscordFileConfig config, CommandsConfig? commandsConfig = null)
     {
         _core = core;
         _serverName = config.ServerName ?? string.Empty;
@@ -76,7 +76,8 @@ public class DiscordBotService
             : null;
         _notificationService = new DiscordNotificationService(_core, _restClient, _serverName,
             _defaultChannelId, _connectionChannelId, _chatChannelId,
-            _callAdminChannelId, _reportChannelId, _adminTimeChannelId);
+            _callAdminChannelId, _reportChannelId, _adminTimeChannelId,
+            CommandAliasResolver.BuildSet(commandsConfig));
         _leaderboardService = new DiscordLeaderboardService(_core, _restClient,
             _leaderboardChannelId, _leaderboardTopLimit);
         _serverStatusService = new DiscordServerStatusService(_core, _restClient,

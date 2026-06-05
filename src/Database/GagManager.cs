@@ -12,7 +12,7 @@ public class GagManager
 {
     private readonly ISwiftlyCore _core;
     private readonly ConcurrentDictionary<ulong, CacheEntry> _gagCache = new();
-    private readonly TimeSpan _cacheLifetime = TimeSpan.FromMinutes(5);
+    private readonly TimeSpan _cacheLifetime = TimeSpan.FromSeconds(30);
     private readonly AsyncLocal<AdminContext> _currentAdmin = new();
 
     public GagManager(ISwiftlyCore core)
@@ -194,6 +194,51 @@ public class GagManager
         }
     }
 
+    public async Task<Gag?> GetActiveGagFreshAsync(ulong steamId)
+    {
+        try
+        {
+            InvalidateCache(steamId);
+
+            using var connection = _core.Database.GetConnection("mysql_detailed");
+            var gag = connection.Query<Gag>(
+                $@"SELECT * FROM `admin_gags`
+                  WHERE `steamid` = @SteamId
+                    AND {PunishmentQueryCompat.ActiveStatusWhere}
+                    AND (`expires_at` IS NULL OR `expires_at` > @Now)
+                  ORDER BY `created_at` DESC LIMIT 1",
+                new { SteamId = steamId, Now = DateTime.UtcNow }
+            ).FirstOrDefault(IsMaterializedGag);
+
+            if (gag != null)
+            {
+                _gagCache[steamId] = new CacheEntry(gag, DateTime.UtcNow);
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Gag] fresh-db-load-active steamid={SteamId} gagId={GagId} admin={Admin} createdAt={CreatedAt} expiresAt={ExpiresAt} reason={Reason}",
+                    steamId,
+                    gag.Id,
+                    gag.AdminName,
+                    gag.CreatedAt.ToString("o"),
+                    gag.ExpiresAt?.ToString("o") ?? "permanent",
+                    gag.Reason);
+            }
+            else
+            {
+                _gagCache.TryRemove(steamId, out _);
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Gag] fresh-db-load-none steamid={SteamId}",
+                    steamId);
+            }
+
+            return gag;
+        }
+        catch (Exception ex)
+        {
+            _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error checking fresh gag: {Message}", ex.Message);
+            return null;
+        }
+    }
+
     public Gag? GetActiveGagFromCache(ulong steamId)
     {
         if (_gagCache.TryGetValue(steamId, out var cachedEntry))
@@ -266,6 +311,20 @@ public class GagManager
     public void ClearCache()
     {
         _gagCache.Clear();
+    }
+
+    public void InvalidateCache(ulong steamId)
+    {
+        if (_gagCache.TryRemove(steamId, out _))
+        {
+            _core.Logger.LogInformationIfEnabled(
+                "[CS2_Admin][Trace][Gag] cache-invalidate steamid={SteamId}", steamId);
+        }
+    }
+
+    private static bool IsMaterializedGag(Gag gag)
+    {
+        return gag.Id > 0 && gag.IsActive;
     }
 
     private sealed record CacheEntry(Gag Gag, DateTime CachedAtUtc);

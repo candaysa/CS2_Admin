@@ -27,35 +27,42 @@ public class CallAdminCommand : CommandBase
         _discord = discord;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        if (!context.IsSentByPlayer || context.Sender == null)
+        try
         {
-            Reply(context, "player_only_command");
-            return;
-        }
+            if (!context.IsSentByPlayer || context.Sender == null)
+            {
+                Reply(context, "player_only_command");
+                return;
+            }
 
-        if (!HasPerm(context, Permissions.CallAdmin))
+            if (!HasPerm(context, Permissions.CallAdmin))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
+
+            var args = NormalizeArgs(context.Args, CommandsConfig.CallAdmin);
+            if (args.Length < 1)
+            {
+                Reply(context, "calladmin_usage");
+                return;
+            }
+
+            var messageText = string.Join(" ", args);
+            var playerName = context.Sender.Controller.PlayerName ?? L("unknown");
+            var playerSteamId = context.Sender.SteamID;
+            var serverId = ServerIdentity.GetServerId(Core);
+
+            _ = _discord.SendCallAdminNotificationAsync(playerName, playerSteamId, messageText, serverId);
+            _ = AdminLogManager.AddLogAsync("calladmin", playerName, playerSteamId, null, context.Sender.IPAddress, $"message={messageText};server={serverId}");
+
+            Reply(context, "calladmin_sent");
+        }
+        catch (Exception ex)
         {
-            Reply(context, "no_permission");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] CallAdmin command failed");
         }
-
-        var args = NormalizeArgs(context.Args, CommandsConfig.CallAdmin);
-        if (args.Length < 1)
-        {
-            Reply(context, "calladmin_usage");
-            return;
-        }
-
-        var messageText = string.Join(" ", args);
-        var playerName = context.Sender.Controller.PlayerName ?? L("unknown");
-        var playerSteamId = context.Sender.SteamID;
-        var serverId = ServerIdentity.GetServerId(Core);
-
-        _discord.SendCallAdminNotificationAsync(playerName, playerSteamId, messageText, serverId);
-        AdminLogManager.AddLogAsync("calladmin", playerName, playerSteamId, null, context.Sender.IPAddress, $"message={messageText};server={serverId}");
-
-        Reply(context, "calladmin_sent");
     }
 }

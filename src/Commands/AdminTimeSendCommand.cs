@@ -32,19 +32,19 @@ public class AdminTimeSendCommand : CommandBase
         _adminPlaytimeConfig = adminPlaytimeConfig;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        if (!HasPerm(context, Permissions.AdminTimeSend))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            if (!HasPerm(context, Permissions.AdminTimeSend))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0;
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0;
 
-        _ = Task.Run(async () =>
-        {
             var topAdmins = await _adminPlaytimeDbManager.GetTopAdminsAsync(_adminPlaytimeConfig.DiscordTopLimit);
             if (topAdmins.Count == 0)
             {
@@ -53,10 +53,15 @@ public class AdminTimeSendCommand : CommandBase
             }
 
             await _discord.SendAdminTimeNotificationAsync(topAdmins);
+            await _adminPlaytimeDbManager.ResetAllAsync();
             await AdminLogManager.AddLogAsync("admintimesend", adminName, adminSteamId, null, null, $"count={topAdmins.Count}");
 
             Core.Scheduler.NextTick(() => Reply(context, "admintime_sent"));
-            Core.Logger.LogInformationIfEnabled("[CS2_Admin] Admin playtime top list sent to Discord by {Admin}", adminName);
-        });
+            Core.Logger.LogInformationIfEnabled("[CS2_Admin] Admin playtime top list sent to Discord by {Admin} and playtime counters reset", adminName);
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] AdminTimeSend command failed");
+        }
     }
 }

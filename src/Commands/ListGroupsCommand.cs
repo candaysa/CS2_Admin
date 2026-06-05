@@ -1,6 +1,7 @@
 using CS2_Admin.Database;
 using CS2_Admin.Config;
 using CS2_Admin.Services;
+using CS2_Admin.Utils;
 using SwiftlyS2.Shared;
 using SwiftlyS2.Shared.Commands;
 
@@ -27,16 +28,16 @@ public class ListGroupsCommand : CommandBase
         _groupDbManager = groupDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        if (!HasPerm(context, Permissions.ListGroups))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            if (!HasPerm(context, Permissions.ListGroups))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        _ = Task.Run(async () =>
-        {
             var groups = await _groupDbManager.GetAllGroupsAsync();
             Core.Scheduler.NextTick(() =>
             {
@@ -52,6 +53,10 @@ public class ListGroupsCommand : CommandBase
                     ReplyRaw(context, L("listgroups_entry", group.Name, group.Immunity, group.Flags));
                 }
             });
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] ListGroups command failed");
+        }
     }
 }

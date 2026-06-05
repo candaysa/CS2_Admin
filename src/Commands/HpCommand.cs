@@ -28,62 +28,68 @@ public class HpCommand : CommandBase
         _adminDbManager = adminDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Hp);
-
-        if (!HasPerm(context, Permissions.Hp))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Hp);
 
-        if (args.Length < 2 || !int.TryParse(args[1], out var health))
+            if (!HasPerm(context, Permissions.Hp))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
+
+            if (args.Length < 2 || !int.TryParse(args[1], out var health))
+            {
+                Reply(context, "hp_usage");
+                return;
+            }
+
+            health = Math.Clamp(health, 1, 999);
+
+            var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
+            if (target == null)
+            {
+                Reply(context, "player_not_found");
+                return;
+            }
+
+            var canTarget = await PlayerUtils.CanAdminTargetAsync(Core, _adminDbManager, context, target.SteamID, allowSelf: true);
+            if (!canTarget)
+                return;
+
+            var pawn = target.PlayerPawn;
+            if (pawn?.IsValid != true)
+            {
+                Reply(context, "player_not_found");
+                return;
+            }
+
+            pawn.Health = health;
+            pawn.HealthUpdated();
+
+            if (args.Length > 2 && int.TryParse(args[2], out var armor))
+            {
+                armor = Math.Clamp(armor, 0, 100);
+                pawn.ArmorValue = armor;
+            }
+
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var targetName = target.Controller.PlayerName;
+
+            BroadcastNotification(adminName, "hp_notification", targetName, health);
+
+            PlayerUtils.SendNotification(target, Messages,
+                $"<font color='#00ff00'><b>{L("hp_personal_html", health)}</b></font>",
+                $" \x02{L("prefix")}\x01 {L("hp_personal_chat", health)}");
+
+            _ = AdminLogManager.AddLogAsync("hp", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"health={health}", targetName);
+            Core.Logger.LogInformation("[CS2_Admin] {Admin} set health of {Target} to {Health}", adminName, targetName, health);
+        }
+        catch (Exception ex)
         {
-            Reply(context, "hp_usage");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Hp command failed");
         }
-
-        health = Math.Clamp(health, 1, 999);
-
-        var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
-        if (target == null)
-        {
-            Reply(context, "player_not_found");
-            return;
-        }
-
-        var canTarget = PlayerUtils.CanAdminTargetAsync(Core, _adminDbManager, context, target.SteamID, allowSelf: true)
-            .GetAwaiter().GetResult();
-        if (!canTarget)
-            return;
-
-        var pawn = target.PlayerPawn;
-        if (pawn?.IsValid != true)
-        {
-            Reply(context, "player_not_found");
-            return;
-        }
-
-        pawn.Health = health;
-        pawn.HealthUpdated();
-
-        if (args.Length > 2 && int.TryParse(args[2], out var armor))
-        {
-            armor = Math.Clamp(armor, 0, 100);
-            pawn.ArmorValue = armor;
-        }
-
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var targetName = target.Controller.PlayerName;
-
-        BroadcastNotification(adminName, "hp_notification", targetName, health);
-
-        PlayerUtils.SendNotification(target, Messages,
-            L("hp_personal_html", health),
-            $" \x02{L("prefix")}\x01 {L("hp_personal_chat", health)}");
-
-        AdminLogManager.AddLogAsync("hp", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"health={health}", targetName);
-        Core.Logger.LogInformation("[CS2_Admin] {Admin} set health of {Target} to {Health}", adminName, targetName, health);
     }
 }

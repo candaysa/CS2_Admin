@@ -36,40 +36,40 @@ public class UnwarnCommand : CommandBase
         _sanctionStateService = sanctionStateService;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Unwarn);
-        if (!HasPerm(context, Permissions.Unwarn))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Unwarn);
+            if (!HasPerm(context, Permissions.Unwarn))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        if (args.Length < 1)
-        {
-            Reply(context, "unwarn_usage");
-            return;
-        }
+            if (args.Length < 1)
+            {
+                Reply(context, "unwarn_usage");
+                return;
+            }
 
-        var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
-        if (target == null)
-        {
-            Reply(context, "player_not_found");
-            return;
-        }
+            var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
+            if (target == null)
+            {
+                Reply(context, "player_not_found");
+                return;
+            }
 
-        var reason = args.Length > 1
-            ? string.Join(" ", args.Skip(1))
-            : L("no_reason");
+            var reason = args.Length > 1
+                ? string.Join(" ", args.Skip(1))
+                : L("no_reason");
 
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0;
-        var targetName = target.Controller.PlayerName ?? L("unknown");
-        var targetSteamId = target.SteamID;
-        var targetIp = target.IPAddress;
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0;
+            var targetName = target.Controller.PlayerName ?? L("unknown");
+            var targetSteamId = target.SteamID;
+            var targetIp = target.IPAddress;
 
-        _ = Task.Run(async () =>
-        {
             if (!await ValidateCanPunishAsync(context, targetSteamId))
                 return;
 
@@ -93,7 +93,7 @@ public class UnwarnCommand : CommandBase
                     PlayerUtils.SendNotification(
                         onlineTarget,
                         Messages,
-                        L("unwarned_personal_html", reason),
+                        $"<font color='#00ff00'><b>{L("unwarned_personal_html")}</b></font><br><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
                         $" \x02{L("prefix")}\x01 {L("unwarned_personal_chat", reason)}");
                 }
             });
@@ -101,7 +101,11 @@ public class UnwarnCommand : CommandBase
             await AdminLogManager.AddLogAsync("unwarn", adminName, adminSteamId, targetSteamId, targetIp, $"reason={reason}", targetName, target.PlayerID, reason);
             Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} removed warn from {Target}. Reason: {Reason}",
                 adminName, targetName, reason);
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Unwarn command failed");
+        }
     }
 
     private async Task<bool> ValidateCanPunishAsync(ICommandContext context, ulong targetSteamId)

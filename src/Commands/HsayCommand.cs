@@ -27,33 +27,40 @@ public class HsayCommand : CommandBase
         _adminDbManager = adminDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Hsay);
-
-        if (!HasPerm(context, Permissions.Hsay))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Hsay);
 
-        if (args.Length < 1)
+            if (!HasPerm(context, Permissions.Hsay))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
+
+            if (args.Length < 1)
+            {
+                Reply(context, "hsay_usage");
+                return;
+            }
+
+            var messageText = string.Join(" ", args);
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            foreach (var p in Core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
+            {
+                var visibleAdmin = ResolveVisibleAdminName(p, adminName);
+                var html = $"[ADMIN] <font color='#ffcc00'>{visibleAdmin}</font><br><font color='#ffffff'>{messageText}</font>";
+                var chat = $" \x04[HSAY]\x01 \x10{visibleAdmin}\x01: {messageText}";
+                PlayerUtils.SendNotification(p, Messages, html, chat);
+            }
+
+            _ = AdminLogManager.AddLogAsync("hsay", adminName, context.Sender?.SteamID ?? 0, null, null, $"message={messageText}");
+            Core.Logger.LogInformationIfEnabled("[CS2_Admin] HSAY from {Admin}: {Message}", adminName, messageText);
+        }
+        catch (Exception ex)
         {
-            Reply(context, "hsay_usage");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Hsay command failed");
         }
-
-        var messageText = string.Join(" ", args);
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        foreach (var p in Core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
-        {
-            var visibleAdmin = ResolveVisibleAdminName(p, adminName);
-            var html = $"[ADMIN] <font color='#ffcc00'>{visibleAdmin}</font><br><font color='#ffffff'>{messageText}</font>";
-            var chat = $" \x04[HSAY]\x01 \x10{visibleAdmin}\x01: {messageText}";
-            PlayerUtils.SendNotification(p, Messages, html, chat);
-        }
-
-        AdminLogManager.AddLogAsync("hsay", adminName, context.Sender?.SteamID ?? 0, null, null, $"message={messageText}");
-        Core.Logger.LogInformationIfEnabled("[CS2_Admin] HSAY from {Admin}: {Message}", adminName, messageText);
     }
 }

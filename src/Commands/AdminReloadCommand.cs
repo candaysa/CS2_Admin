@@ -24,19 +24,19 @@ public class AdminReloadCommand : CommandBase
     {
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        if (!HasPerm(context, Permissions.AdminReload))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            if (!HasPerm(context, Permissions.AdminReload))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0UL;
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0UL;
 
-        _ = Task.Run(async () =>
-        {
             try
             {
                 await ChatTagConfigManager.SyncWithGroupsAsync(GroupDbManager);
@@ -58,6 +58,10 @@ public class AdminReloadCommand : CommandBase
                     Reply(context, "adminreload_failed");
                 });
             }
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] AdminReload command failed");
+        }
     }
 }

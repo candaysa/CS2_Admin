@@ -29,6 +29,7 @@ public class DiscordNotificationService
     private readonly string _callAdminChannelId;
     private readonly string _reportChannelId;
     private readonly string _adminTimeChannelId;
+    private readonly HashSet<string> _commandAliases;
 
     public DiscordNotificationService(ISwiftlyCore core, DiscordRestClient restClient,
         string serverName,
@@ -37,7 +38,8 @@ public class DiscordNotificationService
         string chatChannelId,
         string callAdminChannelId,
         string reportChannelId,
-        string adminTimeChannelId)
+        string adminTimeChannelId,
+        HashSet<string>? commandAliases = null)
     {
         _core = core;
         _restClient = restClient;
@@ -48,6 +50,7 @@ public class DiscordNotificationService
         _callAdminChannelId = callAdminChannelId;
         _reportChannelId = reportChannelId;
         _adminTimeChannelId = adminTimeChannelId;
+        _commandAliases = commandAliases ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     }
 
     public async Task SendConnectNotificationAsync(IPlayer player)
@@ -69,7 +72,7 @@ public class DiscordNotificationService
     {
         var channelId = ResolveLogChannelId(_connectionChannelId);
         _core.Logger.LogInformationIfEnabled(
-            "[CS2_Admin][DiscordConnect] Bağlantı bilgisi Discord'a gönderiliyor... | SteamID: {SteamId} | İsim: {Name} | IP: {Ip} | Kanal ID: {ResolvedChannel}",
+            "[CS2_Admin][DiscordConnect] Sending connect notification to Discord... | SteamID: {SteamId} | Name: {Name} | IP: {Ip} | Channel ID: {ResolvedChannel}",
             steamId,
             string.IsNullOrWhiteSpace(playerName) ? "-" : playerName,
             string.IsNullOrWhiteSpace(ipAddress) ? "-" : ipAddress,
@@ -77,7 +80,7 @@ public class DiscordNotificationService
 
         if (string.IsNullOrWhiteSpace(channelId))
         {
-            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordConnect] Discord'a gönderilmedi (Sebep: Bağlantı kanalı ayarlanmamış) | SteamID: {SteamId}", steamId);
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordConnect] Skipped sending to Discord (Reason: Connect channel not set) | SteamID: {SteamId}", steamId);
             return;
         }
 
@@ -131,7 +134,7 @@ public class DiscordNotificationService
     {
         var channelId = ResolveLogChannelId(_connectionChannelId);
         _core.Logger.LogInformationIfEnabled(
-            "[CS2_Admin][DiscordDisconnect] Çıkış bilgisi Discord'a gönderiliyor... | SteamID: {SteamId} | İsim: {Name} | IP: {Ip} | Kanal ID: {ResolvedChannel}",
+            "[CS2_Admin][DiscordDisconnect] Sending disconnect notification to Discord... | SteamID: {SteamId} | Name: {Name} | IP: {Ip} | Channel ID: {ResolvedChannel}",
             steamId,
             string.IsNullOrWhiteSpace(playerName) ? "-" : playerName,
             string.IsNullOrWhiteSpace(ipAddress) ? "-" : ipAddress,
@@ -139,7 +142,7 @@ public class DiscordNotificationService
 
         if (string.IsNullOrWhiteSpace(channelId))
         {
-            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordDisconnect] Discord'a gönderilmedi (Sebep: Bağlantı kanalı ayarlanmamış) | SteamID: {SteamId}", steamId);
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordDisconnect] Skipped sending to Discord (Reason: Connect channel not set) | SteamID: {SteamId}", steamId);
             return;
         }
 
@@ -190,26 +193,30 @@ public class DiscordNotificationService
     {
         if (player == null || !player.IsValid || player.IsFakeClient)
         {
-            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordChat] İşlem iptal edildi (Sebep: Geçersiz veya Bot oyuncu)");
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordChat] Skipped sending to Discord (Reason: Invalid or Fake Client)");
             return;
         }
 
         var trimmed = message.Trim();
         if (string.IsNullOrWhiteSpace(trimmed))
         {
-            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordChat] İşlem iptal edildi (Sebep: Boş mesaj) | SteamID: {SteamId}", player.SteamID);
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordChat] Skipped sending to Discord (Reason: Empty message) | SteamID: {SteamId}", player.SteamID);
             return;
         }
 
-        if (trimmed.StartsWith("!") || trimmed.StartsWith("/"))
+        if (_commandAliases.Count > 0)
         {
-            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordChat] Discord'a gönderilmedi (Sebep: Oyun-içi komut kullanıldı) | SteamID: {SteamId} | Komut: {Text}", player.SteamID, trimmed);
-            return;
+            var firstToken = trimmed.Split(' ', 2)[0].TrimStart('!', '/');
+            if (!string.IsNullOrEmpty(firstToken) && _commandAliases.Contains(firstToken))
+            {
+                _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordChat] Skipped sending to Discord (Reason: Text is a plugin command) | SteamID: {SteamId} | Command: {Text}", player.SteamID, trimmed);
+                return;
+            }
         }
 
         var channelId = ResolveLogChannelId(_chatChannelId);
         _core.Logger.LogInformationIfEnabled(
-            "[CS2_Admin][DiscordChat] Mesaj Discord'a gönderiliyor... | SteamID: {SteamId} | İsim: {Name} | Takım Chat: {TeamOnly} | Kanal ID: {ResolvedChannel}",
+            "[CS2_Admin][DiscordChat] Sending message to Discord... | SteamID: {SteamId} | Name: {Name} | Team Chat: {TeamOnly} | Channel ID: {ResolvedChannel}",
             player.SteamID,
             player.Controller.PlayerName ?? "-",
             teamOnly,
@@ -217,7 +224,7 @@ public class DiscordNotificationService
 
         if (string.IsNullOrWhiteSpace(channelId))
         {
-            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordChat] Discord'a gönderilmedi (Sebep: Sohbet kanalı ayarlanmamış) | SteamID: {SteamId}", player.SteamID);
+            _core.Logger.LogInformationIfEnabled("[CS2_Admin][DiscordChat] Skipped sending to Discord (Reason: Chat channel not set) | SteamID: {SteamId}", player.SteamID);
             return;
         }
 

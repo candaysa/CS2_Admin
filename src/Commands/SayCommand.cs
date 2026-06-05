@@ -30,31 +30,38 @@ public class SayCommand : CommandBase
         _discord = discord;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Say);
-
-        if (!HasPerm(context, Permissions.Say))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Say);
 
-        if (args.Length < 1)
+            if (!HasPerm(context, Permissions.Say))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
+
+            if (args.Length < 1)
+            {
+                Reply(context, "say_usage");
+                return;
+            }
+
+            var messageText = string.Join(" ", args);
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            foreach (var p in Core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
+            {
+                var visibleAdmin = ResolveVisibleAdminName(p, adminName);
+                p.SendChat($" \x04[Admin]\x01 \x10{visibleAdmin}\x01: {messageText}");
+            }
+
+            _ = AdminLogManager.AddLogAsync("say", adminName, context.Sender?.SteamID ?? 0, null, null, $"message={messageText}");
+            Core.Logger.LogInformationIfEnabled("[CS2_Admin] SAY from {Admin}: {Message}", adminName, messageText);
+        }
+        catch (Exception ex)
         {
-            Reply(context, "say_usage");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Say command failed");
         }
-
-        var messageText = string.Join(" ", args);
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        foreach (var p in Core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
-        {
-            var visibleAdmin = ResolveVisibleAdminName(p, adminName);
-            p.SendChat($" \x04[Admin]\x01 \x10{visibleAdmin}\x01: {messageText}");
-        }
-
-        AdminLogManager.AddLogAsync("say", adminName, context.Sender?.SteamID ?? 0, null, null, $"message={messageText}");
-        Core.Logger.LogInformationIfEnabled("[CS2_Admin] SAY from {Admin}: {Message}", adminName, messageText);
     }
 }
