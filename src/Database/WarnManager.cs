@@ -11,7 +11,7 @@ public class WarnManager
 {
     private readonly ISwiftlyCore _core;
     private readonly ConcurrentDictionary<ulong, CacheEntry> _warnCache = new();
-    private readonly TimeSpan _cacheLifetime = TimeSpan.FromMinutes(5);
+    private readonly TimeSpan _cacheLifetime = TimeSpan.FromSeconds(30);
     private readonly AsyncLocal<AdminContext> _currentAdmin = new();
 
     public WarnManager(ISwiftlyCore core)
@@ -227,6 +227,15 @@ public class WarnManager
                 return new List<Warn>();
             }
         });
+    }
+
+    public void InvalidateCache(ulong steamId)
+    {
+        if (_warnCache.TryRemove(steamId, out _))
+        {
+            _core.Logger.LogInformationIfEnabled(
+                "[CS2_Admin][Trace][Warn] cache-invalidate steamid={SteamId}", steamId);
+        }
     }
 
     public async Task UpdateExpiredWarnsAsync()

@@ -27,60 +27,67 @@ public class MixTeamCommand : CommandBase
         _adminDbManager = adminDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.MixTeam);
-
-        if (!HasPerm(context, Permissions.MixTeam))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.MixTeam);
 
-        if (args.Length > 0)
-        {
-            Reply(context, "mixteam_usage");
-            return;
-        }
-
-        var players = Core.PlayerManager
-            .GetAllPlayers()
-            .Where(p => p.IsValid && !p.IsFakeClient)
-            .OrderBy(_ => Random.Shared.Next())
-            .ToList();
-
-        if (players.Count == 0)
-        {
-            Reply(context, "no_valid_targets");
-            return;
-        }
-
-        var startT = Random.Shared.Next(2) == 0;
-        var moved = 0;
-        for (var i = 0; i < players.Count; i++)
-        {
-            var target = players[i];
-            var team = (i % 2 == 0) ? (startT ? Team.T : Team.CT) : (startT ? Team.CT : Team.T);
-            Core.Scheduler.NextTick(() =>
+            if (!HasPerm(context, Permissions.MixTeam))
             {
-                if (target.IsValid)
+                Reply(context, "no_permission");
+                return;
+            }
+
+            if (args.Length > 0)
+            {
+                Reply(context, "mixteam_usage");
+                return;
+            }
+
+            var players = Core.PlayerManager
+                .GetAllPlayers()
+                .Where(p => p.IsValid && !p.IsFakeClient)
+                .OrderBy(_ => Random.Shared.Next())
+                .ToList();
+
+            if (players.Count == 0)
+            {
+                Reply(context, "no_valid_targets");
+                return;
+            }
+
+            var startT = Random.Shared.Next(2) == 0;
+            var moved = 0;
+            for (var i = 0; i < players.Count; i++)
+            {
+                var target = players[i];
+                var team = (i % 2 == 0) ? (startT ? Team.T : Team.CT) : (startT ? Team.CT : Team.T);
+                Core.Scheduler.NextTick(() =>
                 {
-                    target.ChangeTeam(team);
-                }
-            });
-            moved++;
+                    if (target.IsValid)
+                    {
+                        target.ChangeTeam(team);
+                    }
+                });
+                moved++;
+            }
+
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var prefix = L("prefix");
+
+            foreach (var player in Core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
+            {
+                var visibleAdmin = ResolveVisibleAdminName(player, adminName);
+                player.SendChat($" \x02{prefix}\x01 {L("mixteam_notification", visibleAdmin, moved)}");
+            }
+
+            _ = AdminLogManager.AddLogAsync("mixteam", adminName, context.Sender?.SteamID ?? 0, null, null, $"players={moved}");
+            Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} mixed teams for {Count} player(s)", adminName, moved);
         }
-
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var prefix = L("prefix");
-
-        foreach (var player in Core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
+        catch (Exception ex)
         {
-            var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-            player.SendChat($" \x02{prefix}\x01 {L("mixteam_notification", visibleAdmin, moved)}");
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] MixTeam command failed");
         }
-
-        AdminLogManager.AddLogAsync("mixteam", adminName, context.Sender?.SteamID ?? 0, null, null, $"players={moved}");
-        Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} mixed teams for {Count} player(s)", adminName, moved);
     }
 }

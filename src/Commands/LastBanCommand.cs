@@ -66,26 +66,30 @@ public class LastBanCommand : CommandBase
         _lastBanAliases = lastBanAliases;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        if (!HasPerm(context, Permissions.LastBan))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            if (!HasPerm(context, Permissions.LastBan))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        var recent = _recentPlayersTracker.GetRecent();
-        if (recent.Count > 0)
-        {
-            ShowLastBanTargets(context, recent);
-            return;
-        }
+            var recent = _recentPlayersTracker.GetRecent();
+            if (recent.Count > 0)
+            {
+                ShowLastBanTargets(context, recent);
+                return;
+            }
 
-        _ = Task.Run(async () =>
-        {
             var fallbackRecent = await _playerSessionManager.GetRecentDisconnectedPlayersAsync();
             Core.Scheduler.NextTick(() => ShowLastBanTargets(context, fallbackRecent));
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] LastBan command failed");
+        }
     }
 
     private void ShowLastBanTargets(ICommandContext context, IReadOnlyList<RecentPlayerInfo> recent)
@@ -239,7 +243,7 @@ public class LastBanCommand : CommandBase
         {
             case LastSanctionAction.Ban:
             {
-                var existing = await _banManager.GetActiveBanAsync(target.SteamId, target.IpAddress, _multiServerConfig.Enabled);
+                var existing = await _banManager.GetActiveBanFreshAsync(target.SteamId, target.IpAddress, _multiServerConfig.Enabled);
                 if (existing != null)
                 {
                     Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("steamid_already_banned", target.SteamId)}"));
@@ -267,7 +271,7 @@ public class LastBanCommand : CommandBase
                     return;
                 }
 
-                var existing = await _banManager.GetActiveBanAsync(0, target.IpAddress, _multiServerConfig.Enabled);
+                var existing = await _banManager.GetActiveBanFreshAsync(0, target.IpAddress, _multiServerConfig.Enabled);
                 if (existing != null)
                 {
                     Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("lastban_ip_already_banned", target.IpAddress)}"));
@@ -304,7 +308,7 @@ public class LastBanCommand : CommandBase
             }
             case LastSanctionAction.Mute:
             {
-                var existing = await _muteManager.GetActiveMuteAsync(target.SteamId);
+                var existing = await _muteManager.GetActiveMuteFreshAsync(target.SteamId);
                 if (existing != null)
                 {
                     Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("player_already_muted", target.Name)}"));
@@ -326,7 +330,7 @@ public class LastBanCommand : CommandBase
             }
             case LastSanctionAction.Gag:
             {
-                var existing = await _gagManager.GetActiveGagAsync(target.SteamId);
+                var existing = await _gagManager.GetActiveGagFreshAsync(target.SteamId);
                 if (existing != null)
                 {
                     Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("player_already_gagged", target.Name)}"));

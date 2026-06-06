@@ -1,5 +1,6 @@
 using CS2_Admin.Database;
 using CS2_Admin.Services;
+using CS2_Admin.Utils;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
 using SwiftlyS2.Shared.Commands;
@@ -37,74 +38,81 @@ public class VoteCommand : CommandBase
     {
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Vote);
-
-        if (!HasPerm(context, Permissions.Vote))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Vote);
 
-        if (args.Length < 3)
-        {
-            Reply(context, "vote_usage");
-            return;
-        }
-
-        lock (_voteLock)
-        {
-            if (_activeVote != null && _activeVote.EndsAtUtc > DateTime.UtcNow)
+            if (!HasPerm(context, Permissions.Vote))
             {
-                Reply(context, "vote_already_running");
+                Reply(context, "no_permission");
                 return;
             }
+
+            if (args.Length < 3)
+            {
+                Reply(context, "vote_usage");
+                return;
+            }
+
+            lock (_voteLock)
+            {
+                if (_activeVote != null && _activeVote.EndsAtUtc > DateTime.UtcNow)
+                {
+                    Reply(context, "vote_already_running");
+                    return;
+                }
+            }
+
+            var question = args[0].Trim();
+            var answers = args.Skip(1)
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(8)
+                .ToList();
+
+            if (answers.Count < 2)
+            {
+                Reply(context, "vote_usage");
+                return;
+            }
+
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0;
+            var vote = new ActiveVoteState
+            {
+                Question = question,
+                Answers = answers,
+                VotesBySteamId = new Dictionary<ulong, int>(),
+                EndsAtUtc = DateTime.UtcNow.AddSeconds(30),
+                StartedBy = adminName,
+                StartedBySteamId = adminSteamId
+            };
+
+            lock (_voteLock)
+            {
+                _activeVote = vote;
+            }
+
+            var menu = BuildVoteMenu(vote);
+            vote.Menu = menu;
+            foreach (var player in Core.PlayerManager.GetAllPlayers().Where(p => p.IsValid && !p.IsFakeClient))
+            {
+                Core.MenusAPI.OpenMenuForPlayer(player, menu);
+                player.SendChat($" \x02{L("prefix")}\x01 {L("vote_started", question)}");
+            }
+
+            ScheduleVoteMenuRefresh(vote);
+            Core.Scheduler.DelayBySeconds(30f, FinalizeVote);
+
+            _ = AdminLogManager.AddLogAsync("vote", adminName, adminSteamId, null, null, $"question={question};answers={string.Join("|", answers)}");
         }
-
-        var question = args[0].Trim();
-        var answers = args.Skip(1)
-            .Select(x => x.Trim())
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(8)
-            .ToList();
-
-        if (answers.Count < 2)
+        catch (Exception ex)
         {
-            Reply(context, "vote_usage");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Vote command failed");
         }
-
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0;
-        var vote = new ActiveVoteState
-        {
-            Question = question,
-            Answers = answers,
-            VotesBySteamId = new Dictionary<ulong, int>(),
-            EndsAtUtc = DateTime.UtcNow.AddSeconds(30),
-            StartedBy = adminName,
-            StartedBySteamId = adminSteamId
-        };
-
-        lock (_voteLock)
-        {
-            _activeVote = vote;
-        }
-
-        var menu = BuildVoteMenu(vote);
-        vote.Menu = menu;
-        foreach (var player in Core.PlayerManager.GetAllPlayers().Where(p => p.IsValid && !p.IsFakeClient))
-        {
-            Core.MenusAPI.OpenMenuForPlayer(player, menu);
-            player.SendChat($" \x02{L("prefix")}\x01 {L("vote_started", question)}");
-        }
-
-        ScheduleVoteMenuRefresh(vote);
-        Core.Scheduler.DelayBySeconds(30f, FinalizeVote);
-
-        AdminLogManager.AddLogAsync("vote", adminName, adminSteamId, null, null, $"question={question};answers={string.Join("|", answers)}");
     }
 
     private IMenuAPI BuildVoteMenu(ActiveVoteState vote)
@@ -194,7 +202,7 @@ public class VoteCommand : CommandBase
             }
         });
 
-        AdminLogManager.AddLogAsync("vote_result", vote.StartedBy, vote.StartedBySteamId, null, null, $"question={vote.Question};winner={vote.Answers[winnerIndex]};votes={counts[winnerIndex]};total={totalVotes}");
+        _ = AdminLogManager.AddLogAsync("vote_result", vote.StartedBy, vote.StartedBySteamId, null, null, $"question={vote.Question};winner={vote.Answers[winnerIndex]};votes={counts[winnerIndex]};total={totalVotes}");
     }
 
     private void ScheduleVoteMenuRefresh(ActiveVoteState vote)

@@ -3,7 +3,6 @@ using CS2_Admin.Utils;
 using Dommel;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
-using System.Text.RegularExpressions;
 
 namespace CS2_Admin.Database;
 
@@ -123,14 +122,7 @@ public class AdminPlaytimeDbManager
 
     private static string NormalizePlayerName(string? playerName, ulong steamId)
     {
-        var safe = string.IsNullOrWhiteSpace(playerName) ? steamId.ToString() : playerName.Trim();
-        safe = Regex.Replace(safe, @"[^\u0000-\uFFFF]", string.Empty);
-        if (string.IsNullOrWhiteSpace(safe))
-        {
-            safe = steamId.ToString();
-        }
-
-        return safe.Length <= 64 ? safe : safe[..64];
+        return SafeName.ForPlayer(playerName, steamId);
     }
 }
 

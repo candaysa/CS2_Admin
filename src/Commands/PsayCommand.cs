@@ -27,37 +27,44 @@ public class PsayCommand : CommandBase
         _adminDbManager = adminDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Psay);
-
-        if (!HasPerm(context, Permissions.Psay))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Psay);
 
-        if (args.Length < 2)
+            if (!HasPerm(context, Permissions.Psay))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
+
+            if (args.Length < 2)
+            {
+                Reply(context, "psay_usage");
+                return;
+            }
+
+            var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
+            if (target == null || !target.IsValid)
+            {
+                Reply(context, "player_not_found");
+                return;
+            }
+
+            var messageText = string.Join(" ", args.Skip(1));
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var visibleAdmin = ResolveVisibleAdminName(target, adminName);
+
+            target.SendChat($" \x04[PM]\x01 \x10{visibleAdmin}\x01: {messageText}");
+            ReplyRaw(context, $"Message sent to {target.Controller.PlayerName}.");
+
+            _ = AdminLogManager.AddLogAsync("psay", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"message={messageText}", target.Controller.PlayerName);
+            Core.Logger.LogInformationIfEnabled("[CS2_Admin] PSAY from {Admin} to {Target}: {Message}", adminName, target.Controller.PlayerName, messageText);
+        }
+        catch (Exception ex)
         {
-            Reply(context, "psay_usage");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Psay command failed");
         }
-
-        var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
-        if (target == null || !target.IsValid)
-        {
-            Reply(context, "player_not_found");
-            return;
-        }
-
-        var messageText = string.Join(" ", args.Skip(1));
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var visibleAdmin = ResolveVisibleAdminName(target, adminName);
-
-        target.SendChat($" \x04[PM]\x01 \x10{visibleAdmin}\x01: {messageText}");
-        ReplyRaw(context, $"Message sent to {target.Controller.PlayerName}.");
-
-        AdminLogManager.AddLogAsync("psay", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"message={messageText}", target.Controller.PlayerName);
-        Core.Logger.LogInformationIfEnabled("[CS2_Admin] PSAY from {Admin} to {Target}: {Message}", adminName, target.Controller.PlayerName, messageText);
     }
 }

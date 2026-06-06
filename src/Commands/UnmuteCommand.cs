@@ -42,51 +42,51 @@ public sealed class UnmuteCommand : CommandBase
         _mutePermission = mutePermission;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Unmute);
-
-        if (!HasPerm(context, _mutePermission))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Unmute);
 
-        if (args.Length < 1)
-        {
-            Reply(context, "unmute_usage");
-            return;
-        }
+            if (!HasPerm(context, _mutePermission))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        if (RejectGroupTargets(context, args))
-            return;
+            if (args.Length < 1)
+            {
+                Reply(context, "unmute_usage");
+                return;
+            }
 
-        var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], caller: context.Sender);
-        if (targets.Count == 0)
-        {
-            Reply(context, "player_not_found");
-            return;
-        }
+            if (RejectGroupTargets(context, args))
+                return;
 
-        if (!EnsureSinglePunishTarget(context, targets, args[0]))
-            return;
+            var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], caller: context.Sender);
+            if (targets.Count == 0)
+            {
+                Reply(context, "player_not_found");
+                return;
+            }
 
-        var reason = args.Length > 1
-            ? string.Join(" ", args.Skip(1))
-            : L("no_reason");
+            if (!EnsureSinglePunishTarget(context, targets, args[0]))
+                return;
 
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0;
-        var targetSnapshots = targets
-            .Select(t => new PunishTargetSnapshot(
-                t.PlayerID,
-                t.SteamID,
-                t.Controller.PlayerName ?? L("unknown"),
-                t.IPAddress))
-            .ToList();
+            var reason = args.Length > 1
+                ? string.Join(" ", args.Skip(1))
+                : L("no_reason");
 
-        _ = Task.Run(async () =>
-        {
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0;
+            var targetSnapshots = targets
+                .Select(t => new PunishTargetSnapshot(
+                    t.PlayerID,
+                    t.SteamID,
+                    t.Controller.PlayerName ?? L("unknown"),
+                    t.IPAddress))
+                .ToList();
+
             _muteManager.SetAdminContext(adminName, adminSteamId);
             foreach (var target in targetSnapshots)
             {
@@ -111,7 +111,7 @@ public sealed class UnmuteCommand : CommandBase
                     if (targetPlayer != null)
                     {
                         PlayerUtils.SendNotification(targetPlayer, Messages,
-                            L("unmuted_personal_html", reason),
+                            $"<font color='#00ff00'><b>{L("unmuted_personal_html")}</b></font><br><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
                             $" \x02{L("prefix")}\x01 {L("unmuted_personal_chat", reason)}");
                         targetPlayer.VoiceFlags = VoiceFlagValue.Normal;
                     }
@@ -121,7 +121,11 @@ public sealed class UnmuteCommand : CommandBase
                     adminName, target.Name, reason);
                 await AdminLogManager.AddLogAsync("unmute", adminName, adminSteamId, target.SteamId, target.IpAddress, $"reason={reason}", target.Name, target.PlayerId, reason);
             }
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Unmute command failed");
+        }
     }
 
     private async Task<bool> ValidateCanPunishAsync(ICommandContext context, ulong targetSteamId)

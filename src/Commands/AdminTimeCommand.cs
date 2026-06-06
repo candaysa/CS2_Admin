@@ -2,6 +2,7 @@ using CS2_Admin.Database;
 using CS2_Admin.Config;
 using CS2_Admin.Models;
 using CS2_Admin.Services;
+using CS2_Admin.Utils;
 using SwiftlyS2.Shared;
 using SwiftlyS2.Shared.Commands;
 using SwiftlyS2.Shared.Players;
@@ -30,16 +31,16 @@ public class AdminTimeCommand : CommandBase
         _adminPlaytimeConfig = adminPlaytimeConfig;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        if (!HasPerm(context, Permissions.AdminTime))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            if (!HasPerm(context, Permissions.AdminTime))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        _ = Task.Run(async () =>
-        {
             var topAdmins = await _adminPlaytimeDbManager.GetTopAdminsAsync(_adminPlaytimeConfig.MenuTopLimit);
 
             Core.Scheduler.NextTick(() =>
@@ -70,7 +71,11 @@ public class AdminTimeCommand : CommandBase
                     ReplyRaw(context, L("admintime_console_entry", i + 1, entry.PlayerName, entry.SteamId, entry.PlaytimeMinutes));
                 }
             });
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] AdminTime command failed");
+        }
     }
 
     private void OpenPlaytimeMenu(IPlayer player, IReadOnlyList<AdminPlaytime> entries)

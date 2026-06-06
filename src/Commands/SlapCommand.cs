@@ -29,79 +29,85 @@ public class SlapCommand : CommandBase
         _adminDbManager = adminDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Slap);
-
-        if (!HasPerm(context, Permissions.Slap))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Slap);
 
-        if (args.Length < 1)
-        {
-            Reply(context, "slap_usage");
-            return;
-        }
-
-        var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], includeDeadPlayers: false, caller: context.Sender)
-            .Where(p => p.PlayerPawn?.IsValid == true && p.PlayerPawn.Health > 0)
-            .ToList();
-        if (targets.Count == 0)
-        {
-            Reply(context, "no_valid_targets");
-            return;
-        }
-
-        targets = PlayerUtils.FilterTargetsByAccessAsync(Core, _adminDbManager, context, targets, allowSelf: true)
-            .GetAwaiter().GetResult();
-        if (targets.Count == 0)
-        {
-            Reply(context, "no_valid_targets");
-            return;
-        }
-
-        var damage = 0;
-        if (args.Length > 1 && int.TryParse(args[1], out var parsedDamage))
-        {
-            damage = Math.Clamp(parsedDamage, 0, 100);
-        }
-
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var prefix = L("prefix");
-
-        foreach (var target in targets)
-        {
-            Core.Scheduler.NextTick(() =>
+            if (!HasPerm(context, Permissions.Slap))
             {
-                var liveTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamID);
-                if (liveTarget?.IsValid != true)
-                    return;
+                Reply(context, "no_permission");
+                return;
+            }
 
-                var livePawn = liveTarget.PlayerPawn;
-                if (livePawn?.IsValid != true || livePawn.Health <= 0)
-                    return;
+            if (args.Length < 1)
+            {
+                Reply(context, "slap_usage");
+                return;
+            }
 
-                ApplySlap(livePawn, damage);
+            var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], includeDeadPlayers: false, caller: context.Sender)
+                .Where(p => p.PlayerPawn?.IsValid == true && p.PlayerPawn.Health > 0)
+                .ToList();
+            if (targets.Count == 0)
+            {
+                Reply(context, "no_valid_targets");
+                return;
+            }
 
-                if (livePawn.Health <= 0)
-                    return;
+            targets = await PlayerUtils.FilterTargetsByAccessAsync(Core, _adminDbManager, context, targets, allowSelf: true);
+            if (targets.Count == 0)
+            {
+                Reply(context, "no_valid_targets");
+                return;
+            }
 
-                PlayerUtils.SendNotification(liveTarget, Messages,
-                    L("slapped_personal_html", ResolveVisibleAdminName(liveTarget, adminName), damage),
-                    $" \x02{prefix}\x01 {L("slapped_personal_chat", ResolveVisibleAdminName(liveTarget, adminName), damage)}");
+            var damage = 0;
+            if (args.Length > 1 && int.TryParse(args[1], out var parsedDamage))
+            {
+                damage = Math.Clamp(parsedDamage, 0, 100);
+            }
 
-                var targetName = liveTarget.Controller.PlayerName ?? L("unknown");
-                foreach (var player in Core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var prefix = L("prefix");
+
+            foreach (var target in targets)
+            {
+                Core.Scheduler.NextTick(() =>
                 {
-                    var visibleAdmin = ResolveVisibleAdminName(player, adminName);
-                    player.SendChat($" \x02{prefix}\x01 {L("slapped_notification", visibleAdmin, targetName, damage)}");
-                }
+                    var liveTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamID);
+                    if (liveTarget?.IsValid != true)
+                        return;
 
-                AdminLogManager.AddLogAsync("slap", adminName, context.Sender?.SteamID ?? 0, liveTarget.SteamID, liveTarget.IPAddress, $"damage={damage}", liveTarget.Controller.PlayerName);
-                Core.Logger.LogInformation("[CS2_Admin] {Admin} slapped {Target} for {Damage} damage", adminName, targetName, damage);
-            });
+                    var livePawn = liveTarget.PlayerPawn;
+                    if (livePawn?.IsValid != true || livePawn.Health <= 0)
+                        return;
+
+                    ApplySlap(livePawn, damage);
+
+                    if (livePawn.Health <= 0)
+                        return;
+
+                    PlayerUtils.SendNotification(liveTarget, Messages,
+                        $"<font color='#ffcc00'><b>{L("slapped_personal_html")}</b></font><br><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(liveTarget, adminName)}</font><br>{L("label_damage")}: <font color='#ffffff'>{damage}</font>",
+                        $" \x02{prefix}\x01 {L("slapped_personal_chat", ResolveVisibleAdminName(liveTarget, adminName), damage)}");
+
+                    var targetName = liveTarget.Controller.PlayerName ?? L("unknown");
+                    foreach (var player in Core.PlayerManager.GetAllPlayers().Where(p => p.IsValid))
+                    {
+                        var visibleAdmin = ResolveVisibleAdminName(player, adminName);
+                        player.SendChat($" \x02{prefix}\x01 {L("slapped_notification", visibleAdmin, targetName, damage)}");
+                    }
+
+                    _ = AdminLogManager.AddLogAsync("slap", adminName, context.Sender?.SteamID ?? 0, liveTarget.SteamID, liveTarget.IPAddress, $"damage={damage}", liveTarget.Controller.PlayerName);
+                    Core.Logger.LogInformation("[CS2_Admin] {Admin} slapped {Target} for {Damage} damage", adminName, targetName, damage);
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Slap command failed");
         }
     }
 

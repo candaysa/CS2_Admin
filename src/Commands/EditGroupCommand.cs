@@ -24,30 +24,30 @@ public class EditGroupCommand : CommandBase
     {
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        if (!HasPerm(context, Permissions.EditGroup))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            if (!HasPerm(context, Permissions.EditGroup))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        var args = NormalizeArgs(context.Args, CommandsConfig.EditGroup);
+            var args = NormalizeArgs(context.Args, CommandsConfig.EditGroup);
 
-        if (args.Length < 2)
-        {
-            Reply(context, "editgroup_usage");
-            return;
-        }
+            if (args.Length < 2)
+            {
+                Reply(context, "editgroup_usage");
+                return;
+            }
 
-        var name = args[0];
-        var flags = args[1];
-        var immunity = args.Length > 2 && int.TryParse(args[2], out var parsed) ? parsed : 0;
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0;
+            var name = args[0];
+            var flags = args[1];
+            var immunity = args.Length > 2 && int.TryParse(args[2], out var parsed) ? parsed : 0;
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0;
 
-        _ = Task.Run(async () =>
-        {
             var success = await GroupDbManager.AddOrUpdateGroupAsync(name, flags, immunity);
             Core.Scheduler.NextTick(() =>
             {
@@ -59,6 +59,10 @@ public class EditGroupCommand : CommandBase
                 await TryAutoReloadAsync();
                 await AdminLogManager.AddLogAsync("editgroup", adminName, adminSteamId, null, null, $"name={name};flags={flags};immunity={immunity}");
             }
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] EditGroup command failed");
+        }
     }
 }

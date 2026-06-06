@@ -1,6 +1,7 @@
 using CS2_Admin.Database;
 using CS2_Admin.Config;
 using CS2_Admin.Services;
+using CS2_Admin.Utils;
 using SwiftlyS2.Shared;
 using SwiftlyS2.Shared.Commands;
 
@@ -24,31 +25,38 @@ public class ListAdminsCommand : CommandBase
         _adminDbManager = adminDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        // No permission check — everyone can see online admins.
-
-        var onlineAdmins = Core.PlayerManager.GetAllPlayers()
-            .Where(p => p.IsValid && !p.IsFakeClient)
-            .Select(p => new { Player = p, Admin = _adminDbManager.GetAdminFromCache(p.SteamID) })
-            .Where(x => x.Admin != null && x.Admin.IsActive)
-            .ToList();
-
-        if (onlineAdmins.Count == 0)
+        try
         {
-            Reply(context, "listadmins_none");
-            return;
+            // No permission check — everyone can see online admins.
+
+            var onlineAdmins = Core.PlayerManager.GetAllPlayers()
+                .Where(p => p.IsValid && !p.IsFakeClient)
+                .Select(p => new { Player = p, Admin = _adminDbManager.GetAdminFromCache(p.SteamID) })
+                .Where(x => x.Admin != null && x.Admin.IsActive)
+                .ToList();
+
+            if (onlineAdmins.Count == 0)
+            {
+                Reply(context, "listadmins_none");
+                return;
+            }
+
+            Reply(context, "listadmins_header", onlineAdmins.Count);
+            foreach (var info in onlineAdmins)
+            {
+                var admin = info.Admin!;
+                var player = info.Player;
+                var groupLabel = string.IsNullOrWhiteSpace(admin.Groups) ? "-" : admin.Groups;
+
+                // Show: Name - Group (no SteamID or immunity for regular players)
+                ReplyRaw(context, $" \x04{player.Controller.PlayerName}\x01 - \x0B{groupLabel}");
+            }
         }
-
-        Reply(context, "listadmins_header", onlineAdmins.Count);
-        foreach (var info in onlineAdmins)
+        catch (Exception ex)
         {
-            var admin = info.Admin!;
-            var player = info.Player;
-            var groupLabel = string.IsNullOrWhiteSpace(admin.Groups) ? "-" : admin.Groups;
-
-            // Show: Name - Group (no SteamID or immunity for regular players)
-            ReplyRaw(context, $" \x04{player.Controller.PlayerName}\x01 - \x0B{groupLabel}");
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] ListAdmins command failed");
         }
     }
 }

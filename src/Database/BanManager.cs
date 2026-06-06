@@ -12,7 +12,7 @@ public class BanManager
 {
     private readonly ISwiftlyCore _core;
     private readonly ConcurrentDictionary<string, CacheEntry> _banCache = new();
-    private readonly TimeSpan _cacheLifetime = TimeSpan.FromMinutes(5);
+    private readonly TimeSpan _cacheLifetime = TimeSpan.FromSeconds(30);
     private readonly AsyncLocal<AdminContext> _currentAdmin = new();
 
     public BanManager(ISwiftlyCore core)
@@ -85,12 +85,12 @@ public class BanManager
             var ban = new Ban
             {
                 SteamId = steamId,
-                TargetName = targetName,
+                TargetName = SafeName.ForPlayer(targetName, steamId),
                 TargetType = targetType,
                 IpAddress = normalizedIp,
-                AdminName = admin.Name,
+                AdminName = SafeName.ForPlayer(admin.Name, admin.SteamId),
                 AdminSteamId = admin.SteamId,
-                Reason = reason,
+                Reason = SafeName.ForReason(reason),
                 CreatedAt = createdAt,
                 ExpiresAt = expiresAt,
                 IsGlobal = isGlobal,
@@ -237,84 +237,109 @@ public class BanManager
                 return cached;
             }
 
-            using var connection = _core.Database.GetConnection("mysql_detailed");
-            var now = DateTime.UtcNow;
-            var serverId = ServerIdentity.GetServerId(_core);
-            var serverIp = ServerIdentity.GetIp(_core);
-            var serverPort = ServerIdentity.GetPort(_core);
-            var rows = connection.Query<BanRow>(
-                $"""
-                SELECT
-                    `id` AS `Id`,
-                    `steamid` AS `SteamId`,
-                    `target_name` AS `TargetName`,
-                    `target_type` AS `TargetType`,
-                    `ip_address` AS `IpAddress`,
-                    `admin_name` AS `AdminName`,
-                    `admin_steamid` AS `AdminSteamId`,
-                    `reason` AS `Reason`,
-                    `is_global` AS `IsGlobal`,
-                    `server_id` AS `ServerId`,
-                    `server_ip` AS `ServerIp`,
-                    `server_port` AS `ServerPort`,
-                    `created_at` AS `CreatedAt`,
-                    `expires_at` AS `ExpiresAt`,
-                    `status` AS `Status`,
-                    `unban_admin_name` AS `UnbanAdminName`,
-                    `unban_admin_steamid` AS `UnbanAdminSteamId`,
-                    `unban_reason` AS `UnbanReason`,
-                    `unban_date` AS `UnbanDate`
-                FROM `admin_bans`
-                WHERE
-                    (
-                        (`steamid` = @SteamId AND {PunishmentQueryCompat.ActiveSteamTargetWhere})
-                        OR
-                        (@HasIp = 1 AND `ip_address` = @IpAddress AND {PunishmentQueryCompat.ActiveIpTargetWhere})
-                    )
-                    AND {PunishmentQueryCompat.ActiveStatusWhere}
-                    AND (`expires_at` IS NULL OR `expires_at` > @Now)
-                ORDER BY `created_at` DESC
-                LIMIT 64
-                """,
-                new
-                {
-                    SteamId = steamId,
-                    HasIp = string.IsNullOrWhiteSpace(normalizedIp) ? 0 : 1,
-                    IpAddress = normalizedIp,
-                    Now = now
-                }).ToList();
-
-            foreach (var row in rows)
-            {
-                if (!IsActiveStatus(row.Status))
-                {
-                    continue;
-                }
-
-                var mapped = ToBan(row);
-                var matchesTarget = (mapped.TargetType == BanTargetType.SteamId && mapped.SteamId == steamId)
-                                    || (mapped.TargetType == BanTargetType.Ip && !string.IsNullOrWhiteSpace(normalizedIp) && NormalizeIpAddress(mapped.IpAddress) == normalizedIp);
-                if (!matchesTarget)
-                {
-                    continue;
-                }
-
-                if (!mapped.IsGlobal && multiServerEnabled && !IsSameServer(mapped, serverId, serverIp, serverPort))
-                {
-                    continue;
-                }
-
-                CacheBan(mapped);
-                return mapped;
-            }
-
-            return null;
+            return await LoadActiveBanFromDatabaseAsync(steamId, normalizedIp, multiServerEnabled, cacheResult: true);
         }
         catch (Exception ex)
         {
             _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error checking ban: {Message}", ex.Message);
             return null;
         }
+    }
+
+    public async Task<Ban?> GetActiveBanFreshAsync(ulong steamId, string? ipAddress, bool multiServerEnabled)
+    {
+        try
+        {
+            var normalizedIp = NormalizeIpAddress(ipAddress);
+            InvalidateCache(steamId, normalizedIp);
+            return await LoadActiveBanFromDatabaseAsync(steamId, normalizedIp, multiServerEnabled, cacheResult: true);
+        }
+        catch (Exception ex)
+        {
+            _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error checking fresh ban: {Message}", ex.Message);
+            return null;
+        }
+    }
+
+    private async Task<Ban?> LoadActiveBanFromDatabaseAsync(ulong steamId, string? normalizedIp, bool multiServerEnabled, bool cacheResult)
+    {
+        using var connection = _core.Database.GetConnection("mysql_detailed");
+        var now = DateTime.UtcNow;
+        var serverId = ServerIdentity.GetServerId(_core);
+        var serverIp = ServerIdentity.GetIp(_core);
+        var serverPort = ServerIdentity.GetPort(_core);
+        var rows = connection.Query<BanRow>(
+            $"""
+            SELECT
+                `id` AS `Id`,
+                `steamid` AS `SteamId`,
+                `target_name` AS `TargetName`,
+                `target_type` AS `TargetType`,
+                `ip_address` AS `IpAddress`,
+                `admin_name` AS `AdminName`,
+                `admin_steamid` AS `AdminSteamId`,
+                `reason` AS `Reason`,
+                `is_global` AS `IsGlobal`,
+                `server_id` AS `ServerId`,
+                `server_ip` AS `ServerIp`,
+                `server_port` AS `ServerPort`,
+                `created_at` AS `CreatedAt`,
+                `expires_at` AS `ExpiresAt`,
+                `status` AS `Status`,
+                `unban_admin_name` AS `UnbanAdminName`,
+                `unban_admin_steamid` AS `UnbanAdminSteamId`,
+                `unban_reason` AS `UnbanReason`,
+                `unban_date` AS `UnbanDate`
+            FROM `admin_bans`
+            WHERE
+                (
+                    (@HasSteam = 1 AND `steamid` = @SteamId AND {PunishmentQueryCompat.ActiveSteamTargetWhere})
+                    OR
+                    (@HasIp = 1 AND `ip_address` = @IpAddress AND {PunishmentQueryCompat.ActiveIpTargetWhere})
+                )
+                AND {PunishmentQueryCompat.ActiveStatusWhere}
+                AND (`expires_at` IS NULL OR `expires_at` > @Now)
+            ORDER BY `created_at` DESC
+            LIMIT 64
+            """,
+            new
+            {
+                HasSteam = steamId > 0 ? 1 : 0,
+                SteamId = steamId,
+                HasIp = string.IsNullOrWhiteSpace(normalizedIp) ? 0 : 1,
+                IpAddress = normalizedIp,
+                Now = now
+            }).ToList();
+
+        foreach (var row in rows)
+        {
+            if (!IsMaterializedRow(row) || !IsActiveStatus(row.Status))
+            {
+                continue;
+            }
+
+            var mapped = ToBan(row);
+            var matchesTarget = (steamId > 0 && mapped.TargetType == BanTargetType.SteamId && mapped.SteamId == steamId)
+                                || (mapped.TargetType == BanTargetType.Ip && !string.IsNullOrWhiteSpace(normalizedIp) && NormalizeIpAddress(mapped.IpAddress) == normalizedIp);
+            if (!matchesTarget)
+            {
+                continue;
+            }
+
+            if (!mapped.IsGlobal && multiServerEnabled && !IsSameServer(mapped, serverId, serverIp, serverPort))
+            {
+                continue;
+            }
+
+            if (cacheResult)
+            {
+                CacheBan(mapped);
+            }
+
+            return mapped;
+        }
+
+        return null;
     }
 
     public async Task<Ban?> GetActiveBanForEnforcementAsync(ulong steamId, string? ipAddress)
@@ -325,7 +350,7 @@ public class BanManager
             using var connection = _core.Database.GetConnection("mysql_detailed");
             var now = DateTime.UtcNow;
 
-            var row = connection.QueryFirstOrDefault<BanRow>(
+            var row = connection.Query<BanRow>(
                 $"""
                 SELECT
                     `id` AS `Id`,
@@ -350,9 +375,9 @@ public class BanManager
                 FROM `admin_bans`
                 WHERE
                     (
-                        (@HasSteam = 1 AND `steamid` = @SteamId)
+                        (@HasSteam = 1 AND `steamid` = @SteamId AND {PunishmentQueryCompat.ActiveSteamTargetWhere})
                         OR
-                        (@HasIp = 1 AND `ip_address` = @IpAddress)
+                        (@HasIp = 1 AND `ip_address` = @IpAddress AND {PunishmentQueryCompat.ActiveIpTargetWhere})
                     )
                     AND {PunishmentQueryCompat.ActiveStatusWhere}
                     AND (`expires_at` IS NULL OR `expires_at` > @Now)
@@ -366,7 +391,8 @@ public class BanManager
                     HasIp = string.IsNullOrWhiteSpace(normalizedIp) ? 0 : 1,
                     IpAddress = normalizedIp,
                     Now = now
-                });
+                })
+                .FirstOrDefault(IsMaterializedRow);
 
             if (row == null || !IsActiveStatus(row.Status))
             {
@@ -397,7 +423,7 @@ public class BanManager
         ban = null;
         var normalizedIp = NormalizeIpAddress(ipAddress);
         var steamKey = GetSteamKey(steamId);
-        if (_banCache.TryGetValue(steamKey, out var steamBanEntry))
+        if (steamId > 0 && _banCache.TryGetValue(steamKey, out var steamBanEntry))
         {
             if (DateTime.UtcNow - steamBanEntry.CachedAt < _cacheLifetime && steamBanEntry.Ban.IsActive)
             {
@@ -452,6 +478,24 @@ public class BanManager
 
     private static string GetSteamKey(ulong steamId) => $"steam:{steamId}";
     private static string GetIpKey(string ip) => $"ip:{NormalizeIpAddress(ip)}";
+
+    public void InvalidateCache(ulong steamId, string? ipAddress)
+    {
+        var steamRemoved = steamId > 0 && _banCache.TryRemove(GetSteamKey(steamId), out _);
+        var ipRemoved = false;
+        var normalizedIp = NormalizeIpAddress(ipAddress);
+        if (!string.IsNullOrWhiteSpace(normalizedIp))
+        {
+            ipRemoved = _banCache.TryRemove(GetIpKey(normalizedIp), out _);
+        }
+
+        if (steamRemoved || ipRemoved)
+        {
+            _core.Logger.LogInformationIfEnabled(
+                "[CS2_Admin][Trace][Ban] cache-invalidate steamid={SteamId} ip={Ip} steamRemoved={SteamRemoved} ipRemoved={IpRemoved}",
+                steamId, normalizedIp ?? "-", steamRemoved, ipRemoved);
+        }
+    }
 
     private static string? NormalizeIpAddress(string? ipAddress)
     {
@@ -662,6 +706,11 @@ public class BanManager
         return status == "0"
                || status == "1"
                || status.Equals("active", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsMaterializedRow(BanRow row)
+    {
+        return row.Id > 0;
     }
 
     private static BanTargetType ParseTargetType(string? rawTargetType)

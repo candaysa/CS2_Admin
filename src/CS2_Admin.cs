@@ -23,7 +23,7 @@ using System.Text.Json.Nodes;
 
 namespace CS2_Admin;
 
-[PluginMetadata(Id = "CS2_Admin", Version = "1.0.13", Name = "CS2_Admin", Author = "CanDaysa", Description = "Comprehensive admin plugin for CS2.")]
+[PluginMetadata(Id = "CS2_Admin", Version = "1.0.15", Name = "CS2_Admin", Author = "CanDaysa", Description = "Comprehensive admin plugin for CS2.")]
 public class CS2_Admin : BasePlugin
 {
     private PluginConfig _config = null!;
@@ -45,7 +45,7 @@ public class CS2_Admin : BasePlugin
     private ServerInfoDbManager _serverInfoDbManager = null!;
     private DiscordServerStatusDbManager _discordServerStatusDbManager = null!;
     private DiscordMessageStateDbManager _discordMessageStateDbManager = null!;
-    private readonly Dictionary<int, (ulong SteamId, string Name, string Ip)> _connectedPlayersCache = new();
+    private readonly ConcurrentDictionary<int, (ulong SteamId, string Name, string Ip)> _connectedPlayersCache = new();
     private AdminPlaytimeDbManager _adminPlaytimeDbManager = null!;
     private RankLeaderboardDbManager _rankLeaderboardDbManager = null!;
     private PlayerIpDbManager _playerIpDbManager = null!;
@@ -90,6 +90,7 @@ public class CS2_Admin : BasePlugin
 
     private BlindCommand _blindCmd = null!;
     private GlowCommand _glowCmd = null!;
+    private RgbCommand _rgbCmd = null!;
     private BeaconCommand _beaconCmd = null!;
     private BurnCommand _burnCmd = null!;
     private DisarmCommand _disarmCmd = null!;
@@ -137,7 +138,7 @@ public class CS2_Admin : BasePlugin
     public override void Load(bool hotReload)
     {
         LoadConfiguration();
-        _discord = new DiscordBotService(Core, _config.Discord);
+        _discord = new DiscordBotService(Core, _config.Discord, _config.Commands);
         InitializeDatabaseManagers();
         _discord.EnsureGatewayConnection();
         _adminMenuManager = new AdminMenuManager(Core, _config, _warnManager, _adminDbManager, _groupDbManager, _adminLogManager, _adminPlaytimeDbManager);
@@ -151,8 +152,15 @@ public class CS2_Admin : BasePlugin
         var versionAttr = (PluginMetadata)Attribute.GetCustomAttribute(typeof(CS2_Admin), typeof(PluginMetadata));
         if (versionAttr != null)
         {
-            _ = Task.Run(() => global::CS2_Admin.Utils.AutoUpdater.CheckForUpdatesAsync(Core, versionAttr.Version));
-            StartPeriodicUpdateCheck(versionAttr.Version);
+            if (_config.AutoUpdate)
+            {
+                _ = global::CS2_Admin.Utils.AutoUpdater.CheckForUpdatesAsync(Core, versionAttr.Version);
+                StartPeriodicUpdateCheck(versionAttr.Version);
+            }
+            else
+            {
+                Core.Logger.LogInformationIfEnabled("[CS2Admin] Auto-update is disabled in config.json (AutoUpdate=false).");
+            }
         }
 
         Core.Logger.LogInformationIfEnabled("[CS2Admin] Plugin loaded successfully!");
@@ -193,8 +201,7 @@ public class CS2_Admin : BasePlugin
     {
         try
         {
-            var configDir = Path.GetDirectoryName(Core.Configuration.GetConfigPath("config.json")) ?? string.Empty;
-            var languageDir = Path.Combine(configDir, "language");
+            var languageDir = Path.Combine(Core.PluginPath, "resources", "language");
             Core.Logger.LogInformationIfEnabled("[CS2Admin] Attempting to load custom localizer from: {Path} | Config Language: {Lang}", languageDir, _config.Language);
             
             // Extract embedded translations to disk if they are missing.
@@ -281,7 +288,16 @@ public class CS2_Admin : BasePlugin
     private void ApplyLanguageCulture(string lang)
     {
         var culture = lang.ToLowerInvariant() switch { "tr" => "tr-TR", "de" => "de-DE", "fr" => "fr-FR", "it" => "it-IT", "el" => "el-GR", "ru" => "ru-RU", "bg" => "bg-BG", "hu" => "hu-HU", _ => "en-US" };
-        try { var ci = CultureInfo.GetCultureInfo(culture); CultureInfo.DefaultThreadCurrentCulture = ci; CultureInfo.DefaultThreadCurrentUICulture = ci; } catch { }
+        try
+        {
+            var ci = CultureInfo.GetCultureInfo(culture);
+            CultureInfo.DefaultThreadCurrentCulture = ci;
+            CultureInfo.DefaultThreadCurrentUICulture = ci;
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Failed to apply culture {Culture}", culture);
+        }
     }
 
     private void LoadChatTags()
@@ -347,6 +363,7 @@ public class CS2_Admin : BasePlugin
 
         EnsurePreferredAlias(_config.Commands.Blind, "cs2a_blind");
         EnsurePreferredAlias(_config.Commands.Glow, "cs2a_glow");
+        EnsurePreferredAlias(_config.Commands.Rgb, "cs2a_rgb");
         EnsurePreferredAlias(_config.Commands.Beacon, "cs2a_beacon");
         EnsurePreferredAlias(_config.Commands.Burn, "cs2a_burn");
         EnsurePreferredAlias(_config.Commands.Disarm, "cs2a_disarm");
@@ -465,6 +482,7 @@ public class CS2_Admin : BasePlugin
 
         _blindCmd = new BlindCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
         _glowCmd = new GlowCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _rgbCmd = new RgbCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
         _beaconCmd = new BeaconCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
         _burnCmd = new BurnCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
         _disarmCmd = new DisarmCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
@@ -542,7 +560,7 @@ public class CS2_Admin : BasePlugin
 
     private void InitializeEventHandlers()
     {
-        _eventRegistrar = new EventRegistrar(Core, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _groupDbManager, _sanctionStateService, _config.MultiServer, _config.Tags, _config.Permissions, _chatTagConfigManager, _playerNameHistoryManager, _playerSessionManager, _discord);
+        _eventRegistrar = new EventRegistrar(Core, _banManager, _muteManager, _gagManager, _warnManager, _adminDbManager, _groupDbManager, _sanctionStateService, _config.MultiServer, _config.Tags, _config.Permissions, _chatTagConfigManager, _playerNameHistoryManager, _playerSessionManager, _discord, _config.Commands);
         _eventRegistrar.OnClientPutInServer(e =>
         {
             Core.Scheduler.DelayBySeconds(3f, () =>
@@ -633,7 +651,7 @@ public class CS2_Admin : BasePlugin
         {
             if (_connectedPlayersCache.TryGetValue(e.PlayerId, out var cached))
             {
-                _connectedPlayersCache.Remove(e.PlayerId);
+                _connectedPlayersCache.TryRemove(e.PlayerId, out _);
                 _recentPlayersTracker.Add(new RecentPlayerInfo(cached.SteamId, cached.Name, cached.Ip, DateTime.UtcNow));
                 _ = _playerSessionManager.CloseSessionAsync(cached.SteamId, cached.Name, e.PlayerId, cached.Ip);
                 _ = _discord.SendDisconnectNotificationAsync(cached.Name, cached.SteamId, cached.Ip);
@@ -708,6 +726,7 @@ public class CS2_Admin : BasePlugin
 
         RegisterCmdList(_config.Commands.Blind, _blindCmd.Execute);
         RegisterCmdList(_config.Commands.Glow, _glowCmd.Execute);
+        RegisterCmdList(_config.Commands.Rgb, _rgbCmd.Execute);
         RegisterCmdList(_config.Commands.Beacon, _beaconCmd.Execute);
         RegisterCmdList(_config.Commands.Burn, _burnCmd.Execute);
         RegisterCmdList(_config.Commands.Disarm, _disarmCmd.Execute);
@@ -801,7 +820,10 @@ public class CS2_Admin : BasePlugin
                 return;
             RegisterCommands();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Failed to register commands");
+        }
     }
 
     private async Task InitializeDatabasesAsync()
@@ -843,7 +865,7 @@ public class CS2_Admin : BasePlugin
             try
             {
                 using var conn = Core.Database.GetConnection("mysql_detailed");
-                MigrationRunner.RunMigrations(conn);
+                MigrationRunner.RunMigrations(conn, Core);
                 conn.Close();
 
                 await _groupDbManager.InitializeAsync();
@@ -954,7 +976,7 @@ public class CS2_Admin : BasePlugin
         _periodicUpdateTimer?.Dispose();
         _periodicUpdateTimer = new Timer(_ =>
         {
-            _ = Task.Run(() => global::CS2_Admin.Utils.AutoUpdater.CheckForUpdatesAsync(Core, currentVersion));
+            _ = global::CS2_Admin.Utils.AutoUpdater.CheckForUpdatesAsync(Core, currentVersion);
         }, null, TimeSpan.FromHours(1), TimeSpan.FromHours(1));
     }
 

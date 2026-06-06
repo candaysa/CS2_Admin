@@ -24,42 +24,42 @@ public class AddAdminCommand : CommandBase
     {
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        if (!HasPerm(context, Permissions.AddAdmin))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            if (!HasPerm(context, Permissions.AddAdmin))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        var args = NormalizeArgs(context.Args, CommandsConfig.AddAdmin);
+            var args = NormalizeArgs(context.Args, CommandsConfig.AddAdmin);
 
-        if (args.Length < 3)
-        {
-            ReplyRaw(context, "Usage: !addadmin <steamid> <name> <#group or group1,group2> [duration_days]");
-            return;
-        }
+            if (args.Length < 3)
+            {
+                ReplyRaw(context, "Usage: !addadmin <steamid> <name> <#group or group1,group2> [duration_days]");
+                return;
+            }
 
-        if (!PlayerUtils.TryParseSteamId(args[0], out var targetSteamId))
-        {
-            Reply(context, "invalid_steamid");
-            return;
-        }
+            if (!PlayerUtils.TryParseSteamId(args[0], out var targetSteamId))
+            {
+                Reply(context, "invalid_steamid");
+                return;
+            }
 
-        var name = args[1];
-        var groups = args[2];
+            var name = args[1];
+            var groups = args[2];
 
-        int? durationDays = null;
-        if (args.Length > 3 && int.TryParse(args[3], out var parsedDuration) && parsedDuration > 0)
-        {
-            durationDays = parsedDuration;
-        }
+            int? durationDays = null;
+            if (args.Length > 3 && int.TryParse(args[3], out var parsedDuration) && parsedDuration > 0)
+            {
+                durationDays = parsedDuration;
+            }
 
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0;
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0;
 
-        _ = Task.Run(async () =>
-        {
             var maxGroupImmunity = 0;
             foreach (var groupName in groups.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
@@ -90,7 +90,11 @@ public class AddAdminCommand : CommandBase
             await TryAutoReloadAsync();
             await ApplyTagToOnlinePlayerAsync(targetSteamId);
             await AdminLogManager.AddLogAsync("addadmin", adminName, adminSteamId, targetSteamId, null, $"groups={groups};immunity={resolvedImmunity};duration_days={durationDays?.ToString() ?? "0"}", name);
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] AddAdmin command failed");
+        }
     }
 
     private void NotifyOnlinePlayer(ulong steamId, string message)

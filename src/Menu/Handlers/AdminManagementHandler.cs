@@ -87,7 +87,7 @@ public class AdminManagementHandler : IAdminMenuHandler
         builder.BindToParent(BuildAddAdminMenu(admin));
         builder.Design.SetMenuTitle(T("menu_select_group"));
 
-        var groups = _groupManager.GetAllGroupsAsync().GetAwaiter().GetResult();
+        var groups = Task.Run(async () => await _groupManager.GetAllGroupsAsync()).GetAwaiter().GetResult();
         foreach (var group in groups)
         {
             var groupBtn = new ButtonMenuOption(T("menu_group_with_immunity", group.Name, group.Immunity)) { CloseAfterClick = true };
@@ -116,7 +116,7 @@ public class AdminManagementHandler : IAdminMenuHandler
         var title = T("menu_select_admin_remove");
         builder.Design.SetMenuTitle(title);
 
-        var admins = _adminManager.GetAllAdminsAsync().GetAwaiter().GetResult();
+        var admins = Task.Run(async () => await _adminManager.GetAllAdminsAsync()).GetAwaiter().GetResult();
         if (admins.Count == 0)
         {
             var empty = new ButtonMenuOption(T("menu_no_admins")) { CloseAfterClick = true };
@@ -228,7 +228,7 @@ public class AdminManagementHandler : IAdminMenuHandler
         var builder = _core.MenusAPI.CreateBuilder();
         builder.Design.SetMenuTitle(T("menu_list_admins"));
 
-        var admins = _adminManager.GetAllAdminsAsync().GetAwaiter().GetResult();
+        var admins = Task.Run(async () => await _adminManager.GetAllAdminsAsync()).GetAwaiter().GetResult();
         if (admins.Count == 0)
         {
             var empty = new ButtonMenuOption(T("menu_no_admins")) { CloseAfterClick = true };

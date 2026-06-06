@@ -40,64 +40,53 @@ public class WarnCommand : CommandBase
         _sanctions = sanctions;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Warn);
-        if (!HasPerm(context, Permissions.Warn))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
-
-        if (args.Length == 0)
-        {
-            if (context.IsSentByPlayer && context.Sender != null)
+            var args = NormalizeArgs(context.Args, CommandsConfig.Warn);
+            if (!HasPerm(context, Permissions.Warn))
             {
-                OpenWarnTargetMenu(context.Sender);
+                Reply(context, "no_permission");
                 return;
             }
 
-            Reply(context, "warn_usage");
-            return;
-        }
+            if (args.Length < 2)
+            {
+                Reply(context, "warn_usage");
+                return;
+            }
 
-        if (args.Length < 2)
-        {
-            Reply(context, "warn_usage");
-            return;
-        }
+            var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
+            if (target == null)
+            {
+                Reply(context, "player_not_found");
+                return;
+            }
 
-        var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
-        if (target == null)
-        {
-            Reply(context, "player_not_found");
-            return;
-        }
+            var reason = string.Join(" ", args.Skip(1)).Trim();
+            if (string.IsNullOrWhiteSpace(reason))
+            {
+                Reply(context, "warn_usage");
+                return;
+            }
 
-        var reason = string.Join(" ", args.Skip(1)).Trim();
-        if (string.IsNullOrWhiteSpace(reason))
-        {
-            Reply(context, "warn_usage");
-            return;
-        }
+            const int duration = -1;
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0;
+            var targetName = target.Controller.PlayerName ?? L("unknown");
+            var targetSteamId = target.SteamID;
+            var targetIp = target.IPAddress;
 
-        const int duration = -1;
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0;
-        var targetName = target.Controller.PlayerName ?? L("unknown");
-        var targetSteamId = target.SteamID;
-        var targetIp = target.IPAddress;
-
-        _ = Task.Run(async () =>
-        {
             if (!await ValidateCanPunishAsync(context, targetSteamId))
                 return;
 
             _warnManager.SetAdminContext(adminName, adminSteamId);
+            _warnManager.InvalidateCache(targetSteamId);
             var ok = await _warnManager.AddWarnAsync(targetSteamId, duration, reason);
             if (!ok)
             {
-                Core.Scheduler.NextTick(() => Reply(context, "warn_failed"));
+                Core.Scheduler.NextTick(() => Reply(context, "warn_db_error"));
                 return;
             }
 
@@ -113,7 +102,7 @@ public class WarnCommand : CommandBase
                     PlayerUtils.SendNotification(
                         onlineTarget,
                         Messages,
-                        L("warned_personal_html", reason),
+                        $"<font color='#ffd700'><b>{L("warned_personal_html")}</b></font><br><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
                         $" \x02{L("prefix")}\x01 {L("warned_personal_chat", reason)}");
                 }
             });
@@ -122,7 +111,11 @@ public class WarnCommand : CommandBase
 
             Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} warned {Target} for {Duration} minutes. Reason: {Reason}",
                 adminName, targetName, duration, reason);
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Warn command failed");
+        }
     }
 
     private async Task<bool> ValidateCanPunishAsync(ICommandContext context, ulong targetSteamId)
@@ -232,7 +225,7 @@ public class WarnCommand : CommandBase
         if (!await TryApplyWarnFromMenuAsync(contextLike, duration, reason))
         {
             Core.Scheduler.NextTick(() =>
-                admin.SendChat($" \x02{L("prefix")}\x01 {L("warn_failed")}"));
+                admin.SendChat($" \x02{L("prefix")}\x01 {L("warn_db_error")}"));
             return;
         }
 
@@ -255,7 +248,7 @@ public class WarnCommand : CommandBase
                 PlayerUtils.SendNotification(
                     onlineTarget,
                     Messages,
-                    L("warned_personal_html", reason),
+                    $"<font color='#ffd700'><b>{L("warned_personal_html")}</b></font><br><br>{L("label_reason")}: <font color='#ffffff'>{reason}</font>",
                     $" \x02{L("prefix")}\x01 {L("warned_personal_chat", reason)}");
             });
         }

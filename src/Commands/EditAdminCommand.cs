@@ -24,52 +24,52 @@ public class EditAdminCommand : CommandBase
     {
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        if (!HasPerm(context, Permissions.EditAdmin))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            if (!HasPerm(context, Permissions.EditAdmin))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        var args = NormalizeArgs(context.Args, CommandsConfig.EditAdmin);
+            var args = NormalizeArgs(context.Args, CommandsConfig.EditAdmin);
 
-        if (args.Length < 3)
-        {
-            Reply(context, "editadmin_usage");
-            return;
-        }
-
-        if (!PlayerUtils.TryParseSteamId(args[0], out var targetSteamId))
-        {
-            Reply(context, "invalid_steamid");
-            return;
-        }
-
-        var field = args[1].ToLowerInvariant();
-        var value = string.Join(" ", args.Skip(2));
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0;
-
-        if (field == "flags")
-        {
-            Reply(context, "editadmin_groups_only");
-            return;
-        }
-
-        if (field == "groups")
-        {
-            if (!TryParseGroupsArgument(value, out var normalizedGroups, out _))
+            if (args.Length < 3)
             {
                 Reply(context, "editadmin_usage");
                 return;
             }
 
-            value = normalizedGroups;
-        }
+            if (!PlayerUtils.TryParseSteamId(args[0], out var targetSteamId))
+            {
+                Reply(context, "invalid_steamid");
+                return;
+            }
 
-        _ = Task.Run(async () =>
-        {
+            var field = args[1].ToLowerInvariant();
+            var value = string.Join(" ", args.Skip(2));
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0;
+
+            if (field == "flags")
+            {
+                Reply(context, "editadmin_groups_only");
+                return;
+            }
+
+            if (field == "groups")
+            {
+                if (!TryParseGroupsArgument(value, out var normalizedGroups, out _))
+                {
+                    Reply(context, "editadmin_usage");
+                    return;
+                }
+
+                value = normalizedGroups;
+            }
+
             var existingAdmin = await AdminDbManager.GetAdminAsync(targetSteamId);
             var success = await AdminDbManager.EditAdminAsync(targetSteamId, field, value);
             Core.Scheduler.NextTick(() =>
@@ -83,7 +83,11 @@ public class EditAdminCommand : CommandBase
                 await ApplyTagToOnlinePlayerAsync(targetSteamId);
                 await AdminLogManager.AddLogAsync("editadmin", adminName, adminSteamId, targetSteamId, null, $"{field}={value}", existingAdmin?.Name);
             }
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] EditAdmin command failed");
+        }
     }
 
     private async Task ApplyTagToOnlinePlayerAsync(ulong steamId)

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
@@ -15,9 +16,25 @@ public static class AutoUpdater
 {
     private const string RepoOwner = "candaysa";
     private const string RepoName = "CS2_Admin";
-    
-    // Using a static client to avoid socket exhaustion
-    private static readonly HttpClient HttpClient = new();
+
+    // Kullanıcı tarafından düzenlenmiş dosyalar — asla üzerine yazılmaz.
+    // Bu dosyalar zaten configs/plugins/CS2_Admin/ altında ayrı tutuluyor,
+    // ama release zip'inde yanlışlıkla bulunurlarsa diye defensif filtre uygulanır.
+    private static readonly HashSet<string> ProtectedFiles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "config.json",
+        "permissions.json",
+        "commands.json",
+        "maps.json",
+        "discord.json",
+        "afk.json",
+        "chat_tags.json"
+    };
+
+    private static readonly HttpClient HttpClient = new()
+    {
+        Timeout = TimeSpan.FromMinutes(1)
+    };
 
     static AutoUpdater()
     {
@@ -32,8 +49,8 @@ public static class AutoUpdater
             core.Logger.LogInformationIfEnabled("[CS2Admin] Checking for updates on GitHub...");
 
             var url = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/latest";
-            var response = await HttpClient.GetAsync(url);
-            
+            using var response = await HttpClient.GetAsync(url);
+
             if (!response.IsSuccessStatusCode)
             {
                 core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to check for updates. GitHub API responded with: {Status}", response.StatusCode);
@@ -41,27 +58,19 @@ public static class AutoUpdater
             }
 
             var json = await response.Content.ReadAsStringAsync();
-            var release = JsonSerializer.Deserialize<GithubRelease>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            var release = JsonSerializer.Deserialize<GithubRelease>(json);
 
             if (release == null || string.IsNullOrEmpty(release.TagName))
             {
-                core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to parse GitHub release data.");
+                core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to parse GitHub release data (tag_name missing).");
                 return;
             }
 
-            // Normalizing versions (removing 'v' prefix if exists)
             var latestVer = release.TagName.TrimStart('v', 'V');
-            var currVer = currentVersion.TrimStart('v', 'V');
+            var currVer = (currentVersion ?? string.Empty).TrimStart('v', 'V');
 
-            if (Version.TryParse(latestVer, out var vLatest) && Version.TryParse(currVer, out var vCurrent))
-            {
-                if (vLatest <= vCurrent)
-                {
-                    core.Logger.LogInformationIfEnabled("[CS2Admin] You are running the latest version: {Version}", currVer);
-                    return;
-                }
-            }
-            else if (latestVer == currVer)
+            var cmp = CompareVersions(latestVer, currVer);
+            if (cmp <= 0)
             {
                 core.Logger.LogInformationIfEnabled("[CS2Admin] You are running the latest version: {Version}", currVer);
                 return;
@@ -80,82 +89,139 @@ public static class AutoUpdater
         }
         catch (Exception ex)
         {
-            core.Logger.LogWarningIfEnabled("[CS2Admin] Auto-Updater encountered an error: {Message}", ex.Message);
+            core.Logger.LogErrorIfEnabled(ex, "[CS2Admin] Auto-Updater encountered an error");
         }
     }
 
     private static async Task ApplyUpdateAsync(ISwiftlyCore core, string downloadUrl)
     {
-        var parentDir = Directory.GetParent(core.PluginPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))?.FullName ?? core.PluginPath;
+        var pluginPath = core.PluginPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var parentDir = Directory.GetParent(pluginPath)?.FullName ?? pluginPath;
         var tempZipPath = Path.Combine(parentDir, "cs2admin_update_temp.zip");
         var tempExtractPath = Path.Combine(parentDir, "cs2admin_update_extracted");
 
         try
         {
-            // Download the zip
-            var zipBytes = await HttpClient.GetByteArrayAsync(downloadUrl);
-            await File.WriteAllBytesAsync(tempZipPath, zipBytes);
+            // 1) Stream-based download (büyük dosyaları belleğe yüklemeden diske yaz)
+            using (var zipResponse = await HttpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead))
+            {
+                if (!zipResponse.IsSuccessStatusCode)
+                {
+                    core.Logger.LogWarningIfEnabled("[CS2Admin] Failed to download update. HTTP status: {Status}", zipResponse.StatusCode);
+                    return;
+                }
 
-            // Clean existing extract dir if any
+                await using var src = await zipResponse.Content.ReadAsStreamAsync();
+                await using var dst = File.Create(tempZipPath);
+                await src.CopyToAsync(dst);
+            }
+
+            // 2) Temiz zip çıkar
             if (Directory.Exists(tempExtractPath))
             {
                 Directory.Delete(tempExtractPath, true);
             }
-
             ZipFile.ExtractToDirectory(tempZipPath, tempExtractPath, overwriteFiles: true);
 
-            // Find the actual plugin files inside the zip (in case it is wrapped in an inner folder)
-            // We search for the dll file.
+            // 3) Zip içindeki CS2_Admin.dll dosyasını bul
             var dllPath = Directory.GetFiles(tempExtractPath, "CS2_Admin.dll", SearchOption.AllDirectories).FirstOrDefault();
-            
             if (dllPath == null)
             {
-                core.Logger.LogWarningIfEnabled("[CS2Admin] Downloaded update is invalid (CS2_Admin.dll not found).");
+                core.Logger.LogWarningIfEnabled("[CS2Admin] Downloaded update is invalid (CS2_Admin.dll not found in archive).");
                 return;
             }
 
             var sourcePluginDir = Path.GetDirectoryName(dllPath);
-            if (sourcePluginDir == null) return;
+            if (string.IsNullOrEmpty(sourcePluginDir)) return;
 
-            // Copy all files from the source directory to the actual plugin path
-            CopyDirectory(sourcePluginDir, core.PluginPath);
+            // 4) Dosyaları plugin dizinine kopyala (kullanıcı dosyaları korunur)
+            CopyDirectorySafe(sourcePluginDir, pluginPath);
 
             core.Logger.LogInformationIfEnabled("[CS2Admin] Update applied successfully! Swiftly will reload the plugin automatically.");
         }
+        catch (Exception ex)
+        {
+            core.Logger.LogErrorIfEnabled(ex, "[CS2Admin] Failed to apply update");
+        }
         finally
         {
-            // Clean up temporary files
-            if (File.Exists(tempZipPath)) File.Delete(tempZipPath);
-            if (Directory.Exists(tempExtractPath)) Directory.Delete(tempExtractPath, true);
+            try
+            {
+                if (File.Exists(tempZipPath)) File.Delete(tempZipPath);
+                if (Directory.Exists(tempExtractPath)) Directory.Delete(tempExtractPath, true);
+            }
+            catch
+            {
+                // Cleanup hatası kritik değil
+            }
         }
     }
 
-    private static void CopyDirectory(string sourceDir, string targetDir)
+    private static void CopyDirectorySafe(string sourceDir, string targetDir)
     {
         Directory.CreateDirectory(targetDir);
 
         foreach (var file in Directory.GetFiles(sourceDir))
         {
             var fileName = Path.GetFileName(file);
+            if (ProtectedFiles.Contains(fileName))
+            {
+                // Kullanıcı dosyası — atla. EnsureConfig zaten migrate eder.
+                continue;
+            }
             var destFile = Path.Combine(targetDir, fileName);
-            File.Copy(file, destFile, true);
+            File.Copy(file, destFile, overwrite: true);
         }
 
         foreach (var dir in Directory.GetDirectories(sourceDir))
         {
             var dirName = Path.GetFileName(dir);
-            CopyDirectory(dir, Path.Combine(targetDir, dirName));
+            CopyDirectorySafe(dir, Path.Combine(targetDir, dirName));
         }
+    }
+
+    // Semver uyumlu versiyon karşılaştırması.
+    // "1.0.0-beta" vs "1.0.0-alpha" gibi durumları doğru handle eder.
+    // Pozitif: a > b, Negatif: a < b, Sıfır: eşit.
+    private static int CompareVersions(string a, string b)
+    {
+        if (string.IsNullOrWhiteSpace(a) && string.IsNullOrWhiteSpace(b)) return 0;
+        if (string.IsNullOrWhiteSpace(a)) return -1;
+        if (string.IsNullOrWhiteSpace(b)) return 1;
+
+        var aParts = a.Split('-', 2);
+        var bParts = b.Split('-', 2);
+
+        if (!Version.TryParse(aParts[0], out var va)) va = new Version(0, 0, 0);
+        if (!Version.TryParse(bParts[0], out var vb)) vb = new Version(0, 0, 0);
+
+        var coreCmp = va.CompareTo(vb);
+        if (coreCmp != 0) return coreCmp;
+
+        // Core sürümler eşit — prerelease etiketlerine bak
+        // Kural: prerelease < release
+        var aHasPre = aParts.Length == 2;
+        var bHasPre = bParts.Length == 2;
+
+        if (!aHasPre && !bHasPre) return 0;
+        if (!aHasPre) return 1;  // a release, b prerelease → a > b
+        if (!bHasPre) return -1; // a prerelease, b release → a < b
+
+        return StringComparer.OrdinalIgnoreCase.Compare(aParts[1], bParts[1]);
     }
 
     private class GithubRelease
     {
+        [JsonPropertyName("tag_name")]
         public string TagName { get; set; } = string.Empty;
+
+        [JsonPropertyName("assets")]
         public GithubAsset[] Assets { get; set; } = Array.Empty<GithubAsset>();
     }
 
     private class GithubAsset
     {
+        [JsonPropertyName("browser_download_url")]
         public string BrowserDownloadUrl { get; set; } = string.Empty;
     }
 }

@@ -31,30 +31,37 @@ public class ReportCommand : CommandBase
         _sanctions = sanctions;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        if (!context.IsSentByPlayer || context.Sender == null)
+        try
         {
-            Reply(context, "player_only_command");
-            return;
-        }
+            if (!context.IsSentByPlayer || context.Sender == null)
+            {
+                Reply(context, "player_only_command");
+                return;
+            }
 
-        var args = NormalizeArgs(context.Args, CommandsConfig.Report);
-        if (args.Length == 0)
+            var args = NormalizeArgs(context.Args, CommandsConfig.Report);
+            if (args.Length == 0)
+            {
+                OpenReportTargetMenu(context.Sender);
+                return;
+            }
+
+            var messageText = string.Join(" ", args);
+            var playerName = context.Sender.Controller.PlayerName ?? L("unknown");
+            var playerSteamId = context.Sender.SteamID;
+            var serverId = ServerIdentity.GetServerId(Core);
+
+            _ = _discord.SendReportNotificationAsync(playerName, playerSteamId, messageText, serverId);
+            _ = AdminLogManager.AddLogAsync("report", playerName, playerSteamId, null, context.Sender.IPAddress, $"message={messageText};server={serverId}");
+
+            Reply(context, "report_sent");
+        }
+        catch (Exception ex)
         {
-            OpenReportTargetMenu(context.Sender);
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Report command failed");
         }
-
-        var messageText = string.Join(" ", args);
-        var playerName = context.Sender.Controller.PlayerName ?? L("unknown");
-        var playerSteamId = context.Sender.SteamID;
-        var serverId = ServerIdentity.GetServerId(Core);
-
-        _discord.SendReportNotificationAsync(playerName, playerSteamId, messageText, serverId);
-        AdminLogManager.AddLogAsync("report", playerName, playerSteamId, null, context.Sender.IPAddress, $"message={messageText};server={serverId}");
-
-        Reply(context, "report_sent");
     }
 
     private void OpenReportTargetMenu(IPlayer reporter)

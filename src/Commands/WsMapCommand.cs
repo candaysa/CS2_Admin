@@ -46,59 +46,70 @@ public class WsMapCommand : CommandBase
         }
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.ChangeWSMap);
-
-        if (!HasPerm(context, Permissions.ChangeWSMap))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.ChangeWSMap);
 
-        if (args.Length < 1)
-        {
-            Reply(context, "wsmap_usage");
-            ReplyRaw(context, L("wsmap_available", string.Join(", ", _workshopMaps.Maps.Keys)));
-            return;
-        }
-
-        var input = args[0];
-        uint workshopId;
-        string mapDisplayName;
-
-        if (!uint.TryParse(input, out workshopId))
-        {
-            var matchedMap = _workshopMaps.Maps.FirstOrDefault(m =>
-                m.Key.Contains(input, StringComparison.OrdinalIgnoreCase));
-
-            if (matchedMap.Key == null)
+            if (!HasPerm(context, Permissions.ChangeWSMap))
             {
-                Reply(context, "wsmap_not_found", input);
+                Reply(context, "no_permission");
                 return;
             }
 
-            workshopId = matchedMap.Value;
-            mapDisplayName = matchedMap.Key;
-            WorkshopNameCache[workshopId] = mapDisplayName;
+            if (args.Length < 1)
+            {
+                Reply(context, "wsmap_usage");
+                ReplyRaw(context, L("wsmap_available", string.Join(", ", _workshopMaps.Maps.Keys)));
+                return;
+            }
+
+            var input = args[0];
+            uint workshopId;
+            string mapDisplayName;
+
+            if (!uint.TryParse(input, out workshopId))
+            {
+                var matchedMap = _workshopMaps.Maps.FirstOrDefault(m =>
+                    m.Key.Contains(input, StringComparison.OrdinalIgnoreCase));
+
+                if (matchedMap.Key == null)
+                {
+                    Reply(context, "wsmap_not_found", input);
+                    return;
+                }
+
+                workshopId = matchedMap.Value;
+                mapDisplayName = matchedMap.Key;
+                WorkshopNameCache[workshopId] = mapDisplayName;
+            }
+            else
+            {
+                mapDisplayName = ResolveWorkshopDisplayName(workshopId);
+            }
+
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            const float changeDelaySeconds = 3f;
+
+            BroadcastNotification(adminName, "wsmap_changing", mapDisplayName, changeDelaySeconds);
+
+            Core.Scheduler.DelayBySeconds(changeDelaySeconds, () =>
+            {
+                Core.Engine.ExecuteCommand($"ds_workshop_changelevel {workshopId}");
+                Core.Scheduler.DelayBySeconds(0.25f, () =>
+                {
+                    Core.Engine.ExecuteCommand($"host_workshop_map {workshopId}");
+                });
+            });
+
+            _ = AdminLogManager.AddLogAsync("wsmap", adminName, context.Sender?.SteamID ?? 0, null, null, $"workshop_id={workshopId};map_name={mapDisplayName}");
+            Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} changed to workshop map {MapName} ({WorkshopId})", adminName, mapDisplayName, workshopId);
         }
-        else
+        catch (Exception ex)
         {
-            mapDisplayName = ResolveWorkshopDisplayName(workshopId);
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] WsMap command failed");
         }
-
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        const float changeDelaySeconds = 3f;
-
-        BroadcastNotification(adminName, "wsmap_changing", mapDisplayName, changeDelaySeconds);
-
-        Core.Scheduler.DelayBySeconds(changeDelaySeconds, () =>
-        {
-            Core.Engine.ExecuteCommand($"changelevel workshop/{workshopId}");
-        });
-
-        AdminLogManager.AddLogAsync("wsmap", adminName, context.Sender?.SteamID ?? 0, null, null, $"workshop_id={workshopId};map_name={mapDisplayName}");
-        Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} changed to workshop map {MapName} ({WorkshopId})", adminName, mapDisplayName, workshopId);
     }
 
     private string ResolveWorkshopDisplayName(uint workshopId)
@@ -134,13 +145,13 @@ public class WsMapCommand : CommandBase
                 ["itemcount"] = "1",
                 ["publishedfileids[0]"] = workshopId.ToString()
             });
-            using var response = WorkshopApiClient.PostAsync(WorkshopDetailsApiUrl, form).GetAwaiter().GetResult();
+            using var response = Task.Run(async () => await WorkshopApiClient.PostAsync(WorkshopDetailsApiUrl, form)).GetAwaiter().GetResult();
             if (!response.IsSuccessStatusCode)
             {
                 return null;
             }
 
-            var json = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            var json = Task.Run(async () => await response.Content.ReadAsStringAsync()).GetAwaiter().GetResult();
             using var doc = JsonDocument.Parse(json);
             if (!doc.RootElement.TryGetProperty("response", out var responseNode))
             {

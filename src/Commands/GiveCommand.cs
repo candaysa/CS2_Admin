@@ -28,54 +28,60 @@ public class GiveCommand : CommandBase
         _adminDbManager = adminDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Give);
-
-        if (!HasPerm(context, Permissions.Give))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Give);
 
-        if (args.Length < 2)
+            if (!HasPerm(context, Permissions.Give))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
+
+            if (args.Length < 2)
+            {
+                Reply(context, "give_usage");
+                return;
+            }
+
+            var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
+            if (target == null)
+            {
+                Reply(context, "player_not_found");
+                return;
+            }
+
+            var canTarget = await PlayerUtils.CanAdminTargetAsync(Core, _adminDbManager, context, target.SteamID, allowSelf: false);
+            if (!canTarget)
+                return;
+
+            var itemName = string.Join(" ", args.Skip(1));
+            var pawn = target.PlayerPawn;
+            if (pawn?.IsValid != true)
+            {
+                Reply(context, "player_not_found");
+                return;
+            }
+
+            target.PlayerPawn?.ItemServices?.GiveItem(itemName);
+
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var targetName = target.Controller.PlayerName;
+
+            BroadcastNotification(adminName, "give_notification", targetName, itemName);
+
+            PlayerUtils.SendNotification(target, Messages,
+                $"<font color='#00ff00'><b>{L("give_personal_html")}</b></font><br><br>{L("label_item")}: <font color='#00ff00'>{itemName}</font><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
+                $" \x02{L("prefix")}\x01 {L("give_personal_chat", itemName, ResolveVisibleAdminName(target, adminName))}");
+
+            _ = AdminLogManager.AddLogAsync("give", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"item={itemName}", targetName);
+            Core.Logger.LogInformation("[CS2_Admin] {Admin} gave {ItemName} to {Target}", adminName, targetName, itemName);
+        }
+        catch (Exception ex)
         {
-            Reply(context, "give_usage");
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Give command failed");
         }
-
-        var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
-        if (target == null)
-        {
-            Reply(context, "player_not_found");
-            return;
-        }
-
-        var canTarget = PlayerUtils.CanAdminTargetAsync(Core, _adminDbManager, context, target.SteamID, allowSelf: false)
-            .GetAwaiter().GetResult();
-        if (!canTarget)
-            return;
-
-        var itemName = string.Join(" ", args.Skip(1));
-        var pawn = target.PlayerPawn;
-        if (pawn?.IsValid != true)
-        {
-            Reply(context, "player_not_found");
-            return;
-        }
-
-        target.PlayerPawn?.ItemServices?.GiveItem(itemName);
-
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var targetName = target.Controller.PlayerName;
-
-        BroadcastNotification(adminName, "give_notification", targetName, itemName);
-
-        PlayerUtils.SendNotification(target, Messages,
-            L("give_personal_html", itemName, ResolveVisibleAdminName(target, adminName)),
-            $" \x02{L("prefix")}\x01 {L("give_personal_chat", itemName, ResolveVisibleAdminName(target, adminName))}");
-
-        AdminLogManager.AddLogAsync("give", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"item={itemName}", targetName);
-        Core.Logger.LogInformation("[CS2_Admin] {Admin} gave {ItemName} to {Target}", adminName, targetName, itemName);
     }
 }

@@ -64,28 +64,28 @@ public class UnbanCommand : CommandBase
         _sanctionStateService = sanctionStateService;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Unban);
-
-        if (!HasPerm(context, Permissions.Ban))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Unban);
 
-        if (args.Length < 1)
-        {
-            Reply(context, "unban_usage");
-            return;
-        }
+            if (!HasPerm(context, Permissions.Ban))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
 
-        var reason = args.Length > 1 ? string.Join(" ", args.Skip(1)) : L("no_reason");
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var adminSteamId = context.Sender?.SteamID ?? 0;
+            if (args.Length < 1)
+            {
+                Reply(context, "unban_usage");
+                return;
+            }
 
-        _ = Task.Run(async () =>
-        {
+            var reason = args.Length > 1 ? string.Join(" ", args.Skip(1)) : L("no_reason");
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var adminSteamId = context.Sender?.SteamID ?? 0;
+
             _banManager.SetAdminContext(adminName, adminSteamId);
             var success = false;
             ulong? targetSteamId = null;
@@ -171,7 +171,11 @@ public class UnbanCommand : CommandBase
             {
                 await AdminLogManager.AddLogAsync("unban", adminName, adminSteamId, targetSteamId, targetIp, $"reason={reason}", null, null, reason);
             }
-        });
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Unban command failed");
+        }
     }
 
     private async Task<(int AffectedRows, string? KnownIps)> UnbanSteamAndKnownIpsAsync(ulong steamId, string reason, string adminName, ulong adminSteamId)

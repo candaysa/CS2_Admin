@@ -31,100 +31,107 @@ public class FreezeCommand : CommandBase
         _adminDbManager = adminDbManager;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.Freeze);
-
-        if (!HasPerm(context, Permissions.Freeze))
+        try
         {
-            Reply(context, "no_permission");
-            return;
-        }
+            var args = NormalizeArgs(context.Args, CommandsConfig.Freeze);
 
-        if (args.Length < 1)
-        {
-            Reply(context, "freeze_usage");
-            return;
-        }
-
-        var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], includeDeadPlayers: false, caller: context.Sender);
-        if (targets.Count == 0)
-        {
-            Reply(context, "no_valid_targets");
-            return;
-        }
-
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-
-        int? durationSeconds = null;
-        if (args.Length >= 2 && int.TryParse(args[1], out var parsedSeconds) && parsedSeconds > 0)
-        {
-            durationSeconds = parsedSeconds;
-        }
-
-        foreach (var target in targets)
-        {
-            var targetSteamId = target.SteamID;
-            Core.Scheduler.NextTick(() =>
+            if (!HasPerm(context, Permissions.Freeze))
             {
-                var liveTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSteamId);
-                if (liveTarget?.IsValid != true)
-                {
-                    return;
-                }
+                Reply(context, "no_permission");
+                return;
+            }
 
-                var playerId = liveTarget.PlayerID;
-                PlayerUtils.Freeze(liveTarget);
-                _frozenPlayers.Add(playerId);
+            if (args.Length < 1)
+            {
+                Reply(context, "freeze_usage");
+                return;
+            }
 
-                if (_freezeVisualPlayers.Add(playerId))
-                {
-                    StartFreezeVisualPulse(liveTarget.SteamID);
-                }
+            var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], includeDeadPlayers: false, caller: context.Sender);
+            if (targets.Count == 0)
+            {
+                Reply(context, "no_valid_targets");
+                return;
+            }
 
-                if (durationSeconds.HasValue)
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+
+            int? durationSeconds = null;
+            if (args.Length >= 2 && int.TryParse(args[1], out var parsedSeconds) && parsedSeconds > 0)
+            {
+                durationSeconds = parsedSeconds;
+            }
+
+            foreach (var target in targets)
+            {
+                var targetSteamId = target.SteamID;
+                Core.Scheduler.NextTick(() =>
                 {
-                    Core.Scheduler.DelayBySeconds(durationSeconds.Value, () =>
+                    var liveTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSteamId);
+                    if (liveTarget?.IsValid != true)
                     {
-                        Core.Scheduler.NextTick(() =>
+                        return;
+                    }
+
+                    var playerId = liveTarget.PlayerID;
+                    PlayerUtils.Freeze(liveTarget);
+                    _frozenPlayers.Add(playerId);
+
+                    if (_freezeVisualPlayers.Add(playerId))
+                    {
+                        StartFreezeVisualPulse(liveTarget.SteamID);
+                    }
+
+                    if (durationSeconds.HasValue)
+                    {
+                        Core.Scheduler.DelayBySeconds(durationSeconds.Value, () =>
                         {
-                            var player = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.PlayerID == playerId);
-                            if (player == null)
+                            Core.Scheduler.NextTick(() =>
                             {
-                                return;
-                            }
+                                var player = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.PlayerID == playerId);
+                                if (player == null)
+                                {
+                                    return;
+                                }
 
-                            if (_frozenPlayers.Contains(playerId))
-                            {
-                                PlayerUtils.Unfreeze(player);
-                                _frozenPlayers.Remove(playerId);
-                                _freezeVisualPlayers.Remove(playerId);
-                            }
+                                if (_frozenPlayers.Contains(playerId))
+                                {
+                                    PlayerUtils.Unfreeze(player);
+                                    _frozenPlayers.Remove(playerId);
+                                    _freezeVisualPlayers.Remove(playerId);
+                                }
+                            });
                         });
-                    });
-                }
-            });
-        }
+                    }
+                });
+            }
 
-        foreach (var target in targets)
-        {
-            PlayerUtils.SendNotification(target, Messages,
-                L("frozen_personal_html", ResolveVisibleAdminName(target, adminName)),
-                $" \x02{L("prefix")}\x01 {L("frozen_personal_chat", ResolveVisibleAdminName(target, adminName))}");
-        }
+            foreach (var target in targets)
+            {
+                PlayerUtils.SendNotification(target, Messages,
+                    $"<font color='#00ccff'><b>{L("frozen_personal_html")}</b></font><br><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
+                    $" \x02{L("prefix")}\x01 {L("frozen_personal_chat", ResolveVisibleAdminName(target, adminName))}");
+            }
 
-        if (targets.Count == 1)
-        {
-            var targetName = targets[0].Controller.PlayerName;
-            BroadcastNotification(adminName, "freeze_notification_single", targetName);
-        }
-        else
-        {
-            BroadcastNotification(adminName, "freeze_notification_multiple", targets.Count);
-        }
+            if (targets.Count == 1)
+            {
+                var targetName = targets[0].Controller.PlayerName;
+                BroadcastNotification(adminName, "freeze_notification_single", targetName);
+            }
+            else
+            {
+                BroadcastNotification(adminName, "freeze_notification_multiple", targets.Count);
+            }
 
-        var freezeTargetSteamIds = string.Join(",", targets.Select(t => t.SteamID));
-        _ = AdminLogManager.AddLogAsync("freeze", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={freezeTargetSteamIds};count={targets.Count};duration={durationSeconds?.ToString() ?? "0"}");
+            var freezeTargetSteamIds = string.Join(",", targets.Select(t => t.SteamID));
+            _ = AdminLogManager.AddLogAsync("freeze", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={freezeTargetSteamIds};count={targets.Count};duration={durationSeconds?.ToString() ?? "0"}");
+        }
+        catch (Exception ex)
+        {
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Freeze command failed");
+        }
     }
 
     private void StartFreezeVisualPulse(ulong steamId)

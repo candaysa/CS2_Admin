@@ -113,7 +113,10 @@ public sealed class JsonFileLocalizer : ILocalizer
             {
                 raw = File.ReadAllText(path);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CS2_Admin] Failed to read {path}: {ex.Message}");
+            }
         }
 
         if (raw == null)

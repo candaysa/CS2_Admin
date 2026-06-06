@@ -56,6 +56,11 @@ public static class PlayerUtils
         var players = core.PlayerManager.GetAllPlayers().Where(p => p.IsValid).ToList();
         var normalizedTarget = target.Trim();
 
+        if (normalizedTarget.Equals("@me", StringComparison.OrdinalIgnoreCase))
+        {
+            return (caller != null && caller.IsValid) ? caller : null;
+        }
+
         // Try by #userid
         if (normalizedTarget.StartsWith("#", StringComparison.Ordinal)
             && int.TryParse(normalizedTarget[1..], out var statusId))
@@ -289,7 +294,7 @@ public static class PlayerUtils
 
         var adminImm = await adminDbManager.GetEffectiveImmunityAsync(context.Sender.SteamID);
         var targetImm = await adminDbManager.GetEffectiveImmunityAsync(targetSteamId);
-        if (targetImm >= adminImm && targetImm > 0)
+        if (targetImm > adminImm && targetImm > 0)
         {
             var prefix = PluginLocalizer.Get(core)["prefix"];
             var msg = PluginLocalizer.Get(core)["cannot_target_immunity"];
@@ -328,7 +333,7 @@ public static class PlayerUtils
 
         var adminImm = await adminDbManager.GetEffectiveImmunityAsync(admin.SteamID);
         var targetImm = await adminDbManager.GetEffectiveImmunityAsync(targetSteamId);
-        if (targetImm >= adminImm && targetImm > 0)
+        if (targetImm > adminImm && targetImm > 0)
         {
             var prefix = PluginLocalizer.Get(core)["prefix"];
             var msg = PluginLocalizer.Get(core)["cannot_target_immunity"];

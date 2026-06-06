@@ -12,7 +12,7 @@ public class MuteManager
 {
     private readonly ISwiftlyCore _core;
     private readonly ConcurrentDictionary<ulong, CacheEntry> _muteCache = new();
-    private readonly TimeSpan _cacheLifetime = TimeSpan.FromMinutes(5);
+    private readonly TimeSpan _cacheLifetime = TimeSpan.FromSeconds(30);
     private readonly AsyncLocal<AdminContext> _currentAdmin = new();
 
     public MuteManager(ISwiftlyCore core)
@@ -68,6 +68,13 @@ public class MuteManager
                 var id = connection.Insert(mute);
                 mute.Id = Convert.ToInt32(id);
                 _muteCache[steamId] = new CacheEntry(mute, DateTime.UtcNow);
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Mute] add steamid={SteamId} muteId={MuteId} admin={Admin} expiresAt={ExpiresAt} reason={Reason}",
+                    steamId,
+                    mute.Id,
+                    mute.AdminName,
+                    mute.ExpiresAt?.ToString("o") ?? "permanent",
+                    mute.Reason);
 
                 return true;
             }
@@ -106,6 +113,12 @@ public class MuteManager
 
                 connection.Update(mute);
                 _muteCache.TryRemove(steamId, out _);
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Mute] unmute steamid={SteamId} muteId={MuteId} admin={Admin} reason={Reason}",
+                    steamId,
+                    mute.Id,
+                    mute.UnmuteAdminName ?? "-",
+                    mute.UnmuteReason ?? "-");
 
                 return true;
             }
@@ -132,6 +145,12 @@ public class MuteManager
                         return null;
                     }
 
+                    _core.Logger.LogInformationIfEnabled(
+                        "[CS2_Admin][Trace][Mute] cache-hit steamid={SteamId} muteId={MuteId} expiresAt={ExpiresAt} cachedAt={CachedAt}",
+                        steamId,
+                        cachedMute.Id,
+                        cachedMute.ExpiresAt?.ToString("o") ?? "permanent",
+                        cachedEntry.CachedAtUtc.ToString("o"));
                     return cachedMute;
                 }
 
@@ -152,10 +171,21 @@ public class MuteManager
             if (mute != null)
             {
                 _muteCache[steamId] = new CacheEntry(mute, DateTime.UtcNow);
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Mute] db-load-active steamid={SteamId} muteId={MuteId} admin={Admin} createdAt={CreatedAt} expiresAt={ExpiresAt} reason={Reason}",
+                    steamId,
+                    mute.Id,
+                    mute.AdminName,
+                    mute.CreatedAt.ToString("o"),
+                    mute.ExpiresAt?.ToString("o") ?? "permanent",
+                    mute.Reason);
             }
             else
             {
                 _muteCache.TryRemove(steamId, out _);
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Mute] db-load-none steamid={SteamId}",
+                    steamId);
             }
 
             return mute;
@@ -163,6 +193,51 @@ public class MuteManager
         catch (Exception ex)
         {
             _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error checking mute: {Message}", ex.Message);
+            return null;
+        }
+    }
+
+    public async Task<Mute?> GetActiveMuteFreshAsync(ulong steamId)
+    {
+        try
+        {
+            InvalidateCache(steamId);
+
+            using var connection = _core.Database.GetConnection("mysql_detailed");
+            var mute = connection.Query<Mute>(
+                $@"SELECT * FROM `admin_mutes`
+                  WHERE `steamid` = @SteamId
+                    AND {PunishmentQueryCompat.ActiveStatusWhere}
+                    AND (`expires_at` IS NULL OR `expires_at` > @Now)
+                  ORDER BY `created_at` DESC LIMIT 1",
+                new { SteamId = steamId, Now = DateTime.UtcNow }
+            ).FirstOrDefault(IsMaterializedMute);
+
+            if (mute != null)
+            {
+                _muteCache[steamId] = new CacheEntry(mute, DateTime.UtcNow);
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Mute] fresh-db-load-active steamid={SteamId} muteId={MuteId} admin={Admin} createdAt={CreatedAt} expiresAt={ExpiresAt} reason={Reason}",
+                    steamId,
+                    mute.Id,
+                    mute.AdminName,
+                    mute.CreatedAt.ToString("o"),
+                    mute.ExpiresAt?.ToString("o") ?? "permanent",
+                    mute.Reason);
+            }
+            else
+            {
+                _muteCache.TryRemove(steamId, out _);
+                _core.Logger.LogInformationIfEnabled(
+                    "[CS2_Admin][Trace][Mute] fresh-db-load-none steamid={SteamId}",
+                    steamId);
+            }
+
+            return mute;
+        }
+        catch (Exception ex)
+        {
+            _core.Logger.LogErrorIfEnabled("[CS2_Admin] Error checking fresh mute: {Message}", ex.Message);
             return null;
         }
     }
@@ -239,6 +314,20 @@ public class MuteManager
     public void ClearCache()
     {
         _muteCache.Clear();
+    }
+
+    public void InvalidateCache(ulong steamId)
+    {
+        if (_muteCache.TryRemove(steamId, out _))
+        {
+            _core.Logger.LogInformationIfEnabled(
+                "[CS2_Admin][Trace][Mute] cache-invalidate steamid={SteamId}", steamId);
+        }
+    }
+
+    private static bool IsMaterializedMute(Mute mute)
+    {
+        return mute.Id > 0 && mute.IsActive;
     }
 
     private sealed record CacheEntry(Mute Mute, DateTime CachedAtUtc);

@@ -29,53 +29,75 @@ public class MapCommand : CommandBase
         _workshopMaps = workshopMaps;
     }
 
-    public override void Execute(ICommandContext context)
+    public override async void Execute(ICommandContext context)
     {
-        var args = NormalizeArgs(context.Args, CommandsConfig.ChangeMap);
-
-        if (!HasPerm(context, Permissions.ChangeMap))
+        try
         {
-            Reply(context, "no_permission");
-            return;
+            var args = NormalizeArgs(context.Args, CommandsConfig.ChangeMap);
+
+            if (!HasPerm(context, Permissions.ChangeMap))
+            {
+                Reply(context, "no_permission");
+                return;
+            }
+
+            if (args.Length < 1)
+            {
+                Reply(context, "map_usage");
+                ReplyRaw(context, L("map_available", string.Join(", ", _gameMaps.Maps.Keys)));
+                return;
+            }
+
+            var mapName = args[0].ToLowerInvariant();
+
+            var matchedMap = _gameMaps.Maps.Keys.FirstOrDefault(m =>
+                m.Equals(mapName, StringComparison.OrdinalIgnoreCase));
+
+            if (matchedMap == null)
+            {
+                Reply(context, "map_not_found", mapName);
+                return;
+            }
+
+            if (!Core.Engine.IsMapValid(matchedMap))
+            {
+                Reply(context, "map_not_found", matchedMap);
+                Core.Logger.LogWarningIfEnabled("[CS2_Admin] Refused map change because engine rejected map {Map}", matchedMap);
+                return;
+            }
+
+            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var mapDisplayName = _gameMaps.Maps[matchedMap];
+            const float changeDelaySeconds = 3f;
+
+            BroadcastNotification(adminName, "map_changing", mapDisplayName, changeDelaySeconds);
+
+            Core.Scheduler.DelayBySeconds(changeDelaySeconds, () =>
+            {
+                if (matchedMap.StartsWith("workshop/", StringComparison.OrdinalIgnoreCase))
+                {
+                    var parts = matchedMap.Split('/');
+                    if (parts.Length > 1)
+                    {
+                        Core.Engine.ExecuteCommand($"host_workshop_map {parts[1]}");
+                    }
+                    else
+                    {
+                        Core.Engine.ExecuteCommand($"changelevel {matchedMap}");
+                    }
+                }
+                else
+                {
+                    Core.Engine.ExecuteCommand($"changelevel {matchedMap}");
+                }
+            });
+
+            _ = AdminLogManager.AddLogAsync("map", adminName, context.Sender?.SteamID ?? 0, null, null, $"map={matchedMap}");
+            Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} changed map to {Map}", adminName, matchedMap);
         }
-
-        if (args.Length < 1)
+        catch (Exception ex)
         {
-            Reply(context, "map_usage");
-            ReplyRaw(context, L("map_available", string.Join(", ", _gameMaps.Maps.Keys)));
-            return;
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Map command failed");
         }
-
-        var mapName = args[0].ToLowerInvariant();
-
-        var matchedMap = _gameMaps.Maps.Keys.FirstOrDefault(m =>
-            m.Equals(mapName, StringComparison.OrdinalIgnoreCase));
-
-        if (matchedMap == null)
-        {
-            Reply(context, "map_not_found", mapName);
-            return;
-        }
-
-        if (!Core.Engine.IsMapValid(matchedMap))
-        {
-            Reply(context, "map_not_found", matchedMap);
-            Core.Logger.LogWarningIfEnabled("[CS2_Admin] Refused map change because engine rejected map {Map}", matchedMap);
-            return;
-        }
-
-        var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-        var mapDisplayName = _gameMaps.Maps[matchedMap];
-        const float changeDelaySeconds = 3f;
-
-        BroadcastNotification(adminName, "map_changing", mapDisplayName, changeDelaySeconds);
-
-        Core.Scheduler.DelayBySeconds(changeDelaySeconds, () =>
-        {
-            Core.Engine.ExecuteCommand($"changelevel {matchedMap}");
-        });
-
-        AdminLogManager.AddLogAsync("map", adminName, context.Sender?.SteamID ?? 0, null, null, $"map={matchedMap}");
-        Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} changed map to {Map}", adminName, matchedMap);
     }
 }

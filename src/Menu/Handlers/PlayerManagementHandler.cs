@@ -92,7 +92,7 @@ public class PlayerManagementHandler : IAdminMenuHandler
         var builder = _core.MenusAPI.CreateBuilder();
         builder.Design.SetMenuTitle(T("menu_warn_history_for", target.Controller.PlayerName ?? T("unknown")));
 
-        var warns = _warnManager.GetWarnHistoryAsync(target.SteamID, filter, 20).GetAwaiter().GetResult();
+        var warns = Task.Run(async () => await _warnManager.GetWarnHistoryAsync(target.SteamID, filter, 20)).GetAwaiter().GetResult();
         if (warns.Count == 0)
         {
             var empty = new ButtonMenuOption(T("warn_history_empty")) { CloseAfterClick = true };
@@ -284,7 +284,7 @@ public class PlayerManagementHandler : IAdminMenuHandler
     {
         var targetId = target.PlayerID;
         var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Kick, "kick");
-        ExecuteAndReopenPlayerSelection(admin, "kick", "$cmd $targetId $reason");
+        ExecuteAndReopenPlayerSelection(admin, "kick", $"{cmd} {targetId} {reason}");
     }
 
     private void ExecuteTimedAction(IPlayer admin, IPlayer target, string action, int minutes, string reason)
@@ -306,7 +306,7 @@ public class PlayerManagementHandler : IAdminMenuHandler
             return;
 
         var cmd = CommandAliasUtils.ToSwAlias(cmdName);
-        _core.Scheduler.NextTick(() => admin.ExecuteCommand("$cmd $targetId $duration $reason"));
+        _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {targetId} {duration} {reason}"));
         ReopenDurationMenuWithRetry(admin, target, action, reason);
     }
 
@@ -336,7 +336,7 @@ public class PlayerManagementHandler : IAdminMenuHandler
     {
         var targetId = target.PlayerID;
         var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Warn, "warn");
-        ExecuteAndReopenPlayerSelection(admin, "warn", "$cmd $targetId $reason");
+        ExecuteAndReopenPlayerSelection(admin, "warn", $"{cmd} {targetId} {reason}");
     }
 
     private void ExecuteAndReopenPlayerSelection(IPlayer admin, string action, string command)
