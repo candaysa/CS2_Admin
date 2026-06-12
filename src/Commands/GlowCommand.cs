@@ -122,20 +122,33 @@ public class GlowCommand : CommandBase
             }
 
             var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var colorHex = disableGlow ? "#ffffff" : $"#{r:X2}{g:X2}{b:X2}";
+
+            foreach (var gTarget in targets)
+            {
+                var liveG = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == gTarget.SteamID);
+                if (liveG?.IsValid != true) continue;
+                if (disableGlow)
+                {
+                    PlayerUtils.SendNotification(liveG, Messages,
+                        $"<font color='#ecf0f1'><b>{L("glow_off_personal_html")}</b></font><br><br>{L("label_by")}: <font color='#ffd700'>{ResolveVisibleAdminName(liveG, adminName)}</font>",
+                        $" \x02{L("prefix")}\x01 {L("glow_off_personal_chat", ResolveVisibleAdminName(liveG, adminName))}");
+                }
+                else
+                {
+                    PlayerUtils.SendNotification(liveG, Messages,
+                        $"<font color='{colorHex}'><b>{L("glow_personal_html")}</b></font><br><br><font color='{colorHex}'>■</font> RGB: {r},{g},{b}<br>{L("label_by")}: <font color='#ffd700'>{ResolveVisibleAdminName(liveG, adminName)}</font>",
+                        $" \x02{L("prefix")}\x01 {L("glow_personal_chat", ResolveVisibleAdminName(liveG, adminName), $"{r},{g},{b}")}");
+                }
+            }
 
             if (disableGlow)
             {
-                if (targets.Count == 1)
-                    BroadcastNotification(adminName, "glow_off_notification_single", targets[0].Controller.PlayerName);
-                else
-                    BroadcastNotification(adminName, "glow_off_notification_multiple", targets.Count);
+                BroadcastNotification(adminName, "glow_off_notification", FormatTargetName(targets));
             }
             else
             {
-                if (targets.Count == 1)
-                    BroadcastNotification(adminName, "glow_notification_single", targets[0].Controller.PlayerName);
-                else
-                    BroadcastNotification(adminName, "glow_notification_multiple", targets.Count);
+                BroadcastNotification(adminName, "glow_notification", FormatTargetName(targets));
             }
 
             var details = disableGlow

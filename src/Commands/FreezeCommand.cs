@@ -115,14 +115,9 @@ public class FreezeCommand : CommandBase
                     $" \x02{L("prefix")}\x01 {L("frozen_personal_chat", ResolveVisibleAdminName(target, adminName))}");
             }
 
-            if (targets.Count == 1)
+            if (targets.Count > 0)
             {
-                var targetName = targets[0].Controller.PlayerName;
-                BroadcastNotification(adminName, "freeze_notification_single", targetName);
-            }
-            else
-            {
-                BroadcastNotification(adminName, "freeze_notification_multiple", targets.Count);
+                BroadcastNotification(adminName, "freeze_notification", FormatTargetName(targets));
             }
 
             var freezeTargetSteamIds = string.Join(",", targets.Select(t => t.SteamID));

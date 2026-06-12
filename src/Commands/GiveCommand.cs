@@ -46,38 +46,52 @@ public class GiveCommand : CommandBase
                 return;
             }
 
-            var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
-            if (target == null)
-            {
-                Reply(context, "player_not_found");
-                return;
-            }
-
-            var canTarget = await PlayerUtils.CanAdminTargetAsync(Core, _adminDbManager, context, target.SteamID, allowSelf: false);
-            if (!canTarget)
-                return;
-
             var itemName = string.Join(" ", args.Skip(1));
-            var pawn = target.PlayerPawn;
-            if (pawn?.IsValid != true)
+            var isGroupTarget = PlayerUtils.IsGroupTarget(args[0]);
+            var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], caller: context.Sender);
+
+            if (targets.Count == 0)
             {
                 Reply(context, "player_not_found");
                 return;
             }
 
-            target.PlayerPawn?.ItemServices?.GiveItem(itemName);
+            var filteredTargets = await PlayerUtils.FilterTargetsByAccessAsync(Core, _adminDbManager, context, targets, allowSelf: true);
+            if (filteredTargets.Count == 0)
+            {
+                return;
+            }
 
             var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-            var targetName = target.Controller.PlayerName;
+            var givenCount = 0;
 
-            BroadcastNotification(adminName, "give_notification", targetName, itemName);
+            Core.Scheduler.NextTick(() =>
+            {
+                foreach (var target in filteredTargets)
+                {
+                    var liveTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamID);
+                    if (liveTarget?.IsValid != true) continue;
 
-            PlayerUtils.SendNotification(target, Messages,
-                $"<font color='#00ff00'><b>{L("give_personal_html")}</b></font><br><br>{L("label_item")}: <font color='#00ff00'>{itemName}</font><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
-                $" \x02{L("prefix")}\x01 {L("give_personal_chat", itemName, ResolveVisibleAdminName(target, adminName))}");
+                    var pawn = liveTarget.PlayerPawn;
+                    if (pawn?.IsValid != true)
+                        continue;
 
-            _ = AdminLogManager.AddLogAsync("give", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"item={itemName}", targetName);
-            Core.Logger.LogInformation("[CS2_Admin] {Admin} gave {ItemName} to {Target}", adminName, targetName, itemName);
+                    pawn.ItemServices?.GiveItem(itemName);
+
+                    PlayerUtils.SendNotification(liveTarget, Messages,
+                        $"<font color='#00ff00'><b>{L("give_personal_html")}</b></font><br><br>{L("label_item")}: <font color='#00ff00'>{itemName}</font><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(liveTarget, adminName)}</font>",
+                        $" \x02{L("prefix")}\x01 {L("give_personal_chat", itemName, ResolveVisibleAdminName(liveTarget, adminName))}");
+
+                    _ = AdminLogManager.AddLogAsync("give", adminName, context.Sender?.SteamID ?? 0, liveTarget.SteamID, liveTarget.IPAddress, $"item={itemName}", liveTarget.Controller.PlayerName);
+                    givenCount++;
+                }
+
+                if (givenCount == 0) return;
+
+                BroadcastNotification(adminName, "give_notification", FormatTargetName(filteredTargets), itemName);
+
+                Core.Logger.LogInformation("[CS2_Admin] {Admin} gave {ItemName} to {Count} player(s)", adminName, itemName, givenCount);
+            });
         }
         catch (Exception ex)
         {

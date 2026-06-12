@@ -72,22 +72,22 @@ public class SlapCommand : CommandBase
             var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
             var prefix = L("prefix");
 
-            foreach (var target in targets)
+            Core.Scheduler.NextTick(() =>
             {
-                Core.Scheduler.NextTick(() =>
+                foreach (var target in targets)
                 {
                     var liveTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamID);
                     if (liveTarget?.IsValid != true)
-                        return;
+                        continue;
 
                     var livePawn = liveTarget.PlayerPawn;
                     if (livePawn?.IsValid != true || livePawn.Health <= 0)
-                        return;
+                        continue;
 
                     ApplySlap(livePawn, damage);
 
                     if (livePawn.Health <= 0)
-                        return;
+                        continue;
 
                     PlayerUtils.SendNotification(liveTarget, Messages,
                         $"<font color='#ffcc00'><b>{L("slapped_personal_html")}</b></font><br><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(liveTarget, adminName)}</font><br>{L("label_damage")}: <font color='#ffffff'>{damage}</font>",
@@ -102,8 +102,8 @@ public class SlapCommand : CommandBase
 
                     _ = AdminLogManager.AddLogAsync("slap", adminName, context.Sender?.SteamID ?? 0, liveTarget.SteamID, liveTarget.IPAddress, $"damage={damage}", liveTarget.Controller.PlayerName);
                     Core.Logger.LogInformation("[CS2_Admin] {Admin} slapped {Target} for {Damage} damage", adminName, targetName, damage);
-                });
-            }
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -130,7 +130,7 @@ public class SlapCommand : CommandBase
             (float)Random.Shared.NextInt64(50, 230) * (Random.Shared.NextDouble() < 0.5 ? -1f : 1f),
             Random.Shared.NextInt64(100, 300));
 
-        pawn.Teleport(null, null, velocity);
+        pawn.AbsVelocity = velocity;
     }
 }
 

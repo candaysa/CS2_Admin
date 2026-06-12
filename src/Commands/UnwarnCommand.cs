@@ -53,22 +53,37 @@ public class UnwarnCommand : CommandBase
                 return;
             }
 
-            var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
-            if (target == null)
-            {
-                Reply(context, "player_not_found");
-                return;
-            }
-
             var reason = args.Length > 1
                 ? string.Join(" ", args.Skip(1))
                 : L("no_reason");
 
             var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
             var adminSteamId = context.Sender?.SteamID ?? 0;
-            var targetName = target.Controller.PlayerName ?? L("unknown");
-            var targetSteamId = target.SteamID;
-            var targetIp = target.IPAddress;
+            
+            string targetName;
+            ulong targetSteamId;
+            string? targetIp = null;
+            int targetPlayerId = 0;
+
+            if (PlayerUtils.TryParseSteamId(args[0], out var steamId))
+            {
+                targetSteamId = steamId;
+                targetName = L("unknown");
+            }
+            else
+            {
+                var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
+                if (target == null)
+                {
+                    Reply(context, "player_not_found");
+                    return;
+                }
+                
+                targetSteamId = target.SteamID;
+                targetName = target.Controller.PlayerName ?? L("unknown");
+                targetIp = target.IPAddress;
+                targetPlayerId = target.PlayerID;
+            }
 
             if (!await ValidateCanPunishAsync(context, targetSteamId))
                 return;
@@ -98,7 +113,7 @@ public class UnwarnCommand : CommandBase
                 }
             });
 
-            await AdminLogManager.AddLogAsync("unwarn", adminName, adminSteamId, targetSteamId, targetIp, $"reason={reason}", targetName, target.PlayerID, reason);
+            await AdminLogManager.AddLogAsync("unwarn", adminName, adminSteamId, targetSteamId, targetIp, $"reason={reason}", targetName, targetPlayerId, reason);
             Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} removed warn from {Target}. Reason: {Reason}",
                 adminName, targetName, reason);
         }

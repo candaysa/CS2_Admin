@@ -47,22 +47,27 @@ public class MixTeamCommand : CommandBase
 
             var players = Core.PlayerManager
                 .GetAllPlayers()
-                .Where(p => p.IsValid && !p.IsFakeClient)
+                .Where(p => p.IsValid && !p.IsFakeClient && p.Controller?.TeamNum > 1)
                 .OrderBy(_ => Random.Shared.Next())
                 .ToList();
 
-            if (players.Count == 0)
+            if (players.Count < 2)
             {
                 Reply(context, "no_valid_targets");
                 return;
             }
 
+            var halfCount = players.Count / 2;
             var startT = Random.Shared.Next(2) == 0;
             var moved = 0;
+
             for (var i = 0; i < players.Count; i++)
             {
                 var target = players[i];
-                var team = (i % 2 == 0) ? (startT ? Team.T : Team.CT) : (startT ? Team.CT : Team.T);
+                var team = i < halfCount
+                    ? (startT ? Team.T : Team.CT)
+                    : (startT ? Team.CT : Team.T);
+
                 Core.Scheduler.NextTick(() =>
                 {
                     if (target.IsValid)

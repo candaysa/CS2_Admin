@@ -77,11 +77,22 @@ public class ResizeCommand : CommandBase
                 return;
             }
 
+            string targetLabel = FormatTargetName(targets);
             var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+            var scaleStr = scale.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
 
-            BroadcastNotification(adminName, "resize_notification", applied, scale.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+            foreach (var rTarget in targets)
+            {
+                var liveR = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == rTarget.SteamID);
+                if (liveR?.IsValid != true) continue;
+                PlayerUtils.SendNotification(liveR, Messages,
+                    $"<font color='#9b59b6'><b>{L("resize_personal_html")}</b></font><br><br>{L("label_value")}: <font color='#ffd700'>{scaleStr}x</font><br>{L("label_by")}: <font color='#ffd700'>{ResolveVisibleAdminName(liveR, adminName)}</font>",
+                    $" \x02{L("prefix")}\x01 {L("resize_personal_chat", ResolveVisibleAdminName(liveR, adminName), scaleStr)}");
+            }
 
-            _ = AdminLogManager.AddLogAsync("resize", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={applied};scale={scale.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}");
+            BroadcastNotification(adminName, "resize_notification", targetLabel, scaleStr);
+
+            _ = AdminLogManager.AddLogAsync("resize", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={applied};scale={scaleStr}");
             Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} resized {Count} player(s) to {Scale}", adminName, applied, scale);
         }
         catch (Exception ex)

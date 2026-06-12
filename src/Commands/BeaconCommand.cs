@@ -95,7 +95,16 @@ public class BeaconCommand : CommandBase
                 return;
             }
 
-            BroadcastNotification(adminName, "beacon_started", started, durationSeconds);
+            BroadcastNotification(adminName, "beacon_started", FormatTargetName(targets), durationSeconds);
+
+            foreach (var bTarget in targets)
+            {
+                var liveBTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == bTarget.SteamID);
+                if (liveBTarget?.IsValid != true) continue;
+                PlayerUtils.SendNotification(liveBTarget, Messages,
+                    $"<font color='#e74c3c'><b>{L("beacon_personal_html")}</b></font><br><br>{L("label_duration")}: <font color='#ffd700'>{durationSeconds}s</font><br>{L("label_by")}: <font color='#ffd700'>{ResolveVisibleAdminName(liveBTarget, adminName)}</font>",
+                    $" \x02{L("prefix")}\x01 {L("beacon_personal_chat", ResolveVisibleAdminName(liveBTarget, adminName), durationSeconds)}");
+            }
 
             _ = AdminLogManager.AddLogAsync("beacon", adminName, context.Sender?.SteamID ?? 0, null, null, $"mode=on;targets={started};duration={durationSeconds}");
             Core.Logger.LogInformation("[CS2_Admin] {Admin} started beacon for {Count} player(s)", adminName, started);

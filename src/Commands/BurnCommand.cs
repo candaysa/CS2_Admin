@@ -79,31 +79,43 @@ public class BurnCommand : CommandBase
                 return;
             }
 
-            foreach (var target in targets)
+            Core.Scheduler.NextTick(() =>
             {
-                var targetSteamId = target.SteamID;
-                Core.Scheduler.NextTick(() =>
+                var validCount = 0;
+                foreach (var target in targets)
                 {
-                    var liveTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSteamId);
+                    var liveTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamID);
                     if (liveTarget?.IsValid != true)
-                        return;
+                        continue;
 
                     var pawn = liveTarget.PlayerPawn;
                     if (pawn?.IsValid != true || pawn.Health <= 0)
-                        return;
+                        continue;
 
                     _burnPlayers.Add(liveTarget.PlayerID);
                     StartBurnEffect(liveTarget, isInfinite ? null : durationSeconds, damagePerTick);
-                });
-            }
+                    validCount++;
+                }
 
-            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-            var durationLabel = isInfinite ? L("permanent") : durationSeconds.ToString();
+                if (validCount == 0) return;
 
-            BroadcastNotification(adminName, "burn_notification", targets.Count, durationLabel, damagePerTick);
+                var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+                var durationLabel = isInfinite ? L("permanent") : durationSeconds.ToString();
 
-            _ = AdminLogManager.AddLogAsync("burn", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={targets.Count};duration={(isInfinite ? "infinite" : durationSeconds.ToString())};dmg={damagePerTick}");
-            Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} set {Count} player(s) on fire", adminName, targets.Count);
+                foreach (var burnTarget in targets)
+                {
+                    var liveBurnTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == burnTarget.SteamID);
+                    if (liveBurnTarget?.IsValid != true) continue;
+                    PlayerUtils.SendNotification(liveBurnTarget, Messages,
+                        $"{L("burn_center_html")}<br>{L("label_duration")}: <font color='#ffd700'>{durationLabel}s</font> | {L("label_damage_per_tick")}: <font color='#ff5733'>{damagePerTick}</font>",
+                        $" \x02{L("prefix")}\x01 {L("burn_personal_chat", damagePerTick)}");
+                }
+
+                BroadcastNotification(adminName, "burn_notification", FormatTargetName(targets), durationLabel, damagePerTick);
+
+                _ = AdminLogManager.AddLogAsync("burn", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={validCount};duration={(isInfinite ? "infinite" : durationSeconds.ToString())};dmg={damagePerTick}");
+                Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} set {Count} player(s) on fire", adminName, validCount);
+            });
         }
         catch (Exception ex)
         {

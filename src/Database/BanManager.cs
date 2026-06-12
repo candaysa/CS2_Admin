@@ -48,9 +48,10 @@ public class BanManager
         string targetName,
         int durationMinutes,
         string reason,
-        bool isGlobal)
+        bool isGlobal,
+        string? ipAddress = null)
     {
-        return AddBanInternalAsync(steamId, targetName, null, BanTargetType.SteamId, durationMinutes, reason, isGlobal);
+        return AddBanInternalAsync(steamId, targetName, ipAddress, BanTargetType.SteamId, durationMinutes, reason, isGlobal);
     }
 
     public Task<bool> AddIpBanAsync(

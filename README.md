@@ -69,7 +69,7 @@ The most complete sanction system available for SwiftlyS2:
 - **Predefined Reasons & Durations**: The in-game sanction menu presents a list of preconfigured reasons (e.g., "Hacking", "Insult players") and durations (5 min, 1 hour, permanent, etc.) so admins don't have to type anything manually.
 
 ### 🎮 30+ Fun & Utility Commands
-Transform your server into a playground with a massive library of player manipulation commands. Freeze, burn, blind, beacon, resize, glow, disarm, adjust gravity, change speed, set health, give money, give weapons, teleport (`!goto` / `!bring`), toggle noclip, toggle godmode, and much more. Each command supports targeting individual players, groups, or the entire server.
+Transform your server into a playground with a massive library of player manipulation commands. Freeze, burn, bury, unbury, blind, beacon, resize, glow, disarm, adjust gravity, change speed, set health, give money, give weapons, teleport (`!goto` / `!bring`), toggle noclip, toggle godmode, and much more. Each command supports targeting individual players, groups, or the entire server.
 
 ### 🔄 Discord Integration (Superior)
 CS2_Admin's Discord integration is far beyond a simple webhook logger:
@@ -263,6 +263,8 @@ CS2_Admin natively ties into Swiftly's permission system. Below are all the comm
 | `!glow <target> <color\|r> <g> <b> [a]`| `admin.cheats` | Applies an outline glow to a player. Use a color name (red, green, blue, yellow, cyan, magenta, white, orange, purple, pink, lime, turquoise) or RGB values |
 | `!rgb <target> [duration]` | `admin.cheats` | Applies a cycling rainbow glow (default 30s, max 300s). Use `off` to stop |
 | `!beacon <target>` | `admin.cheats` | Places a pinging beacon ring around a player |
+| `!bury <target>` | `admin.cheats` | Buries a player underground, trapping them |
+| `!unbury <target>` | `admin.cheats` | Unburies a player, bringing them back up |
 | `!burn <target> <time>` | `admin.cheats` | Sets a player on fire |
 | `!disarm <target>` | `admin.cheats` | Strips all weapons from a player |
 | `!speed <target> <multiplier>` | `admin.cheats` | Alters a player's movement speed |

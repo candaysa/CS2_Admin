@@ -74,6 +74,12 @@ public abstract class CommandBase : ICommand
         return LocalizerHelper.Get(Core, key, args);
     }
 
+    protected string FormatTargetName(IReadOnlyList<IPlayer> targets)
+    {
+        if (targets.Count == 1) return targets[0].Controller.PlayerName;
+        return L("target_multiple", targets.Count);
+    }
+
     protected bool HasPerm(ICommandContext context, string permission)
     {
         return PermissionService.HasPermission(context, permission);
@@ -110,7 +116,9 @@ public abstract class CommandBase : ICommand
             return;
         }
 
-        Core.Logger.LogInformation("[{Prefix}] {Message}", prefix, StripChatFormatting(message));
+        var stripped = StripChatFormatting(message);
+        Core.Logger.LogInformation("[{Prefix}] {Message}", prefix, stripped);
+        Console.WriteLine($"[{prefix}] {stripped}");
     }
 
     private static string StripChatFormatting(string message)

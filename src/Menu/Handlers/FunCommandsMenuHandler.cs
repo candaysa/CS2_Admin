@@ -14,7 +14,7 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
 
     private enum FunAction
     {
-        Slap, God, Slay, Respawn, Team, Noclip, Goto, Bring, Freeze, Unfreeze, Resize, Blind, Glow, Beacon, Burn, Disarm, Speed, Gravity, Hp, Money, Give
+        Slap, God, Slay, Respawn, Team, Noclip, Goto, Bring, Freeze, Unfreeze, Resize, Blind, Glow, Beacon, Bury, Unbury, Burn, Disarm, Speed, Gravity, Hp, Money, Give
     }
 
     public FunCommandsMenuHandler(ISwiftlyCore core, PluginConfig config)
@@ -73,6 +73,12 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
 
         if (HasPermission(player, _config.Permissions.Beacon))
             builder.AddOption(new SubmenuMenuOption(PluginLocalizer.Get(_core)["menu_beacon"], () => BuildPlayerSelectMenu(player, FunAction.Beacon)));
+
+        if (HasPermission(player, _config.Permissions.Bury))
+            builder.AddOption(new SubmenuMenuOption(T("menu_bury", "Bury Player"), () => BuildPlayerSelectMenu(player, FunAction.Bury)));
+
+        if (HasPermission(player, _config.Permissions.Unbury))
+            builder.AddOption(new SubmenuMenuOption(T("menu_unbury", "Unbury Player"), () => BuildPlayerSelectMenu(player, FunAction.Unbury)));
 
         if (HasPermission(player, _config.Permissions.Burn))
             builder.AddOption(new SubmenuMenuOption(PluginLocalizer.Get(_core)["menu_burn"], () => BuildPlayerSelectMenu(player, FunAction.Burn)));
@@ -525,6 +531,18 @@ public class FunCommandsMenuHandler : IAdminMenuHandler
             {
                 var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Beacon, "beacon");
                 _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {targetId} 20"));
+                break;
+            }
+            case FunAction.Bury:
+            {
+                var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Bury, "bury");
+                _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {targetId}"));
+                break;
+            }
+            case FunAction.Unbury:
+            {
+                var cmd = CommandAliasUtils.GetPreferredExecutionAlias(_config.Commands.Unbury, "unbury");
+                _core.Scheduler.NextTick(() => admin.ExecuteCommand($"{cmd} {targetId}"));
                 break;
             }
             case FunAction.Burn:

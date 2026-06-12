@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -12,6 +13,7 @@ namespace CS2_Admin.Utils;
 public class DiscordInteractionHandler
 {
     private const string DiscordApiBaseUrl = "https://discord.com/api/v10";
+    private static readonly TimeSpan InteractionDedupTtl = TimeSpan.FromSeconds(30);
 
     private static readonly HttpClient _httpClient = new()
     {
@@ -24,6 +26,8 @@ public class DiscordInteractionHandler
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         WriteIndented = true
     };
+
+    private static readonly ConcurrentDictionary<string, DateTime> _processedInteractions = new(StringComparer.Ordinal);
 
     private readonly ISwiftlyCore _core;
     private readonly DiscordRestClient _restClient;
@@ -52,6 +56,17 @@ public class DiscordInteractionHandler
             var token = data.TryGetProperty("token", out var tokenElement) ? tokenElement.GetString() : null;
             var applicationId = data.TryGetProperty("application_id", out var applicationIdElement) ? applicationIdElement.GetString() : null;
             var type = data.TryGetProperty("type", out var typeElement) ? typeElement.GetInt32() : 0;
+
+            if (id != null)
+            {
+                var now = DateTime.UtcNow;
+                if (_processedInteractions.TryGetValue(id, out var lastSeen) && (now - lastSeen) < InteractionDedupTtl)
+                {
+                    return;
+                }
+                _processedInteractions[id] = now;
+                CleanupExpiredDedupEntries();
+            }
 
             if (type == 3 && id != null && token != null && data.TryGetProperty("data", out var componentData))
             {
@@ -310,5 +325,17 @@ public class DiscordInteractionHandler
             action,
             response.StatusCode,
             string.IsNullOrWhiteSpace(body) ? "-" : body);
+    }
+
+    private static void CleanupExpiredDedupEntries()
+    {
+        var cutoff = DateTime.UtcNow - InteractionDedupTtl;
+        foreach (var kvp in _processedInteractions)
+        {
+            if (kvp.Value < cutoff)
+            {
+                _processedInteractions.TryRemove(kvp.Key, out _);
+            }
+        }
     }
 }

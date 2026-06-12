@@ -95,7 +95,7 @@ public class GravityCommand : CommandBase
                 applied++;
 
                 PlayerUtils.SendNotification(target, Messages,
-                    $"<font color='#ffd700'><b>GRAVITY</b></font><br><br>Değer: <font color='#ffd700'>{scale.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}x</font>",
+                    $"<font color='#ffd700'><b>{L("gravity")}</b></font><br><br>{L("label_value")}: <font color='#ffd700'>{scale.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}x</font>",
                     $" \x02{L("prefix")}\x01 {L("gravity_personal_chat", scale.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))}");
             }
 
@@ -107,7 +107,7 @@ public class GravityCommand : CommandBase
 
             var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
 
-            string targetLabel = targets.Count == 1 ? targets[0].Controller.PlayerName : applied.ToString();
+            var targetLabel = FormatTargetName(targets);
             BroadcastNotification(adminName, "gravity_notification", targetLabel, scale.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
 
             _ = AdminLogManager.AddLogAsync("gravity", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={applied};scale={scale.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}");

@@ -251,7 +251,7 @@ public class LastBanCommand : CommandBase
                 }
 
                 _banManager.SetAdminContext(adminName, adminSteamId);
-                var ok = await _banManager.AddBanAsync(target.SteamId, target.Name, duration, reason, isGlobal);
+                var ok = await _banManager.AddBanAsync(target.SteamId, target.Name, duration, reason, isGlobal, target.IpAddress);
                 if (!ok)
                 {
                     Core.Scheduler.NextTick(() => admin.SendChat($" \x02{L("prefix")}\x01 {L("lastban_action_failed", L("menu_ban"))}"));

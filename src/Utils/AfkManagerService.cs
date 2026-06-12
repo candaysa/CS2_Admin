@@ -64,11 +64,6 @@ public sealed class AfkManagerService
 
     public void OnAfkCommand(ICommandContext context)
     {
-        if (!_config.Enabled)
-        {
-            return;
-        }
-
         if (!context.IsSentByPlayer || context.Sender?.IsValid != true)
         {
             context.Reply($" \x02{PluginLocalizer.Get(_core)["prefix"]}\x01 {L("afk_command_only_player", "This command can only be used by players.")}");

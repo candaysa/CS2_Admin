@@ -62,22 +62,40 @@ public class DisarmCommand : CommandBase
                 return;
             }
 
-            var changed = 0;
-            foreach (var target in targets)
+            Core.Scheduler.NextTick(() =>
             {
-                var itemServices = target.PlayerPawn?.ItemServices;
-                if (itemServices?.IsValid == true)
+                var changed = 0;
+                foreach (var target in targets)
                 {
-                    itemServices.RemoveItems();
-                    changed++;
+                    var liveTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamID);
+                    if (liveTarget?.IsValid != true) continue;
+                    
+                    var itemServices = liveTarget.PlayerPawn?.ItemServices;
+                    if (itemServices?.IsValid == true)
+                    {
+                        itemServices.RemoveItems();
+                        changed++;
+                    }
                 }
-            }
 
-            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-            BroadcastNotification(adminName, "disarm_notification", changed);
+                if (changed == 0) return;
 
-            _ = AdminLogManager.AddLogAsync("disarm", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={changed}");
-            Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} disarmed {Count} player(s)", adminName, changed);
+                var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+                foreach (var disTarget in targets)
+                {
+                    var liveDis = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == disTarget.SteamID);
+                    if (liveDis?.IsValid != true) continue;
+                    PlayerUtils.SendNotification(liveDis, Messages,
+                        $"<font color='#c0392b'><b>{L("disarm_personal_html")}</b></font><br><br>{L("label_by")}: <font color='#ffd700'>{ResolveVisibleAdminName(liveDis, adminName)}</font>",
+                        $" \x02{L("prefix")}\x01 {L("disarm_personal_chat", ResolveVisibleAdminName(liveDis, adminName))}");
+                }
+
+                if (changed > 0)
+                    BroadcastNotification(adminName, "disarm_notification", FormatTargetName(targets));
+
+                _ = AdminLogManager.AddLogAsync("disarm", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={changed}");
+                Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} disarmed {Count} player(s)", adminName, changed);
+            });
         }
         catch (Exception ex)
         {

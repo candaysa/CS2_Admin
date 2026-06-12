@@ -23,7 +23,7 @@ using System.Text.Json.Nodes;
 
 namespace CS2_Admin;
 
-[PluginMetadata(Id = "CS2_Admin", Version = "1.0.15", Name = "CS2_Admin", Author = "CanDaysa", Description = "Comprehensive admin plugin for CS2.")]
+[PluginMetadata(Id = "CS2_Admin", Version = "1.0.16", Name = "CS2_Admin", Author = "CanDaysa", Description = "Comprehensive admin plugin for CS2.")]
 public class CS2_Admin : BasePlugin
 {
     private PluginConfig _config = null!;
@@ -92,6 +92,8 @@ public class CS2_Admin : BasePlugin
     private GlowCommand _glowCmd = null!;
     private RgbCommand _rgbCmd = null!;
     private BeaconCommand _beaconCmd = null!;
+    private BuryCommand _buryCmd = null!;
+    private UnburyCommand _unburyCmd = null!;
     private BurnCommand _burnCmd = null!;
     private DisarmCommand _disarmCmd = null!;
     private SpeedCommand _speedCmd = null!;
@@ -126,7 +128,7 @@ public class CS2_Admin : BasePlugin
     private static readonly HashSet<string> BlockedAliases = new(StringComparer.OrdinalIgnoreCase) { "groups" };
     private static readonly HashSet<string> RawConCollisions = new(StringComparer.OrdinalIgnoreCase) { "say", "kick", "noclip", "give", "map", "restart", "rcon" };
     private static readonly ConcurrentDictionary<string, long> RecentCmd = new();
-    private const long DedupMs = 500;
+    private const long DedupMs = 100;
     private const long RetentionMs = 10_000;
     private Timer? _adminPlaytimeTimer;
     private Timer? _adminTimeAutoSendTimer;
@@ -484,6 +486,8 @@ public class CS2_Admin : BasePlugin
         _glowCmd = new GlowCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
         _rgbCmd = new RgbCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
         _beaconCmd = new BeaconCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _buryCmd = new BuryCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
+        _unburyCmd = new UnburyCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
         _burnCmd = new BurnCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
         _disarmCmd = new DisarmCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
         _speedCmd = new SpeedCommand(Core, _config.Permissions, _config.Commands, _config.Tags, _config.Messages, _adminLogManager, ps, _adminDbManager);
@@ -728,6 +732,8 @@ public class CS2_Admin : BasePlugin
         RegisterCmdList(_config.Commands.Glow, _glowCmd.Execute);
         RegisterCmdList(_config.Commands.Rgb, _rgbCmd.Execute);
         RegisterCmdList(_config.Commands.Beacon, _beaconCmd.Execute);
+        RegisterCmdList(_config.Commands.Bury, _buryCmd.Execute);
+        RegisterCmdList(_config.Commands.Unbury, _unburyCmd.Execute);
         RegisterCmdList(_config.Commands.Burn, _burnCmd.Execute);
         RegisterCmdList(_config.Commands.Disarm, _disarmCmd.Execute);
         RegisterCmdList(_config.Commands.Speed, _speedCmd.Execute);

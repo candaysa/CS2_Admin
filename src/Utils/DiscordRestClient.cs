@@ -259,6 +259,10 @@ public class DiscordRestClient
     private async Task LogDiscordFailureAsync(string action, HttpResponseMessage response)
     {
         var body = await response.Content.ReadAsStringAsync();
+        if (!string.IsNullOrWhiteSpace(body) && (body.Contains("\"code\": 10062") || body.Contains("\"code\": 40060")))
+        {
+            return;
+        }
         _core.Logger.LogWarningIfEnabled(
             "[CS2_Admin] Discord bot {Action} failed with status {StatusCode}. Response: {Body}",
             action,

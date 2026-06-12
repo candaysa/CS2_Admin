@@ -40,6 +40,8 @@ CS2_Admin/
 │   │   ├── ResizeCommand.cs                  # !resize
 │   │   ├── DrugCommand.cs                    # !drug
 │   │   ├── BurnCommand.cs                    # !burn
+│   │   ├── BuryCommand.cs                    # !bury
+│   │   ├── UnburyCommand.cs                  # !unbury
 │   │   ├── BeaconCommand.cs                  # !beacon
 │   │   ├── BlindCommand.cs                   # !blind
 │   │   ├── GlowCommand.cs                    # !glow

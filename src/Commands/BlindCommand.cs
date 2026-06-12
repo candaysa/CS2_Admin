@@ -8,6 +8,7 @@ using SwiftlyS2.Shared.Commands;
 using SwiftlyS2.Shared.Players;
 using SwiftlyS2.Shared.SchemaDefinitions;
 using SwiftlyS2.Shared.Natives;
+using SwiftlyS2.Shared.ProtobufDefinitions;
 using System.Drawing;
 
 namespace CS2_Admin.Commands;
@@ -77,6 +78,10 @@ public class BlindCommand : CommandBase
 
                     ApplyBlindEffect(liveTarget, durationSeconds);
 
+                    PlayerUtils.SendNotification(liveTarget, Messages,
+                        $"<font color='#2c3e50'><b>{L("blind_personal_html")}</b></font><br><br>{L("label_duration")}: <font color='#e74c3c'>{durationSeconds}s</font>",
+                        $" \x02{L("prefix")}\x01 {L("blind_personal_chat", ResolveVisibleAdminName(liveTarget, context.Sender?.Controller.PlayerName ?? L("console_name")), durationSeconds)}");
+
                     Core.Scheduler.DelayBySeconds(durationSeconds, () =>
                     {
                         var sameTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == targetSteamId);
@@ -87,10 +92,7 @@ public class BlindCommand : CommandBase
             }
 
             var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-            if (targets.Count == 1)
-                BroadcastNotification(adminName, "blind_notification_single", targets[0].Controller.PlayerName, durationSeconds);
-            else
-                BroadcastNotification(adminName, "blind_notification_multiple", targets.Count, durationSeconds);
+            BroadcastNotification(adminName, "blind_notification", FormatTargetName(targets), durationSeconds);
 
             _ = AdminLogManager.AddLogAsync("blind", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={targets.Count};duration={durationSeconds}");
             Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} blinded {Count} player(s) for {Duration}s", adminName, targets.Count, durationSeconds);
@@ -109,40 +111,20 @@ public class BlindCommand : CommandBase
 
         try
         {
-            pawn.FlashDuration = holdSeconds;
-            pawn.FlashDurationUpdated();
-            pawn.FlashMaxAlpha = 255f;
-            pawn.FlashMaxAlphaUpdated();
+            using var netMessage = Core.NetMessage.Create<CUserMessageFade>();
+            netMessage.Duration = Convert.ToUInt32(0.2f * 512); // fade in time
+            netMessage.HoldTime = Convert.ToUInt32(holdSeconds * 512);
+            netMessage.Flags = 0x0001 | 0x0010; // FADE_IN | PURGE
 
-            // CS2 needs the player to be marked as "flashed" at a recent time, otherwise
-            // the FlashDuration/FlashMaxAlpha values are stored but not rendered.
-            var flashedAtTimeField = pawn.GetType().GetField("m_flFlashedAtTime",
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (flashedAtTimeField != null)
-                {
-                    flashedAtTimeField.SetValue(pawn, Core.Engine.GlobalVars.RealTime - 0.05f);
-                }
+            var color = System.Drawing.Color.Black;
+            netMessage.Color = color.R | ((uint)color.G << 8) | ((uint)color.B << 16) | ((uint)color.A << 24);
+
+            netMessage.Recipients.AddRecipient(target.PlayerID);
+            netMessage.Send();
         }
-        catch
+        catch (Exception ex)
         {
-            try
-            {
-                var flashProp = pawn.GetType().GetProperty("FlashDuration");
-                flashProp?.SetValue(pawn, holdSeconds);
-                var alphaProp = pawn.GetType().GetProperty("FlashMaxAlpha");
-                alphaProp?.SetValue(pawn, 255f);
-
-                var flashedAtTimeField = pawn.GetType().GetField("m_flFlashedAtTime",
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (flashedAtTimeField != null)
-                {
-                flashedAtTimeField.SetValue(pawn, Core.Engine.GlobalVars.RealTime - 0.05f);
-                }
-            }
-            catch (Exception ex)
-            {
-                Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] ApplyBlindEffect reflection fallback failed for {SteamId}", target.SteamID);
-            }
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] ApplyBlindEffect failed for {SteamId}", target.SteamID);
         }
     }
 
@@ -154,38 +136,20 @@ public class BlindCommand : CommandBase
 
         try
         {
-            pawn.FlashDuration = 0f;
-            pawn.FlashDurationUpdated();
-            pawn.FlashMaxAlpha = 0f;
-            pawn.FlashMaxAlphaUpdated();
+            using var netMessage = Core.NetMessage.Create<CUserMessageFade>();
+            netMessage.Duration = Convert.ToUInt32(0.2f * 512);
+            netMessage.HoldTime = 0;
+            netMessage.Flags = 0x0001 | 0x0010; // FADE_IN | PURGE
 
-            var flashedAtTimeField = pawn.GetType().GetField("m_flFlashedAtTime",
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (flashedAtTimeField != null)
-            {
-                flashedAtTimeField.SetValue(pawn, 0f);
-            }
+            var color = System.Drawing.Color.FromArgb(0, 0, 0, 0); // Transparent
+            netMessage.Color = color.R | ((uint)color.G << 8) | ((uint)color.B << 16) | ((uint)color.A << 24);
+
+            netMessage.Recipients.AddRecipient(target.PlayerID);
+            netMessage.Send();
         }
-        catch
+        catch (Exception ex)
         {
-            try
-            {
-                var flashProp = pawn.GetType().GetProperty("FlashDuration");
-                flashProp?.SetValue(pawn, 0f);
-                var alphaProp = pawn.GetType().GetProperty("FlashMaxAlpha");
-                alphaProp?.SetValue(pawn, 0f);
-
-                var flashedAtTimeField = pawn.GetType().GetField("m_flFlashedAtTime",
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (flashedAtTimeField != null)
-                {
-                    flashedAtTimeField.SetValue(pawn, 0f);
-                }
-            }
-            catch (Exception ex)
-            {
-                Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] ClearBlindEffect reflection fallback failed for {SteamId}", target.SteamID);
-            }
+            Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] ClearBlindEffect failed for {SteamId}", target.SteamID);
         }
     }
 }
