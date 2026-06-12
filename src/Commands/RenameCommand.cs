@@ -63,17 +63,25 @@ public class RenameCommand : CommandBase
             var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
             var targetName = target.Controller.PlayerName;
 
-            target.Controller.PlayerName = newName;
             await _playerNameHistoryManager.SetCustomNameAsync(target.SteamID, newName);
 
-            BroadcastNotification(adminName, "rename_notification", targetName, newName);
+            Core.Scheduler.NextTick(() =>
+            {
+                var liveTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamID);
+                if (liveTarget?.IsValid != true) return;
 
-            PlayerUtils.SendNotification(target, Messages,
-                $"<font color='#ffcc00'><b>{L("rename_personal_html")}</b></font><br><br>{L("label_new_name")}: <font color='#00ff00'>{newName}</font><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(target, adminName)}</font>",
-                $" \x02{L("prefix")}\x01 {L("rename_personal_chat", newName, ResolveVisibleAdminName(target, adminName))}");
+                liveTarget.Controller.PlayerName = newName;
+                liveTarget.Controller.PlayerNameUpdated();
 
-            _ = AdminLogManager.AddLogAsync("rename", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"new_name={newName}", targetName);
-            Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} renamed {Target} to {NewName}", adminName, targetName, newName);
+                BroadcastNotification(adminName, "rename_notification", targetName, newName);
+
+                PlayerUtils.SendNotification(liveTarget, Messages,
+                    $"<font color='#ffcc00'><b>{L("rename_personal_html")}</b></font><br><br>{L("label_new_name")}: <font color='#00ff00'>{newName}</font><br>{L("label_by")}: <font color='#ffcc00'>{ResolveVisibleAdminName(liveTarget, adminName)}</font>",
+                    $" \x02{L("prefix")}\x01 {L("rename_personal_chat", newName, ResolveVisibleAdminName(liveTarget, adminName))}");
+
+                _ = AdminLogManager.AddLogAsync("rename", adminName, context.Sender?.SteamID ?? 0, liveTarget.SteamID, liveTarget.IPAddress, $"new_name={newName}", targetName);
+                Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} renamed {Target} to {NewName}", adminName, targetName, newName);
+            });
         }
         catch (Exception ex)
         {

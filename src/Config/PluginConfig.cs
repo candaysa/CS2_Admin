@@ -1,10 +1,10 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace CS2_Admin.Config;
 
 public class PluginConfig
 {
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 10;
     public int Version { get; set; } = CurrentVersion;
     public bool AutoUpdate { get; set; } = true;
     public bool Debug { get; set; } = false;
@@ -82,7 +82,7 @@ public class TagsConfig
 
 public class ChatTagsFileConfig
 {
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 10;
     public int Version { get; set; } = CurrentVersion;
     public bool ScoreboardEnabled { get; set; } = true;
     public bool ChatEnabled { get; set; } = true;
@@ -142,7 +142,7 @@ public class MultiServerConfig
 
 public class MessagesConfig
 {
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 10;
     public int Version { get; set; } = CurrentVersion;
     public string Prefix { get; set; } = "CS2_Admin";
     public bool EnableCenterHtmlMessages { get; set; } = true;
@@ -152,7 +152,7 @@ public class MessagesConfig
 
 public class DiscordFileConfig
 {
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 10;
     public int Version { get; set; } = CurrentVersion;
     public string ServerName { get; set; } = "";
     public string BotToken { get; set; } = "";
@@ -174,7 +174,7 @@ public class DiscordFileConfig
 
 public class AfkFileConfig
 {
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 10;
     public int Version { get; set; } = CurrentVersion;
     public bool Enabled { get; set; } = false;
     public float Timer { get; set; } = 30f;
@@ -185,7 +185,7 @@ public class AfkFileConfig
 
 public class CommandsConfig
 {
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 10;
     public int Version { get; set; } = CurrentVersion;
     [JsonIgnore]
     public List<string> AdminMenu { get; set; } = ["admin"];
@@ -276,6 +276,10 @@ public class CommandsConfig
     [JsonIgnore]
     public List<string> Beacon { get; set; } = ["beacon"];
     [JsonIgnore]
+    public List<string> Bury { get; set; } = ["bury"];
+    [JsonIgnore]
+    public List<string> Unbury { get; set; } = ["unbury"];
+    [JsonIgnore]
     public List<string> Burn { get; set; } = ["burn"];
     [JsonIgnore]
     public List<string> Disarm { get; set; } = ["disarm"];
@@ -326,7 +330,7 @@ public class CommandsConfig
 
 public class PermissionsConfig
 {
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 10;
     public int Version { get; set; } = CurrentVersion;
     public string AdminMenu { get; set; } = "admin.generic";
     public string AdminRoot { get; set; } = "admin.root";
@@ -380,6 +384,8 @@ public class PermissionsConfig
     public string Glow { get; set; } = "admin.cheats";
     public string Rgb { get; set; } = "admin.cheats";
     public string Beacon { get; set; } = "admin.cheats";
+    public string Bury { get; set; } = "admin.cheats";
+    public string Unbury { get; set; } = "admin.cheats";
     public string Burn { get; set; } = "admin.cheats";
     public string Disarm { get; set; } = "admin.cheats";
     public string Speed { get; set; } = "admin.cheats";
@@ -422,7 +428,7 @@ public class GameMapsConfig
 
 public class MapsFileConfig
 {
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 10;
     public int Version { get; set; } = CurrentVersion;
     public Dictionary<string, string> Maps { get; set; } = new()
     {
@@ -479,4 +485,5 @@ public class SanctionMenuConfig
         new() { Name = "Permanent", Minutes = -1 }
     };
 }
+
 

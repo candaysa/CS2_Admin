@@ -33,6 +33,7 @@ public class AdminLogManager
 
     private readonly ISwiftlyCore _core;
     private DiscordBotService? _discordBot;
+    private DateTime _lastSlapDiscordLog = DateTime.MinValue;
 
     public AdminLogManager(ISwiftlyCore core)
     {
@@ -135,8 +136,23 @@ public class AdminLogManager
         if (_discordBot == null)
             return false;
 
-        return !action.Equals("calladmin", StringComparison.OrdinalIgnoreCase)
-               && !action.Equals("report", StringComparison.OrdinalIgnoreCase);
+        if (action.Equals("calladmin", StringComparison.OrdinalIgnoreCase) ||
+            action.Equals("report", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (action.Equals("slap", StringComparison.OrdinalIgnoreCase))
+        {
+            var now = DateTime.UtcNow;
+            if ((now - _lastSlapDiscordLog).TotalSeconds < 5)
+            {
+                return false;
+            }
+            _lastSlapDiscordLog = now;
+        }
+
+        return true;
     }
 
     private static bool ShouldWriteAuditAction(string action)

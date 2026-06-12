@@ -63,16 +63,6 @@ public sealed class GagCommand : CommandBase
             if (RejectGroupTargets(context, args))
                 return;
 
-            var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], caller: context.Sender);
-            if (targets.Count == 0)
-            {
-                Reply(context, "player_not_found");
-                return;
-            }
-
-            if (!EnsureSinglePunishTarget(context, targets, args[0]))
-                return;
-
             if (!SanctionDurationParser.TryParseToMinutes(args[1], out int duration))
             {
                 Reply(context, "invalid_duration");
@@ -85,13 +75,31 @@ public sealed class GagCommand : CommandBase
 
             var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
             var adminSteamId = context.Sender?.SteamID ?? 0;
-            var targetSnapshots = targets
-                .Select(t => new PunishTargetSnapshot(
+            
+            var targetSnapshots = new List<PunishTargetSnapshot>();
+
+            if (PlayerUtils.TryParseSteamId(args[0], out var steamId))
+            {
+                targetSnapshots.Add(new PunishTargetSnapshot(0, steamId, L("unknown"), null));
+            }
+            else
+            {
+                var targets = PlayerUtils.FindPlayersByTarget(Core, args[0], caller: context.Sender);
+                if (targets.Count == 0)
+                {
+                    Reply(context, "player_not_found");
+                    return;
+                }
+
+                if (!EnsureSinglePunishTarget(context, targets, args[0]))
+                    return;
+
+                targetSnapshots.AddRange(targets.Select(t => new PunishTargetSnapshot(
                     t.PlayerID,
                     t.SteamID,
                     t.Controller.PlayerName ?? L("unknown"),
-                    t.IPAddress))
-                .ToList();
+                    t.IPAddress)));
+            }
 
             _gagManager.SetAdminContext(adminName, adminSteamId);
             foreach (var target in targetSnapshots)

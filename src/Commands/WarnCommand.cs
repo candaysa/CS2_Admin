@@ -57,13 +57,6 @@ public class WarnCommand : CommandBase
                 return;
             }
 
-            var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
-            if (target == null)
-            {
-                Reply(context, "player_not_found");
-                return;
-            }
-
             var reason = string.Join(" ", args.Skip(1)).Trim();
             if (string.IsNullOrWhiteSpace(reason))
             {
@@ -74,9 +67,31 @@ public class WarnCommand : CommandBase
             const int duration = -1;
             var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
             var adminSteamId = context.Sender?.SteamID ?? 0;
-            var targetName = target.Controller.PlayerName ?? L("unknown");
-            var targetSteamId = target.SteamID;
-            var targetIp = target.IPAddress;
+            
+            string targetName;
+            ulong targetSteamId;
+            string? targetIp = null;
+            int targetPlayerId = 0;
+
+            if (PlayerUtils.TryParseSteamId(args[0], out var steamId))
+            {
+                targetSteamId = steamId;
+                targetName = L("unknown");
+            }
+            else
+            {
+                var target = PlayerUtils.FindPlayerByTarget(Core, args[0]);
+                if (target == null)
+                {
+                    Reply(context, "player_not_found");
+                    return;
+                }
+                
+                targetSteamId = target.SteamID;
+                targetName = target.Controller.PlayerName ?? L("unknown");
+                targetIp = target.IPAddress;
+                targetPlayerId = target.PlayerID;
+            }
 
             if (!await ValidateCanPunishAsync(context, targetSteamId))
                 return;
@@ -107,7 +122,7 @@ public class WarnCommand : CommandBase
                 }
             });
 
-            await AdminLogManager.AddLogAsync("warn", adminName, adminSteamId, targetSteamId, targetIp, $"duration={duration};reason={reason}", targetName, target.PlayerID, reason);
+            await AdminLogManager.AddLogAsync("warn", adminName, adminSteamId, targetSteamId, targetIp, $"duration={duration};reason={reason}", targetName, targetPlayerId, reason);
 
             Core.Logger.LogInformationIfEnabled("[CS2_Admin] {Admin} warned {Target} for {Duration} minutes. Reason: {Reason}",
                 adminName, targetName, duration, reason);

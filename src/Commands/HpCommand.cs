@@ -59,33 +59,39 @@ public class HpCommand : CommandBase
             if (!canTarget)
                 return;
 
-            var pawn = target.PlayerPawn;
-            if (pawn?.IsValid != true)
+            Core.Scheduler.NextTick(() =>
             {
-                Reply(context, "player_not_found");
-                return;
-            }
+                var liveTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamID);
+                if (liveTarget?.IsValid != true) return;
 
-            pawn.Health = health;
-            pawn.HealthUpdated();
+                var pawn = liveTarget.PlayerPawn;
+                if (pawn?.IsValid != true)
+                {
+                    Reply(context, "player_not_found");
+                    return;
+                }
 
-            if (args.Length > 2 && int.TryParse(args[2], out var armor))
-            {
-                armor = Math.Clamp(armor, 0, 100);
-                pawn.ArmorValue = armor;
-            }
+                pawn.Health = health;
+                pawn.HealthUpdated();
 
-            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-            var targetName = target.Controller.PlayerName;
+                if (args.Length > 2 && int.TryParse(args[2], out var armor))
+                {
+                    armor = Math.Clamp(armor, 0, 100);
+                    pawn.ArmorValue = armor;
+                }
 
-            BroadcastNotification(adminName, "hp_notification", targetName, health);
+                var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+                var targetName = liveTarget.Controller.PlayerName;
 
-            PlayerUtils.SendNotification(target, Messages,
-                $"<font color='#00ff00'><b>{L("hp_personal_html", health)}</b></font>",
-                $" \x02{L("prefix")}\x01 {L("hp_personal_chat", health)}");
+                BroadcastNotification(adminName, "hp_notification", targetName, health);
 
-            _ = AdminLogManager.AddLogAsync("hp", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"health={health}", targetName);
-            Core.Logger.LogInformation("[CS2_Admin] {Admin} set health of {Target} to {Health}", adminName, targetName, health);
+                PlayerUtils.SendNotification(liveTarget, Messages,
+                    $"<font color='#00ff00'><b>{L("hp_personal_html", health)}</b></font>",
+                    $" \x02{L("prefix")}\x01 {L("hp_personal_chat", health)}");
+
+                _ = AdminLogManager.AddLogAsync("hp", adminName, context.Sender?.SteamID ?? 0, liveTarget.SteamID, liveTarget.IPAddress, $"health={health}", targetName);
+                Core.Logger.LogInformation("[CS2_Admin] {Admin} set health of {Target} to {Health}", adminName, targetName, health);
+            });
         }
         catch (Exception ex)
         {

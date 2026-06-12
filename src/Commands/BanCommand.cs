@@ -143,7 +143,7 @@ public class BanCommand : CommandBase
                 if (existingSteam == null)
                 {
                     _banManager.InvalidateCache(targetSnapshot.SteamId, null);
-                    steamApplied = await _banManager.AddBanAsync(targetSnapshot.SteamId, targetSnapshot.Name, duration, reason, isGlobal);
+                    steamApplied = await _banManager.AddBanAsync(targetSnapshot.SteamId, targetSnapshot.Name, duration, reason, isGlobal, targetSnapshot.IpAddress);
                     if (!steamApplied)
                     {
                         steamDbError = true;

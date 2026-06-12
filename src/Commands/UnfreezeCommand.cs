@@ -74,14 +74,9 @@ public class UnfreezeCommand : CommandBase
                     $" \x02{L("prefix")}\x01 {L("unfrozen_personal_chat", ResolveVisibleAdminName(target, adminName))}");
             }
 
-            if (targets.Count == 1)
+            if (targets.Count > 0)
             {
-                var targetName = targets[0].Controller.PlayerName;
-                BroadcastNotification(adminName, "unfreeze_notification_single", targetName);
-            }
-            else
-            {
-                BroadcastNotification(adminName, "unfreeze_notification_multiple", targets.Count);
+                BroadcastNotification(adminName, "unfreeze_notification", FormatTargetName(targets));
             }
 
             var unfreezeTargetSteamIds = string.Join(",", targets.Select(t => t.SteamID));

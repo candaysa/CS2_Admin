@@ -80,7 +80,7 @@ public class DiscordRestClient
     private async Task<string?> CreateMessageAsync(string channelId, object payload)
     {
         var endpoint = $"{DiscordApiBaseUrl}/channels/{channelId}/messages";
-        _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordREST] create message request channel={ChannelId}", DiscordHelpers.MaskChannelId(channelId));
+        // _core.Logger.LogInformationIfEnabled("[CS2_Admin][Debug][DiscordREST] create message request channel={ChannelId}", DiscordHelpers.MaskChannelId(channelId));
         using var request = BuildDiscordRequest(HttpMethod.Post, endpoint, payload);
         using var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode)
@@ -95,10 +95,10 @@ public class DiscordRestClient
             PropertyNameCaseInsensitive = true
         });
 
-        _core.Logger.LogInformationIfEnabled(
-            "[CS2_Admin][Debug][DiscordREST] create message success channel={ChannelId} messageId={MessageId}",
-            DiscordHelpers.MaskChannelId(channelId),
-            string.IsNullOrWhiteSpace(data?.Id) ? "-" : data.Id);
+        // _core.Logger.LogInformationIfEnabled(
+        //     "[CS2_Admin][Debug][DiscordREST] create message success channel={ChannelId} messageId={MessageId}",
+        //     DiscordHelpers.MaskChannelId(channelId),
+        //     string.IsNullOrWhiteSpace(data?.Id) ? "-" : data.Id);
 
         return data?.Id;
     }
@@ -259,6 +259,10 @@ public class DiscordRestClient
     private async Task LogDiscordFailureAsync(string action, HttpResponseMessage response)
     {
         var body = await response.Content.ReadAsStringAsync();
+        if (!string.IsNullOrWhiteSpace(body) && (body.Contains("\"code\": 10062") || body.Contains("\"code\": 40060")))
+        {
+            return;
+        }
         _core.Logger.LogWarningIfEnabled(
             "[CS2_Admin] Discord bot {Action} failed with status {StatusCode}. Response: {Body}",
             action,

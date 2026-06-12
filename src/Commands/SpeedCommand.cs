@@ -94,7 +94,7 @@ public class SpeedCommand : CommandBase
                 applied++;
 
                 PlayerUtils.SendNotification(target, Messages,
-                    $"<font color='#00ff88'><b>SPEED</b></font><br><br>Değer: <font color='#00ff88'>{multiplier.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}x</font>",
+                    $"<font color='#00ff88'><b>{L("speed")}</b></font><br><br>{L("label_value")}: <font color='#00ff88'>{multiplier.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}x</font>",
                     $" \x02{L("prefix")}\x01 {L("speed_personal_chat", multiplier.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))}");
             }
 
@@ -106,7 +106,7 @@ public class SpeedCommand : CommandBase
 
             var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
 
-            string targetLabel = targets.Count == 1 ? targets[0].Controller.PlayerName : applied.ToString();
+            string targetLabel = FormatTargetName(targets);
             BroadcastNotification(adminName, "speed_notification", targetLabel, multiplier.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
 
             _ = AdminLogManager.AddLogAsync("speed", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={applied};multiplier={multiplier.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}");

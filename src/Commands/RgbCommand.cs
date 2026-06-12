@@ -98,7 +98,7 @@ public class RgbCommand : CommandBase
                 return;
             }
 
-            BroadcastNotification(adminName, "rgb_started", started, durationSeconds);
+            BroadcastNotification(adminName, "rgb_started", FormatTargetName(targets), durationSeconds);
             _ = AdminLogManager.AddLogAsync("rgbon", adminName, context.Sender?.SteamID ?? 0, null, null, $"targets={started};duration={durationSeconds}");
             Core.Logger.LogInformation("[CS2_Admin] {Admin} started RGB glow for {Count} player(s)", adminName, started);
         }

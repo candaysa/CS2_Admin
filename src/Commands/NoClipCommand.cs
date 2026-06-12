@@ -79,7 +79,7 @@ public class NoClipCommand : CommandBase
                     $" \x02{L("prefix")}\x01 {L("noclip_toggled_personal_chat", stateLabel, ResolveVisibleAdminName(target, adminName))}");
             }
 
-            BroadcastNotification(adminName, "noclip_toggled_notification", stateLabel, targetName);
+            BroadcastNotification(adminName, "noclip_toggled_notification", targetName, stateLabel);
 
             _ = AdminLogManager.AddLogAsync("noclip", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"state={(!isEnabled ? "on" : "off")}", target.Controller.PlayerName);
         }

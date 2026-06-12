@@ -59,41 +59,47 @@ public class MoneyCommand : CommandBase
             if (!canTarget)
                 return;
 
-            if (target.Controller?.InGameMoneyServices == null)
+            Core.Scheduler.NextTick(() =>
             {
-                Reply(context, "player_not_found");
-                return;
-            }
+                var liveTarget = Core.PlayerManager.GetAllPlayers().FirstOrDefault(p => p.IsValid && p.SteamID == target.SteamID);
+                if (liveTarget?.IsValid != true) return;
 
-            try
-            {
-                target.Controller.InGameMoneyServices.Account = amount;
-                target.Controller.InGameMoneyServices.AccountUpdated();
-                target.Controller.InGameMoneyServicesUpdated();
-            }
-            catch
-            {
+                if (liveTarget.Controller?.InGameMoneyServices == null)
+                {
+                    Reply(context, "player_not_found");
+                    return;
+                }
+
                 try
                 {
-                    target.Controller.InGameMoneyServices.Account = amount;
+                    liveTarget.Controller.InGameMoneyServices.Account = amount;
+                    liveTarget.Controller.InGameMoneyServices.AccountUpdated();
+                    liveTarget.Controller.InGameMoneyServicesUpdated();
                 }
-                catch (Exception ex)
+                catch
                 {
-                    Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Money set reflection fallback failed for {SteamId}", target.SteamID);
+                    try
+                    {
+                        liveTarget.Controller.InGameMoneyServices.Account = amount;
+                    }
+                    catch (Exception ex)
+                    {
+                        Core.Logger.LogErrorIfEnabled(ex, "[CS2_Admin] Money set reflection fallback failed for {SteamId}", liveTarget.SteamID);
+                    }
                 }
-            }
 
-            var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
-            var targetName = target.Controller.PlayerName;
+                var adminName = context.Sender?.Controller.PlayerName ?? L("console_name");
+                var targetName = liveTarget.Controller.PlayerName;
 
-            BroadcastNotification(adminName, "money_set_notification", targetName, amount);
+                BroadcastNotification(adminName, "money_set_notification", targetName, amount);
 
-            PlayerUtils.SendNotification(target, Messages,
-                $"<font color='#00ff00'><b>{L("money_personal_html", amount)}</b></font>",
-                $" \x02{L("prefix")}\x01 {L("money_personal_chat", amount)}");
+                PlayerUtils.SendNotification(liveTarget, Messages,
+                    $"<font color='#00ff00'><b>{L("money_personal_html", amount)}</b></font>",
+                    $" \x02{L("prefix")}\x01 {L("money_personal_chat", amount)}");
 
-            _ = AdminLogManager.AddLogAsync("money", adminName, context.Sender?.SteamID ?? 0, target.SteamID, target.IPAddress, $"amount={amount}", targetName);
-            Core.Logger.LogInformation("[CS2_Admin] {Admin} set money of {Target} to {Amount}", adminName, targetName, amount);
+                _ = AdminLogManager.AddLogAsync("money", adminName, context.Sender?.SteamID ?? 0, liveTarget.SteamID, liveTarget.IPAddress, $"amount={amount}", targetName);
+                Core.Logger.LogInformation("[CS2_Admin] {Admin} set money of {Target} to {Amount}", adminName, targetName, amount);
+            });
         }
         catch (Exception ex)
         {
