@@ -71,6 +71,7 @@ public class RenameCommand : CommandBase
                 if (liveTarget?.IsValid != true) return;
 
                 liveTarget.Controller.PlayerName = newName;
+                liveTarget.Controller.PlayerNameUpdated();
 
                 BroadcastNotification(adminName, "rename_notification", targetName, newName);
 

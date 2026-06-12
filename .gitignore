@@ -12,3 +12,6 @@ bin/
 
 # Pull Request scripts
 create-pr-request.bat
+
+# Planning docs
+plan.md
