@@ -39,3 +39,21 @@ The reason it "fixes itself after 1 round" is because CS2_Admin.cs has a hook fo
 1. To avoid querying the database constantly, cache the calculated tags in memory per-player (e.g. ConcurrentDictionary<int, string> _cachedPlayerTags).
 2. Register an OnPlayerSpawn event hook in the plugin (or the CS2 equivalent).
 3. Whenever a player spawns, immediately re-apply their cached tag using PlayerUtils.SetScoreTagReliable. This ensures that even if the engine clears the tag upon spawn, the plugin instantly restores it without waiting for the next round.
+
+---
+
+
+---
+
+## 10. Rename (!rename) Command Names Resetting on Spawn
+
+**Status:** Identified and planned.
+
+**Reason:**
+Similar to the Clan/Chat Tag system, when players spawn or switch teams in Counter-Strike 2, the game engine automatically resets their PlayerName to their original Steam profile name to ensure synchronization.
+In the current CS2_Admin logic, the player's custom name (GetCustomNameAsync) is only fetched and applied when the player first connects to the server (OnClientPutInServer). Because of this, if an admin renames a player, that custom name is lost the moment the player dies and respawns, or changes teams, reverting back to their Steam name until they disconnect and reconnect.
+
+**To-Do:**
+1. Hook the EventPlayerSpawn event (the same hook planned for the Tag Manager fix).
+2. Inside the spawn event handler, check if the player has a cached custom name (from PlayerNameHistoryManager).
+3. If a custom name exists, re-apply it by setting liveTarget.Controller.PlayerName = customName, overriding the game engine's Steam name reset instantly upon spawn.
