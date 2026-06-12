@@ -238,12 +238,12 @@ public class DiscordNotificationService
             var scopePrefix = teamOnly ? "[Team] " : string.Empty;
             var line = $"{DiscordHelpers.CountryCodeToDiscordFlag(snapshot.CountryCode)} [{DiscordHelpers.EscapeMarkdown(GetServerLabel())}] | {scopePrefix}**{DiscordHelpers.EscapeMarkdown(snapshot.DisplayName)}** (`{snapshot.SteamId}`): {DiscordHelpers.EscapeMarkdown(trimmed)}";
             var messageId = await _restClient.SendMessageAsync(channelId, line);
-            _core.Logger.LogInformationIfEnabled(
-                "[CS2_Admin][Debug][DiscordChat] service result steamid={SteamId} channel={ChannelId} success={Success} messageId={MessageId}",
-                player.SteamID,
-                DiscordHelpers.MaskChannelId(channelId),
-                !string.IsNullOrWhiteSpace(messageId),
-                string.IsNullOrWhiteSpace(messageId) ? "-" : messageId);
+            // _core.Logger.LogInformationIfEnabled(
+            //    "[CS2_Admin][Debug][DiscordChat] service result steamid={SteamId} channel={ChannelId} success={Success} messageId={MessageId}",
+            //    player.SteamID,
+            //    DiscordHelpers.MaskChannelId(channelId),
+            //    !string.IsNullOrWhiteSpace(messageId),
+            //    string.IsNullOrWhiteSpace(messageId) ? "-" : messageId);
         }
         catch (Exception ex)
         {
