@@ -55,6 +55,27 @@ public static class LocalizerHelper
         try
         {
             var raw = PluginLocalizer.Get(core)[key];
+            
+            if (args.Length == 1)
+            {
+                var adjusted = raw
+                    .Replace("{count}", "{0}")
+                    .Replace("{duration}", "{0}")
+                    .Replace("{seconds}", "{0}")
+                    .Replace("{name}", "{0}")
+                    .Replace("{value}", "{0}")
+                    .Replace("{amount}", "{0}")
+                    .Replace("{multiplier}", "{0}")
+                    .Replace("{health}", "{0}")
+                    .Replace("{item}", "{0}")
+                    .Replace("{map}", "{0}")
+                    .Replace("{state}", "{0}")
+                    .Replace("{team}", "{0}")
+                    .Replace("{reason}", "{0}");
+                    
+                return string.Format(ApplyNamedPlaceholders(adjusted), args);
+            }
+
             return string.Format(ApplyNamedPlaceholders(raw), args);
         }
         catch

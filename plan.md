@@ -18,3 +18,4 @@
 - **[FIXED]** !give command weapon access restriction and give @all bug.
 - **[FIXED]** !mixteam command unfair team distribution and players getting stuck.
 - **[FIXED]** Discord API "Rate Limit" overload from !slap command (added 5-second cooldown for Discord logs).
+- **[FIXED]** {count} and other single-argument placeholder variables failing to render properly in standalone message keys (like 	arget_multiple), resulting in unresolved {count} strings appearing in the chat.
