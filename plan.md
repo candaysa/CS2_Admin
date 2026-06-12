@@ -45,15 +45,20 @@ The reason it "fixes itself after 1 round" is because CS2_Admin.cs has a hook fo
 
 ---
 
-## 10. Rename (!rename) Command Names Resetting on Spawn
+
+---
+
+
+---
+
+## 10. Rename (!rename) Command Names Resetting/Not Updating Properly
 
 **Status:** Identified and planned.
 
 **Reason:**
-Similar to the Clan/Chat Tag system, when players spawn or switch teams in Counter-Strike 2, the game engine automatically resets their PlayerName to their original Steam profile name to ensure synchronization.
-In the current CS2_Admin logic, the player's custom name (GetCustomNameAsync) is only fetched and applied when the player first connects to the server (OnClientPutInServer). Because of this, if an admin renames a player, that custom name is lost the moment the player dies and respawns, or changes teams, reverting back to their Steam name until they disconnect and reconnect.
+Upon inspecting the original plugin (Admins-1.0.0-b8), it was discovered that after a name change, the method player.Controller.PlayerNameUpdated() is explicitly called to notify the game engine.
+In CS2_Admin's RenameCommand.cs, the name is changed and saved to the database, but the critical PlayerNameUpdated() call was forgotten. Because the engine wasn't explicitly notified of the network string table update, it fails to fully register the change, causing the name to revert back to the Steam profile name upon death or at the earliest opportunity. (Unlike Clan tags, PlayerNames generally do not reset on spawn if the engine is properly notified).
 
 **To-Do:**
-1. Hook the EventPlayerSpawn event (the same hook planned for the Tag Manager fix).
-2. Inside the spawn event handler, check if the player has a cached custom name (from PlayerNameHistoryManager).
-3. If a custom name exists, re-apply it by setting liveTarget.Controller.PlayerName = customName, overriding the game engine's Steam name reset instantly upon spawn.
+1. Add liveTarget.Controller.PlayerNameUpdated(); immediately after changing the name in RenameCommand.cs.
+2. (Optional) In the future OnPlayerSpawn hook planned for Tag Manager, briefly check if the player has a custom name (GetCustomNameAsync) and enforce it with PlayerNameUpdated() just as an extra layer of protection against engine overrides.
