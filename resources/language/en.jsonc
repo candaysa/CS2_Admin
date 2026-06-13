@@ -490,10 +490,10 @@
   "discord_report_punishments_internal_error": "An internal error occurred while loading punishments.",
   "discord_report_mark_resolved_button": "Mark as resolved",
   "discord_report_player_punishments_button": "Player Punishments",
-  "rename_personal_html": "<font color='green'>[Admin]</font> Your name has been changed to <font color='red'>{0}</font>.",
+  "rename_personal_html": "Your name has been changed.",
   "rename_personal_chat": "{GREEN}[Admin]{DEFAULT} Your name has been changed to {RED}{0}{DEFAULT}.",
   "unrename_no_history": "{RED}Error:{DEFAULT} No previous name history found for this player.",
-  "unrename_personal_html": "<font color='green'>[Admin]</font> Your name has been reverted to <font color='red'>{0}</font>.",
+  "unrename_personal_html": "Your name has been reverted.",
   "unrename_personal_chat": "{GREEN}[Admin]{DEFAULT} Your name has been reverted to {RED}{0}{DEFAULT}.",
   "money_personal_chat": "{GREEN}[Admin]{DEFAULT} Your money has been set to {GREEN}${0}{DEFAULT}.",
   "ipban_success": "{GREEN}[Admin]{DEFAULT} Successfully IP banned player {RED}{0}{DEFAULT}.",
@@ -511,3 +511,4 @@
   "other": "Other",
   "admin": "Admin"
 }
+
