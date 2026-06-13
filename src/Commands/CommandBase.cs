@@ -109,14 +109,15 @@ public abstract class CommandBase : ICommand
     {
         var prefix = L("prefix");
         var formatted = $" \x02{prefix}\x01 {message}";
+        var stripped = StripChatFormatting(message);
 
         if (context.IsSentByPlayer && context.Sender != null)
         {
             context.Sender.SendChat(formatted);
+            context.Sender.SendConsole($"[{prefix}] {stripped}");
             return;
         }
 
-        var stripped = StripChatFormatting(message);
         Core.Logger.LogInformation("[{Prefix}] {Message}", prefix, stripped);
         Console.WriteLine($"[{prefix}] {stripped}");
     }
