@@ -75,6 +75,26 @@ public static class LocalizerHelper
                     
                 return string.Format(ApplyNamedPlaceholders(adjusted), args);
             }
+            
+            if (args.Length == 2)
+            {
+                var adjusted = raw
+                    .Replace("{count}", "{1}")
+                    .Replace("{duration}", "{1}")
+                    .Replace("{seconds}", "{1}")
+                    .Replace("{name}", "{1}")
+                    .Replace("{value}", "{1}")
+                    .Replace("{amount}", "{1}")
+                    .Replace("{multiplier}", "{1}")
+                    .Replace("{health}", "{1}")
+                    .Replace("{item}", "{1}")
+                    .Replace("{map}", "{1}")
+                    .Replace("{state}", "{1}")
+                    .Replace("{team}", "{1}")
+                    .Replace("{reason}", "{1}");
+                    
+                return string.Format(ApplyNamedPlaceholders(adjusted), args);
+            }
 
             return string.Format(ApplyNamedPlaceholders(raw), args);
         }

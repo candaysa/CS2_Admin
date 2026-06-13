@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using CS2_Admin.Config;
 using CS2_Admin.Database;
 using CS2_Admin.Services;
@@ -12,6 +13,7 @@ namespace CS2_Admin.Commands;
 
 public class ReportCommand : CommandBase
 {
+    private static readonly ConcurrentDictionary<ulong, long> _lastMenuAction = new();
     private readonly DiscordBotService _discord;
     private readonly SanctionMenuConfig _sanctions;
 
@@ -145,6 +147,11 @@ public class ReportCommand : CommandBase
 
     private async Task SendMenuReportAsync(IPlayer reporter, ReportTarget target, string reason)
     {
+        var now = Environment.TickCount64;
+        if (_lastMenuAction.TryGetValue(reporter.SteamID, out var lastTime) && (now - lastTime) < 2000)
+            return;
+        _lastMenuAction[reporter.SteamID] = now;
+
         var playerName = reporter.Controller.PlayerName ?? L("unknown");
         var playerSteamId = reporter.SteamID;
         var serverId = ServerIdentity.GetServerId(Core);
